@@ -20,6 +20,10 @@ func (d *dummyAdapter) Execute(ctx context.Context, inputs map[string]any) (map[
 	return inputs, nil
 }
 
+func (d *dummyAdapter) Manifest() *ToolManifest {
+	return nil
+}
+
 func TestRegistryRegisterGet(t *testing.T) {
 	r := NewRegistry()
 	// Initially, no adapter
@@ -77,17 +81,17 @@ func TestHTTPAdapter(t *testing.T) {
 	}
 }
 
+// The following commented-out tests are placeholders for future test coverage.
 // func TestNewManifestLoader(t *testing.T) {
-// 	ml := NewManifestLoader()
-// 	if ml == nil {
-// 		t.Errorf("expected NewManifestLoader not nil")
-// 	}
+//  ...
 // }
-
+//
 // func TestManifestLoader_InvalidManifest(t *testing.T) {
-// 	ml := NewManifestLoader()
-// 	// Simulate invalid manifest (stub: always succeeds)
-// 	_ = ml // No-op, but placeholder for future error test
+//  ...
+// }
+//
+// func TestHTTPAdapter_ErrorCase(t *testing.T) {
+//  ...
 // }
 
 func TestToolIdentifierResolutionPriority(t *testing.T) {
@@ -153,15 +157,6 @@ func TestRegistryGetUnknown(t *testing.T) {
 		t.Errorf("expected not to find unknown adapter")
 	}
 }
-
-// func TestHTTPAdapter_ErrorCase(t *testing.T) {
-// 	a := &HTTPAdapter{id: "http"}
-// 	// Simulate error (stub: always returns nil)
-// 	_, err := a.Execute(context.Background(), nil)
-// 	if err != nil {
-// 		t.Errorf("expected no error for nil input, got %v", err)
-// 	}
-// }
 
 func TestRegistryFetcher_Fallback(t *testing.T) {
 	f := NewRegistryFetcher()

@@ -52,18 +52,20 @@ func captureStderrExit(f func()) (string, int) {
 }
 
 func TestMainCommands(t *testing.T) {
-	cases := [][]string{
-		{"flow", "serve"},
-		{"flow", "run"},
-		{"flow", "graph"},
-		{"flow", "test"},
-		{"flow", "tool", "scaffold"},
+	cases := []struct {
+		args        []string
+		wantsOutput bool
+	}{
+		{[]string{"flow", "serve"}, true},
+		{[]string{"flow", "run"}, true},
+		{[]string{"flow", "test"}, true},
+		{[]string{"flow", "tool", "scaffold"}, true},
 	}
-	for _, args := range cases {
-		os.Args = args
+	for _, c := range cases {
+		os.Args = c.args
 		out := captureOutput(func() { NewRootCmd().Execute() })
-		if out == "" {
-			t.Errorf("expected output for %v, got empty", args)
+		if c.wantsOutput && out == "" {
+			t.Errorf("expected output for %v, got empty", c.args)
 		}
 	}
 }

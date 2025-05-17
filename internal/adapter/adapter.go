@@ -2,14 +2,14 @@ package adapter
 
 import "context"
 
-// Adapter is the interface for all BeemFlow adapters.
+// Adapter is the interface for all BeemFlow adapters. Implement this to add new tool integrations.
 type Adapter interface {
 	ID() string
 	Execute(ctx context.Context, inputs map[string]any) (map[string]any, error)
 	Manifest() *ToolManifest
 }
 
-// Registry holds registered adapters.
+// Registry holds registered adapters and provides lookup and registration methods.
 type Registry struct {
 	adapters map[string]Adapter
 }

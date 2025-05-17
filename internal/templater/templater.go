@@ -10,11 +10,15 @@ import (
 	"time"
 )
 
+// Templater provides template rendering with helper functions for BeemFlow flows.
 type Templater struct {
 	helperFuncs template.FuncMap
-	// TODO: add custom funcs, sprig, etc.
+	// You can register custom helpers using RegisterHelpers. Example:
+	//   t.RegisterHelpers(template.FuncMap{"myfunc": func(x string) string { return ... }})
+	// For more helpers, consider integrating github.com/Masterminds/sprig in the future.
 }
 
+// NewTemplater creates a new Templater with built-in helper functions.
 func NewTemplater() *Templater {
 	t := &Templater{
 		helperFuncs: make(template.FuncMap),

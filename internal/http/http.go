@@ -61,17 +61,17 @@ func resumeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func graphHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement graph rendering
+	// Not implemented yet. Planned for a future release.
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 func validateHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement flow validation
+	// Not implemented yet. Planned for a future release.
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 func testHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement flow test endpoint
+	// Not implemented yet. Planned for a future release.
 	w.WriteHeader(http.StatusNotImplemented)
 }
 

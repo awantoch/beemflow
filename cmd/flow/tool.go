@@ -8,6 +8,7 @@ import (
 
 // newToolCmd creates the 'tool' subcommand and its scaffolding commands.
 func newToolCmd() *cobra.Command {
+	// Not implemented yet. Planned for a future release.
 	cmd := &cobra.Command{
 		Use:   "tool",
 		Short: "Tooling commands",
@@ -17,7 +18,8 @@ func newToolCmd() *cobra.Command {
 		&cobra.Command{
 			Use:   "scaffold",
 			Short: "Scaffold a tool manifest",
-			Run:   func(cmd *cobra.Command, args []string) { fmt.Println("flow tool scaffold (stub)") },
+			// Not implemented yet. Planned for a future release.
+			Run: func(cmd *cobra.Command, args []string) { fmt.Println("flow tool scaffold (stub)") },
 		},
 	)
 	return cmd

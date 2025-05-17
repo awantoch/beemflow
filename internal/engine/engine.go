@@ -17,7 +17,7 @@ import (
 	"github.com/awantoch/beemflow/internal/templater"
 )
 
-// Engine now supports pausing and resuming flows at await_event steps.
+// Engine is the core runtime for executing BeemFlow flows. It manages adapters, templating, event bus, and in-memory state.
 type Engine struct {
 	Adapters  *adapter.Registry
 	Templater *templater.Templater
@@ -27,7 +27,7 @@ type Engine struct {
 	mu      sync.Mutex
 	// Store completed outputs for resumed runs (token -> outputs)
 	completedOutputs map[string]map[string]any
-	// TODO: add storage, blob, eventbus, adapter registry, etc.
+	// NOTE: Storage, blob, eventbus, and cron are pluggable; in-memory is the default for now.
 }
 
 type PausedRun struct {
@@ -38,6 +38,7 @@ type PausedRun struct {
 	Token   string
 }
 
+// NewEngine creates a new Engine with built-in adapters and default in-memory state.
 func NewEngine() *Engine {
 	reg := adapter.NewRegistry()
 	reg.Register(&adapter.CoreEchoAdapter{})
@@ -325,7 +326,7 @@ type StepContext struct {
 
 // CronScheduler is a stub for cron-based triggers.
 type CronScheduler struct {
-	// TODO: implement cron scheduling
+	// Extend this struct to support cron-based triggers (see beemflow_spec.md for ideas).
 }
 
 func NewCronScheduler() *CronScheduler {

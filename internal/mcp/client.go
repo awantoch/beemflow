@@ -77,6 +77,8 @@ func (c *HTTPMCPClient) CallTool(name string, args map[string]any) (map[string]a
 // StdioMCPClient is a stub for stdio transport (to be implemented)
 type StdioMCPClient struct{}
 
+// NOTE: Only HTTP MCP servers are currently supported. Stdio transport is a placeholder for future work.
+
 func NewStdioMCPClient(cmd string, args ...string) *StdioMCPClient {
 	// TODO: implement stdio transport
 	return &StdioMCPClient{}

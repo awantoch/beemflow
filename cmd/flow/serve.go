@@ -8,6 +8,7 @@ import (
 
 // newServeCmd creates the 'serve' subcommand.
 func newServeCmd() *cobra.Command {
+	// Not implemented yet. Planned for a future release.
 	return &cobra.Command{
 		Use:   "serve",
 		Short: "Start the BeemFlow runtime",
