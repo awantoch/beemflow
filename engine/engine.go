@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awantoch/beemflow/internal/adapter"
-	"github.com/awantoch/beemflow/internal/event"
-	"github.com/awantoch/beemflow/internal/model"
-	"github.com/awantoch/beemflow/internal/templater"
+	"github.com/awantoch/beemflow/adapter"
+	"github.com/awantoch/beemflow/event"
+	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/templater"
 )
 
 // Engine is the core runtime for executing BeemFlow flows. It manages adapters, templating, event bus, and in-memory state.

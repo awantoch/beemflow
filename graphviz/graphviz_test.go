@@ -3,7 +3,7 @@ package graphviz
 import (
 	"testing"
 
-	"github.com/awantoch/beemflow/internal/model"
+	"github.com/awantoch/beemflow/model"
 )
 
 func TestExportMermaid_EmptyFlow(t *testing.T) {

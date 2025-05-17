@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/awantoch/beemflow/internal/mcp"
+	"github.com/awantoch/beemflow/mcp"
 )
 
 // MCPAdapter implements Adapter for mcp://server/tool URIs.

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/awantoch/beemflow/internal/model"
+	"github.com/awantoch/beemflow/model"
 	"github.com/google/uuid"
 )
 

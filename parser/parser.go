@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/awantoch/beemflow/internal/model"
+	"github.com/awantoch/beemflow/model"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	"gopkg.in/yaml.v3"
 )

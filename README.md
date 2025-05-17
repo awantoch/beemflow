@@ -383,7 +383,7 @@ Most integrations fit into "MCP" or "HTTP-based tool" patterns. Only reach for a
 To build one:
 
 • **Implement** the `Adapter` interface in Go (`ID()`, `Execute()`, `Manifest()`).  
-• **Register** it in `internal/engine/engine.go` before the auto-load of `tools/`.  
+• **Register** it in `engine/engine.go` before the auto-load of `tools/`.  
 • **Invoke** by its adapter ID in your YAML:
 
 ```yaml
@@ -1049,11 +1049,11 @@ Reference outputs from previous steps using their `id`:
 
 BeemFlow is designed for extensibility and practical iteration. Some features are intentionally stubbed or in-memory only, with clear extension points:
 
-- **Adapters:** Easy to add new tool adapters. See `internal/adapter/`.
-- **Templating:** Custom helpers can be registered; see `Templater` in `internal/templater/templater.go`. Consider [sprig](https://github.com/Masterminds/sprig) for more helpers in the future.
+- **Adapters:** Easy to add new tool adapters. See `adapter/`.
+- **Templating:** Custom helpers can be registered; see `Templater` in `templater/templater.go`. Consider [sprig](https://github.com/Masterminds/sprig) for more helpers in the future.
 - **MCP Client:** HTTP transport is supported; stdio is a placeholder for future work.
-- **Storage, Blob, EventBus:** In-memory is the default. Pluggable for Postgres, S3, Redis, etc. (see `internal/storage/`, `internal/blob/`, `internal/event/`).
-- **CronScheduler:** Stubbed for now; see `internal/engine/engine.go` for extension points.
+- **Storage, Blob, EventBus:** In-memory is the default. Pluggable for Postgres, S3, Redis, etc. (see `storage/`, `blob/`, `event/`).
+- **CronScheduler:** Stubbed for now; see `engine/engine.go` for extension points.
 - **CLI & HTTP API:** Some commands and endpoints (e.g., `flow serve`, `/graph`, `/validate`, `/test`) are stubs, planned for future releases.
 - **Tests:** Some commented-out tests are placeholders for future coverage.
 

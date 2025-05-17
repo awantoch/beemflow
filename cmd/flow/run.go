@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awantoch/beemflow/internal/config"
-	"github.com/awantoch/beemflow/internal/engine"
-	"github.com/awantoch/beemflow/internal/mcp"
-	"github.com/awantoch/beemflow/internal/parser"
+	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/engine"
+	"github.com/awantoch/beemflow/mcp"
+	"github.com/awantoch/beemflow/parser"
 	"github.com/spf13/cobra"
 )
 

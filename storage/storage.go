@@ -6,7 +6,7 @@ import (
 
 	"encoding/json"
 
-	"github.com/awantoch/beemflow/internal/model"
+	"github.com/awantoch/beemflow/model"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

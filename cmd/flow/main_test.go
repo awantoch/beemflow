@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awantoch/beemflow/internal/model"
-	"github.com/awantoch/beemflow/internal/parser"
+	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/parser"
 )
 
 func captureOutput(f func()) string {

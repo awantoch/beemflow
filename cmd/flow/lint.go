@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awantoch/beemflow/internal/parser"
+	"github.com/awantoch/beemflow/parser"
 	"github.com/spf13/cobra"
 )
 

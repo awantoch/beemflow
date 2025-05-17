@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/awantoch/beemflow/internal/model"
+	"github.com/awantoch/beemflow/model"
 )
 
 func TestValidateFlow_Success(t *testing.T) {

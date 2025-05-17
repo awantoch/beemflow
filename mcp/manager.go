@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awantoch/beemflow/internal/config"
-	"github.com/awantoch/beemflow/internal/model"
+	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/model"
 )
 
 // FindMCPServersInFlow scans a Flow for MCP tool usage and returns a set of required MCP server addresses.

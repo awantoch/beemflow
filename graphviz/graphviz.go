@@ -1,7 +1,7 @@
 package graphviz
 
 import (
-	"github.com/awantoch/beemflow/internal/model"
+	"github.com/awantoch/beemflow/model"
 )
 
 func ExportMermaid(flow *model.Flow) (string, error) {
