@@ -1,5 +1,5 @@
 # Binaries
-flow
+/flow
 *.exe
 *.exe~
 *.dll
