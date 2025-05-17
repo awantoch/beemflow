@@ -65,13 +65,22 @@ func newRunCmd() *cobra.Command {
 				logger.Logger.Printf("Flow execution error: %v\n", err)
 				exit(5)
 			}
-			// Print outputs as JSON to stdout for scripting
-			outJSONBytes, _ := json.Marshal(outputs)
-			fmt.Println(string(outJSONBytes))
+
 			if debug {
+				// Print all outputs as JSON for debugging
+				outJSONBytes, _ := json.MarshalIndent(outputs, "", "  ")
+				fmt.Println(string(outJSONBytes))
 				logger.Logger.Println("Flow executed successfully.")
-				outJSON, _ := json.MarshalIndent(outputs, "", "  ")
-				logger.Logger.Printf("Step outputs:\n%s\n", outJSON)
+				logger.Logger.Printf("Step outputs:\n%s\n", string(outJSONBytes))
+			} else {
+				// Only print the output of core.echo steps (by convention, steps with id 'print' or use 'core.echo')
+				for _, stepOutput := range outputs {
+					if outMap, ok := stepOutput.(map[string]any); ok {
+						if text, ok := outMap["text"]; ok {
+							fmt.Println(text)
+						}
+					}
+				}
 			}
 		},
 	}

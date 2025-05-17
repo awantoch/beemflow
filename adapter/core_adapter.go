@@ -2,7 +2,6 @@ package adapter
 
 import (
 	"context"
-	"fmt"
 )
 
 // CoreAdapter is the built-in echo adapter for debugging (consolidated from core_echo_adapter.go).
@@ -15,9 +14,7 @@ func (a *CoreAdapter) ID() string {
 
 // Execute prints the 'text' field to stdout and returns inputs unchanged.
 func (a *CoreAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
-	if t, ok := inputs["text"].(string); ok {
-		fmt.Println(t)
-	}
+	// no-op: output is handled by CLI
 	return inputs, nil
 }
 
