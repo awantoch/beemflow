@@ -16,10 +16,10 @@ steps:
         - role: system
           content: "You are a concise assistant. Summarize the following web page in a simple paragraph."
         - role: user
-          content: "{{.outputs.fetch_page.body}}"
+          content: "{{.fetch_page.body}}"
     depends_on: [fetch_page]
   - id: print
     use: core.echo
     with:
-      text: "Summary: {{ (index .outputs.summarize.choices 0).message.content }}"
+      text: "Summary: {{ (index .summarize.choices 0).message.content }}"
     depends_on: [summarize] 
