@@ -154,8 +154,9 @@ BeemFlow will:
      - id: greet
        use: openai.chat
        with:
-         system: "Hey BeemFlow!"
-         text: "Hello, world!"
+         model: "gpt-4o"
+         system: "Please give a reply to the following message:"
+         text: "Hello, BeemFlow!"
      - id: print
        use: core.echo
        with:
@@ -181,6 +182,7 @@ BeemFlow uses a unified `secrets` scope to inject credentials, API keys, and HMA
      AWS_ACCESS_KEY_ID=AKIA…
      AWS_SECRET_ACCESS_KEY=…
      WEBHOOK_HMAC_KEY=supersecret
+     OPENAI_API_KEY=your_openai_api_key
      ```
 
 2. **Reference in your flow steps**
@@ -206,6 +208,7 @@ BeemFlow uses a unified `secrets` scope to inject credentials, API keys, and HMA
 
 3. **Adapter defaults**
    Many adapter manifests declare default parameters from environment variables. If your Slack adapter sets `token: { "default": { "$env": "SLACK_TOKEN" } }`, you can omit `token:` entirely in the flow.
+   Similarly, the OpenAI adapter (`openai.chat`) sets `api_key` default from the `OPENAI_API_KEY` environment variable, so you can omit `api_key:` entirely when using `openai.chat`.
 
 4. **Shell steps**
    Shell commands inherit the same environment:
@@ -307,6 +310,8 @@ steps:
   - id: rewrite
     use: openai.chat
     with:
+      model: "gpt-3.5-turbo"
+      api_key: "{{secrets.OPENAI_API_KEY}}"
       text: "{{fetch_tweet.text}}"
       style: "instagram"
 
@@ -340,6 +345,8 @@ steps:
   - id: marketing_context
     use: openai.chat
     with:
+      model: "gpt-3.5-turbo"
+      api_key: "{{secrets.OPENAI_API_KEY}}"
       system: "You are product marketing."
       text: |
         ### Feature
@@ -351,6 +358,8 @@ steps:
   - id: gen_copy
     use: openai.chat
     with:
+      model: "gpt-3.5-turbo"
+      api_key: "{{secrets.OPENAI_API_KEY}}"
       function_schema: |
         { "name": "mk_copy", "parameters": {
           "type": "object", "properties": {
@@ -428,6 +437,8 @@ steps:
   - id: summarise
     use: openai.chat
     with:
+      model: "gpt-3.5-turbo"
+      api_key: "{{secrets.OPENAI_API_KEY}}"
       system: "Rewrite commit messages into a user-friendly changelog."
       text: "{{list_commits.commits | map('message') | join('\n')}}"
 
@@ -786,6 +797,8 @@ steps:
   - id: pr_description
     use: openai.chat
     with:
+      model: "gpt-3.5-turbo"
+      api_key: "{{secrets.OPENAI_API_KEY}}"
       system: "Release Note Assistant"
       text: |
         Here's the diff of the update:

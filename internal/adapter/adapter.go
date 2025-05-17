@@ -6,6 +6,7 @@ import "context"
 type Adapter interface {
 	ID() string
 	Execute(ctx context.Context, inputs map[string]any) (map[string]any, error)
+	Manifest() *ToolManifest
 }
 
 // Registry holds registered adapters.
@@ -41,4 +42,8 @@ func (r *Registry) LoadAndRegisterTool(name, toolsDir string) error {
 	}
 	r.Register(&HTTPAdapter{id: name, manifest: manifest})
 	return nil
+}
+
+func (a *HTTPAdapter) Manifest() *ToolManifest {
+	return a.manifest
 }

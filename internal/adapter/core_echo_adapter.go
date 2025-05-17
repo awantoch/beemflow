@@ -20,3 +20,7 @@ func (a *CoreEchoAdapter) Execute(ctx context.Context, inputs map[string]any) (m
 	}
 	return inputs, nil
 }
+
+func (a *CoreEchoAdapter) Manifest() *ToolManifest {
+	return nil
+}

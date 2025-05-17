@@ -122,3 +122,7 @@ func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (
 	}
 	return map[string]any{"body": body}, nil
 }
+
+func (a *HTTPFetchAdapter) Manifest() *ToolManifest {
+	return nil
+}

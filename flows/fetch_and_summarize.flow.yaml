@@ -11,7 +11,6 @@ steps:
     use: openai.chat
     with:
       model: "gpt-4o"
-      api_key: "{{.secrets.OPENAI_API_KEY}}"
       messages:
         - role: system
           content: "You are a concise assistant. Summarize the following web page in a simple paragraph."

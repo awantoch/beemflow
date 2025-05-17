@@ -6,7 +6,9 @@ import (
 )
 
 // OpenAIChatAdapter implements Adapter for openai.chat.
-type OpenAIChatAdapter struct{}
+type OpenAIChatAdapter struct {
+	ManifestField *ToolManifest
+}
 
 // ID returns the adapter ID.
 func (a *OpenAIChatAdapter) ID() string {
@@ -37,4 +39,8 @@ func (a *OpenAIChatAdapter) Execute(ctx context.Context, inputs map[string]any) 
 	}
 	err := HTTPPostJSON(ctx, "https://api.openai.com/v1/chat/completions", reqBody, headers, &out)
 	return out, err
+}
+
+func (a *OpenAIChatAdapter) Manifest() *ToolManifest {
+	return a.ManifestField
 }

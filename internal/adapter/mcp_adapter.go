@@ -70,3 +70,7 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 	}
 	return client.CallTool(tool, args)
 }
+
+func (a *MCPAdapter) Manifest() *ToolManifest {
+	return nil
+}

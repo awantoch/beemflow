@@ -26,7 +26,17 @@ func NewEngine() *Engine {
 	reg.Register(&adapter.CoreEchoAdapter{})
 	reg.Register(adapter.NewMCPAdapter())
 	reg.Register(&adapter.HTTPFetchAdapter{})
-	reg.Register(&adapter.OpenAIChatAdapter{})
+
+	// Load openai.chat manifest
+	var openaiManifest *adapter.ToolManifest
+	manifestPath := filepath.Join("tools", "openai.chat.json")
+	if f, err := os.ReadFile(manifestPath); err == nil {
+		var m adapter.ToolManifest
+		if err := json.Unmarshal(f, &m); err == nil {
+			openaiManifest = &m
+		}
+	}
+	reg.Register(&adapter.OpenAIChatAdapter{ManifestField: openaiManifest})
 
 	// Auto-register all tools in tools/ directory
 	toolsDir := "tools"
@@ -242,6 +252,25 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			return fmt.Errorf("template error in step %s: %w", stepID, err)
 		}
 		inputs[k] = rendered
+	}
+	// Auto-fill missing required parameters from manifest defaults (including $env)
+	if manifest := adapterInst.Manifest(); manifest != nil {
+		params, _ := manifest.Parameters["properties"].(map[string]any)
+		required, _ := manifest.Parameters["required"].([]any)
+		for _, req := range required {
+			key, _ := req.(string)
+			if _, present := inputs[key]; !present {
+				if prop, ok := params[key].(map[string]any); ok {
+					if def, ok := prop["default"].(map[string]any); ok {
+						if envVar, ok := def["$env"].(string); ok {
+							if val, ok := stepCtx.Secrets[envVar]; ok {
+								inputs[key] = val
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 	// Debug: log fully rendered payload for openai.chat
 	if step.Use == "openai.chat" {
