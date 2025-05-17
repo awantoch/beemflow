@@ -5,7 +5,7 @@ steps:
     use: core.echo
     with:
       text: "Hello, world, I'm BeemFlow!"
-  - id: print
+  - id: greet_again
     use: core.echo
     with:
-      text: "{{ .greet.text }}" 
+      text: "Aaand once more: {{ .greet.text }}" 
