@@ -232,7 +232,7 @@ name: hello
 on:   cli.manual
 steps:
   - id: greet
-    use: agent.llm.chat
+    use: openai.chat
     with: { system: "Friendly AI", text: "Hello, world!" }
   - id: print
     use: core.echo
@@ -254,7 +254,7 @@ steps:
       id: "{{event.id}}"
 
   - id: rewrite
-    use: agent.llm.rewrite
+    use: openai.chat
     with:
       text: "{{fetch_tweet.text}}"
       style: "instagram"
@@ -283,7 +283,7 @@ steps:
     with: { query: "{{event.feature}}", top_k: 5 }
 
   marketing_context:
-    use: agent.llm.summarize
+    use: openai.chat
     with:
       system:  "You are product marketing."
       text: |
@@ -294,7 +294,7 @@ steps:
       max_tokens: 400
 
   gen_copy:
-    use: agent.llm.function_call
+    use: openai.chat
     with:
       function_schema: |
         { "name":"mk_copy","parameters":{
@@ -433,7 +433,7 @@ steps:
 
   reminder_text:
     if: payment_failed
-    use: agent.llm.chat
+    use: openai.chat
     with:
       system: "Friendly collections assistant."
       text: |
@@ -479,7 +479,7 @@ steps:
           end:   "{{last_day_prev_month()}}"
 
       - step_id: categorize
-        use: agent.llm.function_call
+        use: openai.chat
         with:
           function_schema: |
             { "name":"categorize","parameters":{
@@ -542,7 +542,7 @@ steps:
       range: "{{event.before}}..{{event.after}}"
 
   summarise:
-    use: agent.llm.chat
+    use: openai.chat
     with:
       system: "Rewrite commit messages to user‑friendly changelog."
       text: "{{list_commits.commits | map('message') | join('\n')}}"

@@ -94,6 +94,27 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 				continue
 			}
 			stepCopy := step
+			// Skip step if conditional `If` evaluates to false
+			if stepCopy.If != "" {
+				// Build templater data context
+				data := make(map[string]any)
+				data["event"] = stepCtx.Event
+				data["vars"] = stepCtx.Vars
+				data["outputs"] = stepCtx.Outputs
+				data["secrets"] = stepCtx.Secrets
+				for id, out := range stepCtx.Outputs {
+					data[id] = out
+				}
+				rendered, err := e.Templater.Render(stepCopy.If, data)
+				if err != nil {
+					return nil, fmt.Errorf("template error in if condition for step %s: %w", stepCopy.ID, err)
+				}
+				if strings.ToLower(rendered) != "true" {
+					// Condition false: skip this step
+					completed[stepCopy.ID] = true
+					continue
+				}
+			}
 			// Check dependencies
 			depsMet := true
 			for _, dep := range stepCopy.DependsOn {

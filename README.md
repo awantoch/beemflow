@@ -152,7 +152,7 @@ BeemFlow will:
    on: cli.manual
    steps:
      - id: greet
-       use: agent.llm.chat
+       use: openai.chat
        with:
          system: "Hey BeemFlow!"
          text: "Hello, world!"
@@ -279,7 +279,7 @@ Omit any section to use sensible defaults (in-memory adapters, built-in hubs, co
 flow serve --config flow.config.json    # start the BeemFlow runtime
 flow run [--config flow.config.json] <flow> --event <event.json>    # execute a flow once (with optional config)
 flow lint <file>                        # validate your .flow.yaml against the spec
-flow graph <file> -o <diagram.svg>      # visualize your flow as a DAG
+flow graph <flow> -o <diagram.svg>      # visualize your flow as a DAG
 flow tool scaffold <tool.name>          # generate a tool manifest + stub
 flow validate <file> [--dry-run]        # validate and simulate a flow without executing adapters
 flow test <file>                        # run unit tests for a flow using mock adapters
@@ -305,7 +305,7 @@ steps:
       id: "{{event.id}}"
 
   - id: rewrite
-    use: agent.llm.rewrite
+    use: openai.chat
     with:
       text: "{{fetch_tweet.text}}"
       style: "instagram"
@@ -338,7 +338,7 @@ steps:
       top_k: 5
 
   - id: marketing_context
-    use: agent.llm.summarize
+    use: openai.chat
     with:
       system: "You are product marketing."
       text: |
@@ -349,7 +349,7 @@ steps:
       max_tokens: 400
 
   - id: gen_copy
-    use: agent.llm.function_call
+    use: openai.chat
     with:
       function_schema: |
         { "name": "mk_copy", "parameters": {
@@ -426,7 +426,7 @@ steps:
       range: "{{event.before}}..{{event.after}}"
 
   - id: summarise
-    use: agent.llm.chat
+    use: openai.chat
     with:
       system: "Rewrite commit messages into a user-friendly changelog."
       text: "{{list_commits.commits | map('message') | join('\n')}}"
@@ -576,7 +576,7 @@ steps:
         FROM user_metrics
 
   - id: predict_churn
-    use: agent.llm.function_call
+    use: openai.chat
     with:
       function_schema: |
         { "name": "predict_churn", "parameters": { "type": "object", "properties": { "users": { "type": "array", "items": { "type": "object", "properties": { "user_id": {"type":"string"}, "name": {"type":"string"}, "email": {"type":"string"}, "last_login": {"type":"string"}, "purchase_history": {"type":"array","items":{"type":"object"}} } } } } } }
@@ -592,7 +592,7 @@ steps:
         if: "{{prediction.risk >= vars.churn_threshold}}"
         do:
           - id: gen_offer
-            use: agent.llm.chat
+            use: openai.chat
             with:
               system: "Retention Specialist"
               text: |
@@ -651,7 +651,7 @@ steps:
       top_k: 50
 
   - id: marketing_strategy
-    use: agent.llm.chat
+    use: openai.chat
     with:
       system: "You are a CMO-level marketing strategist."
       text: |
@@ -659,14 +659,14 @@ steps:
         {{fetch_docs.results | join("\n\n")}}
 
   - id: website_copy
-    use: agent.llm.chat
+    use: openai.chat
     with:
       system: "You are a UX copywriter."
       text: |
         Based on the marketing plan, write hero section copy, feature bullet points, and a memorable tagline for {{vars.product_name}}.
 
   - id: twitter_posts
-    use: agent.llm.function_call
+    use: openai.chat
     with:
       function_schema: |
         { "name": "mk_social", "parameters": {
@@ -680,7 +680,7 @@ steps:
         {{marketing_strategy.text}}
 
   - id: design_brief
-    use: agent.llm.chat
+    use: openai.chat
     with:
       system: "You are a UI/UX design expert."
       text: |
@@ -784,7 +784,7 @@ steps:
       body: "Updating dependencies to the latest versions."
 
   - id: pr_description
-    use: agent.llm.chat
+    use: openai.chat
     with:
       system: "Release Note Assistant"
       text: |
@@ -856,6 +856,7 @@ Flows are defined in YAML. Steps are now defined as a list, not a map. Each step
 - `with`: Input parameters
 - `depends_on`: (optional) List of step ids this step depends on
 - `parallel`: (optional) Boolean, if true and no dependencies, can run concurrently
+- `if`: (optional) Templated boolean condition; step is skipped unless it renders to `true`
 
 ### Example
 

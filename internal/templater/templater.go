@@ -2,9 +2,12 @@ package templater
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
+	"reflect"
 	"strings"
 	"text/template"
+	"time"
 )
 
 type Templater struct {
@@ -17,6 +20,12 @@ func NewTemplater() *Templater {
 		helperFuncs: make(template.FuncMap),
 	}
 	t.RegisterHelpers(template.FuncMap{
+		"eq": func(a any, b any) bool {
+			return reflect.DeepEqual(a, b)
+		},
+		"ne": func(a any, b any) bool {
+			return !reflect.DeepEqual(a, b)
+		},
 		"list": func(args ...any) []any { return args },
 		"join": func(arr []any, sep string) string {
 			var s []string
@@ -26,6 +35,52 @@ func NewTemplater() *Templater {
 			return strings.Join(s, sep)
 		},
 		"length": func(arr []any) int { return len(arr) },
+		"base64": func(s string) string {
+			return base64.StdEncoding.EncodeToString([]byte(s))
+		},
+		"map": func(arr []any, field string) []any {
+			var out []any
+			for _, v := range arr {
+				m, ok := v.(map[string]any)
+				if !ok {
+					continue
+				}
+				if f, ok := m[field]; ok {
+					out = append(out, f)
+				}
+			}
+			return out
+		},
+		"now": func() string {
+			return time.Now().Format(time.RFC3339)
+		},
+		"duration": func(v any, unit string) string {
+			var n int64
+			switch x := v.(type) {
+			case int:
+				n = int64(x)
+			case int64:
+				n = x
+			case float64:
+				n = int64(x)
+			default:
+				return ""
+			}
+			var suffix string
+			switch unit {
+			case "days", "day", "d":
+				suffix = "d"
+			case "hours", "hour", "h":
+				suffix = "h"
+			case "minutes", "minute", "min", "m":
+				suffix = "m"
+			case "seconds", "second", "sec", "s":
+				suffix = "s"
+			default:
+				suffix = unit
+			}
+			return fmt.Sprintf("%d%s", n, suffix)
+		},
 	})
 	return t
 }
