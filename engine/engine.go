@@ -41,7 +41,7 @@ type PausedRun struct {
 // NewEngine creates a new Engine with built-in adapters and default in-memory state.
 func NewEngine() *Engine {
 	reg := adapter.NewRegistry()
-	reg.Register(&adapter.CoreEchoAdapter{})
+	reg.Register(&adapter.CoreAdapter{})
 	reg.Register(adapter.NewMCPAdapter())
 	reg.Register(&adapter.HTTPFetchAdapter{})
 

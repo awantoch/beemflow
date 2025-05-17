@@ -341,3 +341,34 @@ func TestMCPAdapter_AirtableCreateRecord(t *testing.T) {
 		t.Fatalf("expected fields in output, got %v", out)
 	}
 }
+
+// TestLoadAndRegisterTool tests loading and registering a tool from local files.
+func TestLoadAndRegisterTool(t *testing.T) {
+	dir, err := os.MkdirTemp("", "manifests")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(dir)
+	// Create manifest file
+	m := &ToolManifest{Name: "tool2", Description: "d", Kind: "task", Parameters: map[string]any{}, Endpoint: "http://x"}
+	data, _ := json.Marshal(m)
+	path := dir + "/tool2.json"
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	r := NewRegistry()
+	if err := r.LoadAndRegisterTool("tool2", dir); err != nil {
+		t.Fatalf("LoadAndRegisterTool failed: %v", err)
+	}
+	a, ok := r.Get("tool2")
+	if !ok {
+		t.Fatalf("expected adapter registered for tool2")
+	}
+	hta, ok := a.(*HTTPAdapter)
+	if !ok {
+		t.Errorf("expected HTTPAdapter, got %T", a)
+	}
+	if hta.manifest.Name != "tool2" {
+		t.Errorf("expected manifest Name tool2, got %s", hta.manifest.Name)
+	}
+}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// OpenAIAdapter implements Adapter for OpenAI's Chat Completions API (v1/chat/completions).
+// OpenAIAdapter implements Adapter for OpenAI's API (consolidated from openai_chat_adapter.go).
 type OpenAIAdapter struct {
 	ManifestField *ToolManifest
 }

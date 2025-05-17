@@ -1,8 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -122,5 +124,118 @@ func TestLoadConfig_MCPAutoInclude(t *testing.T) {
 	}
 	if merged.Port != 3030 {
 		t.Errorf("expected port 3030 from curated, got %d", merged.Port)
+	}
+}
+
+// TestGetMergedMCPServerConfig_NoCuratedFile ensures that without a curated file, the original config is returned.
+func TestGetMergedMCPServerConfig_NoCuratedFile(t *testing.T) {
+	orig := MCPServerConfig{
+		Command:   "cmd",
+		Args:      []string{"a", "b"},
+		Env:       map[string]string{"E": "V"},
+		Port:      1,
+		Transport: "t",
+		Endpoint:  "e",
+	}
+	cfg := &Config{MCPServers: map[string]MCPServerConfig{"foo": orig}}
+	info, err := GetMergedMCPServerConfig(cfg, "foo")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !reflect.DeepEqual(info, orig) {
+		t.Errorf("expected %+v, got %+v", orig, info)
+	}
+}
+
+// TestGetMergedMCPServerConfig_CuratedMissingCommand uses a curated file to supply a missing Command.
+func TestGetMergedMCPServerConfig_CuratedMissingCommand(t *testing.T) {
+	curated := map[string]MCPServerConfig{"foo": {
+		Command:   "cmd2",
+		Args:      []string{"x"},
+		Env:       map[string]string{"A": "B"},
+		Port:      2,
+		Transport: "tr",
+		Endpoint:  "end",
+	}}
+	data, _ := json.Marshal(curated)
+	path := "mcp_servers/foo.json"
+	os.WriteFile(path, data, 0644)
+	defer os.Remove(path)
+
+	cfg := &Config{MCPServers: map[string]MCPServerConfig{"foo": {}}}
+	info, err := GetMergedMCPServerConfig(cfg, "foo")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	want := curated["foo"]
+	if !reflect.DeepEqual(info, want) {
+		t.Errorf("expected %+v, got %+v", want, info)
+	}
+}
+
+// TestGetMergedMCPServerConfig_CuratedMergeOriginal merges original fields into the curated template.
+func TestGetMergedMCPServerConfig_CuratedMergeOriginal(t *testing.T) {
+	curated := map[string]MCPServerConfig{"foo": {
+		Args:      []string{"y"},
+		Env:       map[string]string{"A": "ci", "C": "ci"},
+		Port:      3,
+		Transport: "tci",
+		Endpoint:  "eci",
+	}}
+	data, _ := json.Marshal(curated)
+	path := "mcp_servers/foo.json"
+	os.WriteFile(path, data, 0644)
+	defer os.Remove(path)
+
+	orig := MCPServerConfig{
+		Command:   "co",
+		Args:      []string{"x"},
+		Env:       map[string]string{"A": "orig"},
+		Port:      5,
+		Transport: "tor",
+		Endpoint:  "eor",
+	}
+	cfg := &Config{MCPServers: map[string]MCPServerConfig{"foo": orig}}
+	info, err := GetMergedMCPServerConfig(cfg, "foo")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	// Expect original Command, Args; curated Env merged with original override; original Port, Transport, Endpoint
+	want := MCPServerConfig{
+		Command:   "",
+		Args:      []string{"x"},
+		Env:       map[string]string{"A": "orig", "C": "ci"},
+		Port:      5,
+		Transport: "tor",
+		Endpoint:  "eor",
+	}
+	if !reflect.DeepEqual(info, want) {
+		t.Errorf("expected %+v, got %+v", want, info)
+	}
+}
+
+// TestGetMergedMCPServerConfig_MalformedCuratedIgnored ensures that malformed JSON is ignored and original returned.
+func TestGetMergedMCPServerConfig_MalformedCuratedIgnored(t *testing.T) {
+	path := "mcp_servers/foo.json"
+	os.WriteFile(path, []byte("not json"), 0644)
+	defer os.Remove(path)
+
+	orig := MCPServerConfig{Command: "co", Args: []string{"x"}, Env: map[string]string{"A": "orig"}}
+	cfg := &Config{MCPServers: map[string]MCPServerConfig{"foo": orig}}
+	info, err := GetMergedMCPServerConfig(cfg, "foo")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !reflect.DeepEqual(info, orig) {
+		t.Errorf("expected %+v, got %+v", orig, info)
+	}
+}
+
+// TestGetMergedMCPServerConfig_MissingHostError ensures an error when the host is not in the main config.
+func TestGetMergedMCPServerConfig_MissingHostError(t *testing.T) {
+	cfg := &Config{MCPServers: map[string]MCPServerConfig{}}
+	_, err := GetMergedMCPServerConfig(cfg, "unknown")
+	if err == nil {
+		t.Fatalf("expected error for unknown host, got nil")
 	}
 }
