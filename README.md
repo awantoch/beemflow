@@ -258,9 +258,14 @@ BeemFlow is driven by a JSON configuration file (default `flow.config.json`). Yo
   "http": { "host": "0.0.0.0", "port": 8080 },
   "log":  { "level": "info" },
   "mcp_servers": {
-    "supabase-mcp.cursor.directory": {
-      "install_cmd": ["npx", "supabase-mcp-server"],
-      "required_env": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
+    "airtable-mcp-server": {
+      "install_cmd": ["npx", "-y", "airtable-mcp-server"],
+      "required_env": ["AIRTABLE_API_KEY"],
+      "port": 3030
+    },
+    "supabase-mcp-postgrest": {
+      "install_cmd": ["npx", "-y", "@supabase/mcp-server-postgrest@latest"],
+      "required_env": ["SUPABASE_URL", "SUPABASE_ANON_KEY"],
       "port": 3030
     }
   }
@@ -277,6 +282,22 @@ BeemFlow is driven by a JSON configuration file (default `flow.config.json`). Yo
 - **mcp_servers**: map of MCP server addresses to their install commands, required environment variables, and optional ports.
 
 Omit any section to use sensible defaults (in-memory adapters, built-in hubs, console logging). For development, you can skip `flow.config.json` entirely and BeemFlow will fall back to in-memory storage, inline blob encoding, an in-process event bus, and no registries.
+
+## 🛠 Official MCP Server Configurations
+
+We've curated a set of official MCP server configurations in the `mcp_servers/` directory. These include:
+- `airtable.json`
+- `supabase.json`
+
+To use one of these, simply copy the desired mapping from the above file into the `mcp_servers` section of your `flow.config.json` (or `runtime.config.json`):
+
+```json
+{
+  "mcp_servers": {
+    // Paste mapping here
+  }
+}
+```
 
 ---
 

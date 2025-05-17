@@ -174,9 +174,14 @@ Event   `in-proc | redis | nats | sns`
     "https://raw.githubusercontent.com/my-org/tools/main/index.json"
   ],
   "mcp_servers": {
-    "supabase-mcp.cursor.directory": {
-      "install_cmd": ["npx", "supabase-mcp-server"],
-      "required_env": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
+    "airtable-mcp-server": {
+      "install_cmd": ["npx", "-y", "airtable-mcp-server"],
+      "required_env": ["AIRTABLE_API_KEY"],
+      "port": 3030
+    },
+    "supabase-mcp-postgrest": {
+      "install_cmd": ["npx", "-y", "@supabase/mcp-server-postgrest@latest"],
+      "required_env": ["SUPABASE_URL", "SUPABASE_ANON_KEY"],
       "port": 3030
     }
   }
@@ -595,13 +600,13 @@ Example MCP tool usage in a flow:
 ```yaml
 steps:
   - query_supabase:
-      use: mcp://supabase-mcp.cursor.directory/supabase.query
+      use: mcp://supabase-mcp-postgrest/supabase.query
       with:
         sql: "SELECT * FROM users"
 ```
 
 BeemFlow will:
-1. Connect to the MCP server at `supabase-mcp.cursor.directory`.
+1. Connect to the MCP server at `supabase-mcp-postgrest`.
 2. Call `tools/list` to discover available tools and their schemas.
 3. Call `tools/call` with the tool name and arguments.
 4. Return the result as the step output.

@@ -1,0 +1,7 @@
+{
+  "supabase-mcp-postgrest": {
+    "install_cmd": ["npx", "-y", "@supabase/mcp-server-postgrest@latest"],
+    "required_env": ["SUPABASE_URL", "SUPABASE_ANON_KEY"],
+    "port": 3030
+  }
+} 
