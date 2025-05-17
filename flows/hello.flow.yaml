@@ -1,7 +1,11 @@
 name: hello
 on: cli.manual
 steps:
-  greet:
+  - id: greet
     use: core.echo
     with:
-      text: "Hello, world, I'm BeemFlow!" 
+      text: "Hello, world, I'm BeemFlow!"
+  - id: print
+    use: core.echo
+    with:
+      text: "{{ .greet.text }}" 

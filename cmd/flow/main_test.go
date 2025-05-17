@@ -73,7 +73,7 @@ func TestMain_LintValidateCommands(t *testing.T) {
 	valid := `name: test
 on: cli.manual
 steps:
-  s1:
+  - id: s1
     use: core.echo
     with: {text: hi}`
 	tmp, err := os.CreateTemp("", "valid.flow.yaml")
@@ -105,7 +105,7 @@ steps:
 		t.Errorf("expected exit 1 and YAML parse error, got code=%d, stderr=%q", code, stderr)
 	}
 
-	// Invalid YAML
+	// Invalid YAML (schema error, but valid YAML)
 	bad := "name: bad\nsteps: [this is: not valid yaml]"
 	tmp2, err := os.CreateTemp("", "bad.flow.yaml")
 	if err != nil {
@@ -117,6 +117,23 @@ steps:
 	}
 	tmp2.Close()
 	os.Args = []string{"flow", "lint", tmp2.Name()}
+	stderr, code = captureStderrExit(func() { NewRootCmd().Execute() })
+	if code != 2 || !strings.Contains(stderr, "Schema validation error") {
+		t.Errorf("expected exit 2 and schema error, got code=%d, stderr=%q", code, stderr)
+	}
+
+	// Truly invalid YAML (parse error)
+	badYAML := "name: bad\nsteps: [this is: not valid yaml"
+	tmp3, err := os.CreateTemp("", "bad2.flow.yaml")
+	if err != nil {
+		t.Fatalf("create temp: %v", err)
+	}
+	defer os.Remove(tmp3.Name())
+	if _, err := tmp3.Write([]byte(badYAML)); err != nil {
+		t.Fatalf("write temp: %v", err)
+	}
+	tmp3.Close()
+	os.Args = []string{"flow", "lint", tmp3.Name()}
 	stderr, code = captureStderrExit(func() { NewRootCmd().Execute() })
 	if code != 1 || !strings.Contains(stderr, "YAML parse error") {
 		t.Errorf("expected exit 1 and YAML parse error, got code=%d, stderr=%q", code, stderr)

@@ -27,7 +27,7 @@ name:       string                       # required
 version:    string                       # optional semver
 on:         list|object                  # triggers
 vars:       map[string]                  # optional constants / secret refs
-steps:      ordered map[label] → step    # required
+steps:      array of step objects         # required
 catch:      map[label] → step            # optional global error flow
 ```
 
@@ -231,10 +231,10 @@ A. HELLO WORLD (10 lines)
 name: hello
 on:   cli.manual
 steps:
-  greet:
+  - id: greet
     use: agent.llm.chat
     with: { system: "Friendly AI", text: "Hello, world!" }
-  print:
+  - id: print
     use: core.echo
     with: { text: "{{greet.text}}" }
 ```
@@ -248,17 +248,18 @@ on:
   - event: webhook.twitter.tweet
 
 steps:
-  fetch_tweet:
+  - id: fetch_tweet
     use: twitter.tweet.get
-    with: { id: "{{event.id}}" }
+    with:
+      id: "{{event.id}}"
 
-  rewrite:
+  - id: rewrite
     use: agent.llm.rewrite
     with:
       text: "{{fetch_tweet.text}}"
       style: "instagram"
 
-  post_instagram:
+  - id: post_instagram
     use: instagram.media.create
     with:
       caption: "{{rewrite.text}}"

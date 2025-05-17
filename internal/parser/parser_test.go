@@ -11,12 +11,12 @@ const helloWorldFlow = `
 name: hello
 on: cli.manual
 steps:
-  greet:
+  - id: greet
     use: agent.llm.chat
     with:
       system: "Hey BeemFlow!"
       text: "Hello, world!"
-  print:
+  - id: print
     use: core.echo
     with:
       text: "{{greet.text}}"
@@ -30,13 +30,13 @@ vars:
   wait_between_polls: 30
 
 steps:
-  search_docs:
+  - id: search_docs
     use: docs.search
     with:
       query: "{{event.feature}}"
       top_k: 5
 
-  marketing_context:
+  - id: marketing_context
     use: agent.llm.summarize
     with:
       system: "You are product marketing."
@@ -47,7 +47,7 @@ steps:
         {{search_docs.results | join("\n\n")}}
       max_tokens: 400
 
-  gen_copy:
+  - id: gen_copy
     use: agent.llm.function_call
     with:
       function_schema: |
@@ -61,7 +61,7 @@ steps:
         Write 3 Tweets, 1 IG caption, and 1 FB post about:
         {{marketing_context.summary}}
 
-  airtable_row:
+  - id: airtable_row
     use: airtable.records.create
     with:
       base_id: "{{secrets.AIR_BASE}}"
@@ -73,7 +73,7 @@ steps:
         Facebook: "{{gen_copy.facebook}}"
         Status: "Pending"
 
-  await_approval:
+  - id: await_approval
     await_event:
       source: airtable
       match:
@@ -81,27 +81,25 @@ steps:
         field: Status
         equals: Approved
 
-  parallel:
-    parallel:
-      - push_twitter
-      - push_instagram
-      - push_facebook
+  - id: parallel
+    parallel: true
 
-  push_twitter:
+  - id: push_twitter
     foreach: "{{gen_copy.twitter}}"
     as: tweet
     do:
-      - use: twitter.tweet.create
+      - id: push_twitter_do
+        use: twitter.tweet.create
         with:
           text: "{{tweet}}"
 
-  push_instagram:
+  - id: push_instagram
     use: instagram.media.create
     with:
       caption: "{{gen_copy.instagram}}"
       image_url: "{{event.image_url}}"
 
-  push_facebook:
+  - id: push_facebook
     use: facebook.post.create
     with:
       message: "{{gen_copy.facebook}}"
@@ -111,7 +109,7 @@ const minimalPushTwitterFlow = `name: minimal_push_twitter
 on:
   - event: test
 steps:
-  push_twitter:
+  - id: push_twitter
     foreach: "{{gen_copy.twitter}}"
     as: tweet
     do:
@@ -124,14 +122,14 @@ const minimalPushTwitterAndInstagramFlow = `name: minimal_push_twitter_instagram
 on:
   - event: test
 steps:
-  push_twitter:
+  - id: push_twitter
     foreach: "{{gen_copy.twitter}}"
     as: tweet
     do:
       - use: twitter.tweet.create
         with:
           text: "{{tweet}}"
-  push_instagram:
+  - id: push_instagram
     use: instagram.media.create
     with:
       caption: "{{gen_copy.instagram}}"
@@ -142,19 +140,19 @@ const minimalPushTwitterInstagramFacebookFlow = `name: minimal_push_twitter_inst
 on:
   - event: test
 steps:
-  push_twitter:
+  - id: push_twitter
     foreach: "{{gen_copy.twitter}}"
     as: tweet
     do:
       - use: twitter.tweet.create
         with:
           text: "{{tweet}}"
-  push_instagram:
+  - id: push_instagram
     use: instagram.media.create
     with:
       caption: "{{gen_copy.instagram}}"
       image_url: "{{event.image_url}}"
-  push_facebook:
+  - id: push_facebook
     use: facebook.post.create
     with:
       message: "{{gen_copy.facebook}}"
@@ -164,27 +162,118 @@ const minimalPushTwitterInstagramFacebookParallelFlow = `name: minimal_push_twit
 on:
   - event: test
 steps:
-  push_twitter:
+  - id: push_twitter
     foreach: "{{gen_copy.twitter}}"
     as: tweet
     do:
-      - use: twitter.tweet.create
+      - id: push_twitter_do
+        use: twitter.tweet.create
         with:
           text: "{{tweet}}"
-  push_instagram:
+  - id: push_instagram
     use: instagram.media.create
     with:
       caption: "{{gen_copy.instagram}}"
       image_url: "{{event.image_url}}"
-  push_facebook:
+  - id: push_facebook
     use: facebook.post.create
     with:
       message: "{{gen_copy.facebook}}"
-  parallel:
-    parallel:
-      - push_twitter
-      - push_instagram
-      - push_facebook
+  - id: parallel
+    parallel: true
+`
+
+// Negative and edge case YAMLs
+const missingFieldsYAML = `
+steps:
+  - id: only_step
+    use: core.echo
+    with:
+      text: 'hi'
+`
+
+const deepYAML = `
+name: deep
+on: cli.manual
+steps:
+  - id: outer
+    parallel: true
+  - id: inner1
+    foreach: "{{list}}"
+    as: item
+    do:
+      - id: inner1_do
+        use: core.echo
+        with:
+          text: "{{item}}"
+  - id: inner2
+    use: core.echo
+    with:
+      text: "hi"
+`
+
+const unknownYAML = `
+name: unknown
+on: cli.manual
+steps:
+  - id: s1
+    use: core.echo
+    with:
+      text: hi
+    unknown_field: 123
+`
+
+const emptyYAML = `
+name: empty
+on: cli.manual
+steps: []
+catch: {}
+`
+
+const allYAML = `
+name: all_types
+on: cli.manual
+steps:
+  - id: s1
+    use: core.echo
+    with:
+      text: hi
+    if: "x > 0"
+    foreach: "{{list}}"
+    as: item
+    do:
+      - id: s1_do
+        use: core.echo
+        with:
+          text: "{{item}}"
+    parallel: true
+    retry:
+      attempts: 2
+      delay_sec: 1
+    await_event:
+      source: bus
+      match:
+        key: value
+      timeout: 10s
+    wait:
+      seconds: 5
+      until: "2025-01-01"
+  - id: s2
+    use: core.echo
+    with:
+      text: hi
+catch:
+  e1:
+    use: core.echo
+    with:
+      text: err
+`
+
+const badYAML = `
+name: bad_steps
+on: cli.manual
+steps:
+  - not_a_map
 `
 
 func TestParseFlow_HelloWorld(t *testing.T) {
@@ -213,10 +302,19 @@ func TestParseFlow_HelloWorld(t *testing.T) {
 	if len(flow.Steps) != 2 {
 		t.Errorf("expected 2 steps, got %d", len(flow.Steps))
 	}
-	if _, ok := flow.Steps["greet"]; !ok {
+	foundGreet, foundPrint := false, false
+	for _, step := range flow.Steps {
+		if step.ID == "greet" {
+			foundGreet = true
+		}
+		if step.ID == "print" {
+			foundPrint = true
+		}
+	}
+	if !foundGreet {
 		t.Errorf("expected step 'greet' in steps")
 	}
-	if _, ok := flow.Steps["print"]; !ok {
+	if !foundPrint {
 		t.Errorf("expected step 'print' in steps")
 	}
 }
@@ -247,13 +345,25 @@ func TestParseFlow_MarketingBlast(t *testing.T) {
 	if len(flow.Steps) < 9 {
 		t.Errorf("expected at least 9 steps, got %d", len(flow.Steps))
 	}
-	if _, ok := flow.Steps["await_approval"]; !ok {
+	foundAwaitApproval, foundPushTwitter, foundParallel := false, false, false
+	for _, step := range flow.Steps {
+		if step.ID == "await_approval" {
+			foundAwaitApproval = true
+		}
+		if step.ID == "push_twitter" {
+			foundPushTwitter = true
+		}
+		if step.ID == "parallel" {
+			foundParallel = true
+		}
+	}
+	if !foundAwaitApproval {
 		t.Errorf("expected step 'await_approval' in steps")
 	}
-	if _, ok := flow.Steps["push_twitter"]; !ok {
+	if !foundPushTwitter {
 		t.Errorf("expected step 'push_twitter' in steps")
 	}
-	if _, ok := flow.Steps["parallel"]; !ok {
+	if !foundParallel {
 		t.Errorf("expected step 'parallel' in steps")
 	}
 }
@@ -281,7 +391,13 @@ func TestParseFlow_MinimalPushTwitter(t *testing.T) {
 	if len(flow.Steps) != 1 {
 		t.Errorf("expected 1 step, got %d", len(flow.Steps))
 	}
-	if _, ok := flow.Steps["push_twitter"]; !ok {
+	foundPushTwitter := false
+	for _, step := range flow.Steps {
+		if step.ID == "push_twitter" {
+			foundPushTwitter = true
+		}
+	}
+	if !foundPushTwitter {
 		t.Errorf("expected step 'push_twitter' in steps")
 	}
 }
@@ -309,10 +425,19 @@ func TestParseFlow_MinimalPushTwitterAndInstagram(t *testing.T) {
 	if len(flow.Steps) != 2 {
 		t.Errorf("expected 2 steps, got %d", len(flow.Steps))
 	}
-	if _, ok := flow.Steps["push_twitter"]; !ok {
+	foundPushTwitter, foundPushInstagram := false, false
+	for _, step := range flow.Steps {
+		if step.ID == "push_twitter" {
+			foundPushTwitter = true
+		}
+		if step.ID == "push_instagram" {
+			foundPushInstagram = true
+		}
+	}
+	if !foundPushTwitter {
 		t.Errorf("expected step 'push_twitter' in steps")
 	}
-	if _, ok := flow.Steps["push_instagram"]; !ok {
+	if !foundPushInstagram {
 		t.Errorf("expected step 'push_instagram' in steps")
 	}
 }
@@ -340,13 +465,25 @@ func TestParseFlow_MinimalPushTwitterInstagramFacebook(t *testing.T) {
 	if len(flow.Steps) != 3 {
 		t.Errorf("expected 3 steps, got %d", len(flow.Steps))
 	}
-	if _, ok := flow.Steps["push_twitter"]; !ok {
+	foundPushTwitter, foundPushInstagram, foundPushFacebook := false, false, false
+	for _, step := range flow.Steps {
+		if step.ID == "push_twitter" {
+			foundPushTwitter = true
+		}
+		if step.ID == "push_instagram" {
+			foundPushInstagram = true
+		}
+		if step.ID == "push_facebook" {
+			foundPushFacebook = true
+		}
+	}
+	if !foundPushTwitter {
 		t.Errorf("expected step 'push_twitter' in steps")
 	}
-	if _, ok := flow.Steps["push_instagram"]; !ok {
+	if !foundPushInstagram {
 		t.Errorf("expected step 'push_instagram' in steps")
 	}
-	if _, ok := flow.Steps["push_facebook"]; !ok {
+	if !foundPushFacebook {
 		t.Errorf("expected step 'push_facebook' in steps")
 	}
 }
@@ -374,17 +511,26 @@ func TestParseFlow_MinimalPushTwitterInstagramFacebookParallel(t *testing.T) {
 	if len(flow.Steps) != 4 {
 		t.Errorf("expected 4 steps, got %d", len(flow.Steps))
 	}
-	if _, ok := flow.Steps["push_twitter"]; !ok {
+	foundPushTwitter, foundPushInstagram, foundPushFacebook := false, false, false
+	for _, step := range flow.Steps {
+		if step.ID == "push_twitter" {
+			foundPushTwitter = true
+		}
+		if step.ID == "push_instagram" {
+			foundPushInstagram = true
+		}
+		if step.ID == "push_facebook" {
+			foundPushFacebook = true
+		}
+	}
+	if !foundPushTwitter {
 		t.Errorf("expected step 'push_twitter' in steps")
 	}
-	if _, ok := flow.Steps["push_instagram"]; !ok {
+	if !foundPushInstagram {
 		t.Errorf("expected step 'push_instagram' in steps")
 	}
-	if _, ok := flow.Steps["push_facebook"]; !ok {
+	if !foundPushFacebook {
 		t.Errorf("expected step 'push_facebook' in steps")
-	}
-	if _, ok := flow.Steps["parallel"]; !ok {
-		t.Errorf("expected step 'parallel' in steps")
 	}
 }
 
@@ -410,13 +556,6 @@ func TestParseFlow_InvalidYAML(t *testing.T) {
 }
 
 func TestParseFlow_MissingRequiredFields(t *testing.T) {
-	missingFieldsYAML := `
-steps:
-  only_step:
-    use: core.echo
-    with:
-      text: 'hi'
-`
 	tmpfile, err := os.CreateTemp("", "missing_fields.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
@@ -460,26 +599,6 @@ func TestParseFlow_MalformedStep(t *testing.T) {
 }
 
 func TestParseFlow_DeeplyNestedSteps(t *testing.T) {
-	deepYAML := `
-name: deep
-on: cli.manual
-steps:
-  outer:
-    parallel:
-      - inner1
-      - inner2
-  inner1:
-    foreach: "{{list}}"
-    as: item
-    do:
-      - use: core.echo
-        with:
-          text: "{{item}}"
-  inner2:
-    use: core.echo
-    with:
-      text: "hi"
-`
 	tmpfile, err := os.CreateTemp("", "deep.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
@@ -501,16 +620,6 @@ steps:
 }
 
 func TestParseFlow_UnknownFields(t *testing.T) {
-	unknownYAML := `
-name: unknown
-on: cli.manual
-steps:
-  s1:
-    use: core.echo
-    with:
-      text: hi
-    unknown_field: 123
-`
 	tmpfile, err := os.CreateTemp("", "unknown.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
@@ -529,12 +638,6 @@ steps:
 }
 
 func TestParseFlow_EmptyStepsAndCatch(t *testing.T) {
-	emptyYAML := `
-name: empty
-on: cli.manual
-steps: {}
-catch: {}
-`
 	tmpfile, err := os.CreateTemp("", "empty.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
@@ -559,44 +662,6 @@ catch: {}
 }
 
 func TestParseFlow_AllStepTypes(t *testing.T) {
-	allYAML := `
-name: all_types
-on: cli.manual
-steps:
-  s1:
-    use: core.echo
-    with:
-      text: hi
-    if: "x > 0"
-    foreach: "{{list}}"
-    as: item
-    do:
-      - use: core.echo
-        with:
-          text: "{{item}}"
-    parallel:
-      - s2
-    retry:
-      attempts: 2
-      delay_sec: 1
-    await_event:
-      source: bus
-      match:
-        key: value
-      timeout: 10s
-    wait:
-      seconds: 5
-      until: "2025-01-01"
-  s2:
-    use: core.echo
-    with:
-      text: hi
-catch:
-  e1:
-    use: core.echo
-    with:
-      text: err
-`
 	tmpfile, err := os.CreateTemp("", "all_types.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
@@ -621,12 +686,6 @@ catch:
 }
 
 func TestParseFlow_InvalidStepsType(t *testing.T) {
-	badYAML := `
-name: bad_steps
-on: cli.manual
-steps:
-  - not_a_map
-`
 	tmpfile, err := os.CreateTemp("", "bad_steps.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)

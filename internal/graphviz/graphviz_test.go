@@ -20,10 +20,10 @@ func TestExportMermaid_EmptyFlow(t *testing.T) {
 func TestExportMermaid_RealFlow(t *testing.T) {
 	f := &model.Flow{
 		Name: "tweet_to_instagram",
-		Steps: map[string]model.Step{
-			"fetch_tweet":    {Use: "twitter.tweet.get"},
-			"rewrite":        {Use: "agent.llm.rewrite"},
-			"post_instagram": {Use: "instagram.media.create"},
+		Steps: []model.Step{
+			{ID: "fetch_tweet", Use: "twitter.tweet.get"},
+			{ID: "rewrite", Use: "agent.llm.rewrite"},
+			{ID: "post_instagram", Use: "instagram.media.create"},
 		},
 	}
 	s, err := ExportMermaid(f)

@@ -10,8 +10,8 @@ func ExportMermaid(flow *model.Flow) (string, error) {
 	}
 	// Simple implementation: list all steps as nodes
 	out := "graph TD\n"
-	for name := range flow.Steps {
-		out += name + "\n"
+	for _, step := range flow.Steps {
+		out += step.ID + "\n"
 	}
 	return out, nil
 }

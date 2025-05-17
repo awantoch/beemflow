@@ -43,5 +43,49 @@
         "required": ["use"]
       }
     }
+  },
+  "definitions": {
+    "step": {
+      "type": "object",
+      "required": ["id", "use"],
+      "properties": {
+        "id": {"type": "string"},
+        "use": {"type": "string"},
+        "with": {"type": "object"},
+        "depends_on": {"type": "array", "items": {"type": "string"}},
+        "parallel": {"type": "boolean"},
+        "if": {"type": "string"},
+        "foreach": {"type": "string"},
+        "as": {"type": "string"},
+        "do": {"type": "array", "items": {"$ref": "#/definitions/step"}},
+        "retry": {"$ref": "#/definitions/retry"},
+        "await_event": {"$ref": "#/definitions/await_event"},
+        "wait": {"$ref": "#/definitions/wait"}
+      }
+    },
+    "retry": {
+      "type": "object",
+      "properties": {
+        "attempts": {"type": "integer"},
+        "delay_sec": {"type": "integer"}
+      },
+      "required": ["attempts", "delay_sec"]
+    },
+    "await_event": {
+      "type": "object",
+      "properties": {
+        "source": {"type": "string"},
+        "match": {"type": "object"},
+        "timeout": {"type": "string"}
+      },
+      "required": ["source", "match"]
+    },
+    "wait": {
+      "type": "object",
+      "properties": {
+        "seconds": {"type": "integer"},
+        "until": {"type": "string"}
+      }
+    }
   }
 } 

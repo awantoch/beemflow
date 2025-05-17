@@ -57,15 +57,15 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 
 	// Build step map for id lookup
 	stepMap := make(map[string]*model.Step)
-	for i := range flow.Steps {
-		step := &flow.Steps[i]
-		if step.ID == "" {
-			return nil, fmt.Errorf("step at index %d missing id", i)
+	for _, step := range flow.Steps {
+		stepCopy := step
+		if stepCopy.ID == "" {
+			return nil, fmt.Errorf("step missing id")
 		}
-		if _, exists := stepMap[step.ID]; exists {
-			return nil, fmt.Errorf("duplicate step id: %s", step.ID)
+		if _, exists := stepMap[stepCopy.ID]; exists {
+			return nil, fmt.Errorf("duplicate step id: %s", stepCopy.ID)
 		}
-		stepMap[step.ID] = step
+		stepMap[stepCopy.ID] = &stepCopy
 	}
 
 	// Track completed steps
@@ -89,21 +89,21 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	totalSteps := len(flow.Steps)
 	for len(completed) < totalSteps {
 		ready := []*model.Step{}
-		for i := range flow.Steps {
-			step := &flow.Steps[i]
+		for _, step := range flow.Steps {
 			if completed[step.ID] {
 				continue
 			}
+			stepCopy := step
 			// Check dependencies
 			depsMet := true
-			for _, dep := range step.DependsOn {
+			for _, dep := range stepCopy.DependsOn {
 				if !completed[dep] {
 					depsMet = false
 					break
 				}
 			}
 			if depsMet {
-				ready = append(ready, step)
+				ready = append(ready, &stepCopy)
 			}
 		}
 		if len(ready) == 0 {
@@ -207,12 +207,16 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	}
 	inputs := make(map[string]any)
 	for k, v := range step.With {
-		rendered, err := e.renderValue(v, map[string]any{
-			"event":   stepCtx.Event,
-			"vars":    stepCtx.Vars,
-			"outputs": stepCtx.Outputs,
-			"secrets": stepCtx.Secrets,
-		})
+		// Prepare template data, flattening previous step outputs for direct access
+		data := make(map[string]any)
+		data["event"] = stepCtx.Event
+		data["vars"] = stepCtx.Vars
+		data["outputs"] = stepCtx.Outputs
+		data["secrets"] = stepCtx.Secrets
+		for id, out := range stepCtx.Outputs {
+			data[id] = out
+		}
+		rendered, err := e.renderValue(v, data)
 		if err != nil {
 			return fmt.Errorf("template error in step %s: %w", stepID, err)
 		}

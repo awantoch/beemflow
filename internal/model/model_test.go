@@ -61,10 +61,19 @@ catch:
 		t.Errorf("expected Vars len 1, got %d", len(f.Vars))
 	}
 
-	if len(f.Steps) == 0 || f.Steps[0].ID != "s1" {
-		t.Fatalf("expected step 's1' in Steps")
+	if len(f.Steps) == 0 {
+		t.Fatalf("expected step 's1' in Steps, got keys: %#v", f.Steps)
 	}
-	step := f.Steps[0]
+	var step model.Step
+	for _, s := range f.Steps {
+		if s.ID == "s1" {
+			step = s
+			break
+		}
+	}
+	if step.ID != "s1" {
+		t.Fatalf("expected step 's1' in Steps, got keys: %#v", f.Steps)
+	}
 	if step.Use != "core.echo" {
 		t.Errorf("expected step.Use 'core.echo', got '%s'", step.Use)
 	}
