@@ -30,6 +30,29 @@ func TestHandlers_NotImplemented(t *testing.T) {
 	}
 }
 
+func TestHandlers_NotImplemented_Methods(t *testing.T) {
+	handlers := []struct {
+		name    string
+		handler http.HandlerFunc
+	}{
+		{"runs", runsHandler},
+		{"graph", graphHandler},
+		{"validate", validateHandler},
+		{"test", testHandler},
+	}
+	methods := []string{"POST", "PUT", "DELETE"}
+	for _, tt := range handlers {
+		for _, method := range methods {
+			req := httptest.NewRequest(method, "/", nil)
+			w := httptest.NewRecorder()
+			tt.handler(w, req)
+			if w.Code != http.StatusNotImplemented {
+				t.Errorf("%s %s: expected status %d, got %d", tt.name, method, http.StatusNotImplemented, w.Code)
+			}
+		}
+	}
+}
+
 func TestStartServer_InvalidAddress(t *testing.T) {
 	err := StartServer("invalid:address")
 	if err == nil {

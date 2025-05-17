@@ -118,7 +118,7 @@ func (t *Templater) Render(tmpl string, data map[string]any) (string, error) {
 			return "", err
 		}
 		if data == nil {
-			return "", template.ExecError{Err: err}
+			return "", fmt.Errorf("template data is nil")
 		}
 		var buf bytes.Buffer
 		if err := tpl.Execute(&buf, data); err != nil {
@@ -133,11 +133,18 @@ func (t *Templater) Render(tmpl string, data map[string]any) (string, error) {
 	return prev, nil // return after max iterations
 }
 
-func (t *Templater) RegisterHelpers(funcs template.FuncMap) {
+func (t *Templater) RegisterHelpers(funcs interface{}) {
 	if funcs == nil {
 		return
 	}
-	for k, v := range funcs {
-		t.helperFuncs[k] = v
+	switch m := funcs.(type) {
+	case template.FuncMap:
+		for k, v := range m {
+			t.helperFuncs[k] = v
+		}
+	case map[string]any:
+		for k, v := range m {
+			t.helperFuncs[k] = v
+		}
 	}
 }

@@ -156,3 +156,42 @@ func TestRender_NoDelimiters(t *testing.T) {
 		t.Errorf("expected 'plain text', got %q", out)
 	}
 }
+
+func TestRender_DeeplyNestedTemplates(t *testing.T) {
+	tpl := NewTemplater()
+	tpl.RegisterHelpers(helpers())
+	data := map[string]any{
+		"outer": map[string]any{
+			"inner": map[string]any{
+				"value": "deep",
+			},
+		},
+	}
+	out, err := tpl.Render("Value: {{.outer.inner.value}}", data)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if out != "Value: deep" {
+		t.Errorf("expected 'Value: deep', got %q", out)
+	}
+}
+
+func TestRender_CustomHelperComplex(t *testing.T) {
+	tpl := NewTemplater()
+	tpl.RegisterHelpers(template.FuncMap{
+		"repeat": func(s string, n int) string {
+			res := ""
+			for i := 0; i < n; i++ {
+				res += s
+			}
+			return res
+		},
+	})
+	out, err := tpl.Render("{{repeat \"ha\" 3}}!", map[string]any{})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if out != "hahaha!" {
+		t.Errorf("expected 'hahaha!', got %q", out)
+	}
+}

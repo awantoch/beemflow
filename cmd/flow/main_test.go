@@ -151,3 +151,11 @@ steps:
 		t.Errorf("expected exit 2 and schema error, got code=%d, stderr=%q", code, stderr)
 	}
 }
+
+func TestMain_ToolStub(t *testing.T) {
+	os.Args = []string{"flow", "tool"}
+	out := captureOutput(func() { NewRootCmd().Execute() })
+	if !strings.Contains(out, "flow tool (stub)") {
+		t.Errorf("expected tool stub output, got %q", out)
+	}
+}

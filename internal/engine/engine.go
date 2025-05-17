@@ -95,13 +95,41 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 			secrets[k] = v
 		}
 	}
+	// Register a 'secrets' helper for this execution
+	secretsCopy := secrets
+	if event != nil {
+		if s, ok := event["secrets"].(map[string]any); ok {
+			for k, v := range s {
+				if str, ok := v.(string); ok {
+					secretsCopy[k] = str
+				}
+			}
+		}
+	}
+	e.Templater.RegisterHelpers(map[string]any{
+		"secrets": func(key string) string {
+			return secretsCopy[key]
+		},
+	})
 	stepCtx := &StepContext{
 		Event:   event,
 		Vars:    flow.Vars,
 		Outputs: outputs,
-		Secrets: secrets,
+		Secrets: secretsCopy,
 	}
-	return e.executeStepsWithPause(ctx, flow, stepCtx, 0)
+	outputs, err := e.executeStepsWithPause(ctx, flow, stepCtx, 0)
+	if err != nil && flow.Catch != nil && len(flow.Catch) > 0 {
+		// Run catch steps if error and catch block exists
+		catchOutputs := map[string]any{}
+		for id, step := range flow.Catch {
+			err2 := e.executeStep(ctx, &step, stepCtx, id)
+			if err2 == nil {
+				catchOutputs[id] = stepCtx.Outputs[id]
+			}
+		}
+		return catchOutputs, err
+	}
+	return outputs, err
 }
 
 // executeStepsWithPause executes steps, pausing at await_event and resuming as needed.

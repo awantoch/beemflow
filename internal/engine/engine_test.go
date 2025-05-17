@@ -139,3 +139,94 @@ func TestAwaitEventResume_RoundTrip(t *testing.T) {
 		t.Errorf("expected echo_resumed output, got: %v", resumedOutputs)
 	}
 }
+
+func TestExecute_CatchBlock(t *testing.T) {
+	e := NewEngine()
+	f := &model.Flow{
+		Name:  "catch_test",
+		Steps: []model.Step{{ID: "s1", Use: "nonexistent.adapter"}},
+		Catch: map[string]model.Step{
+			"catch1": {ID: "catch1", Use: "core.echo", With: map[string]interface{}{"text": "caught!"}},
+		},
+	}
+	outputs, err := e.Execute(context.Background(), f, map[string]any{})
+	if err == nil || !strings.Contains(err.Error(), "adapter not found") {
+		t.Errorf("expected adapter not found error, got %v", err)
+	}
+	// Expect the output to be a map from core.echo
+	if out, ok := outputs["catch1"].(map[string]any); !ok || out["text"] != "caught!" {
+		t.Errorf("expected catch block to run and output map with text, got outputs: %v", outputs)
+	}
+}
+
+func TestExecute_AdapterErrorPropagation(t *testing.T) {
+	e := NewEngine()
+	f := &model.Flow{
+		Name:  "adapter_error",
+		Steps: []model.Step{{ID: "s1", Use: "core.echo"}},
+	}
+	outputs, err := e.Execute(context.Background(), f, map[string]any{})
+	if err == nil {
+		t.Errorf("expected error from adapter, got nil")
+	}
+	// Expect outputs to be a map with an empty map for s1
+	if out, ok := outputs["s1"].(map[string]any); !ok || len(out) != 0 {
+		t.Errorf("expected outputs to be map with empty map for s1, got: %v", outputs)
+	}
+}
+
+func TestExecute_ParallelForeachEdgeCases(t *testing.T) {
+	e := NewEngine()
+	// Parallel with empty list
+	f := &model.Flow{
+		Name: "parallel_empty",
+		Steps: []model.Step{{
+			ID:       "s1",
+			Use:      "core.echo",
+			Foreach:  "{{list}}",
+			As:       "item",
+			Parallel: true,
+			Do:       []model.Step{{ID: "d1", Use: "core.echo", With: map[string]interface{}{"text": "{{item}}"}}},
+		}},
+	}
+	outputs, err := e.Execute(context.Background(), f, map[string]any{"list": []any{}})
+	if err != nil {
+		t.Errorf("expected no error for empty foreach, got %v", err)
+	}
+	// Expect outputs to be a map with an empty map for s1
+	if out, ok := outputs["s1"].(map[string]any); !ok || len(out) != 0 {
+		t.Errorf("expected outputs to be map with empty map for s1, got %v", outputs)
+	}
+	// Parallel with error in one branch
+	f2 := &model.Flow{
+		Name: "parallel_error",
+		Steps: []model.Step{{
+			ID:       "s1",
+			Use:      "core.echo",
+			Foreach:  "{{list}}",
+			As:       "item",
+			Parallel: true,
+			Do:       []model.Step{{ID: "d1", Use: "nonexistent.adapter"}},
+		}},
+	}
+	_, err = e.Execute(context.Background(), f2, map[string]any{"list": []any{"a", "b"}})
+	if err == nil {
+		t.Errorf("expected error for parallel branch failure, got nil")
+	}
+}
+
+func TestExecute_SecretsInjection(t *testing.T) {
+	e := NewEngine()
+	f := &model.Flow{
+		Name:  "secrets_injection",
+		Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "{{secrets \"MY_SECRET\"}}"}}},
+	}
+	outputs, err := e.Execute(context.Background(), f, map[string]any{"secrets": map[string]any{"MY_SECRET": "shhh"}})
+	if err != nil {
+		t.Errorf("expected no error for secrets injection, got %v", err)
+	}
+	// Expect outputs["s1"] to be a map with key "text" and value "shhh"
+	if out, ok := outputs["s1"].(map[string]any); !ok || out["text"] != "shhh" {
+		t.Errorf("expected secret injected as map output, got %v", outputs["s1"])
+	}
+}
