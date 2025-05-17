@@ -3,10 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path/filepath"
-	"strings"
 )
 
 type Config struct {
@@ -17,7 +14,7 @@ type Config struct {
 	Registries []string                   `json:"registries"`
 	HTTP       HTTPConfig                 `json:"http"`
 	Log        LogConfig                  `json:"log"`
-	MCPServers map[string]MCPServerConfig `json:"mcp_servers,omitempty"`
+	MCPServers map[string]MCPServerConfig `json:"mcpServers,omitempty"`
 }
 
 type StorageConfig struct {
@@ -51,17 +48,16 @@ type LogConfig struct {
 }
 
 // MCPServerConfig defines installation details for an MCP server
+// Community/Claude style only
+// Only supports: command, args, env, port, transport, endpoint
+// (No install_cmd, required_env, or snake_case)
 type MCPServerConfig struct {
-	// InstallCmd is the command and args to install or start the server (e.g., ["npx","supabase-mcp-server"])
-	InstallCmd []string `json:"install_cmd"`
-	// RequiredEnv is a list of environment variables that must be set for the server
-	RequiredEnv []string `json:"required_env,omitempty"`
-	// Port is an optional port number to check if the server is already running
-	Port int `json:"port,omitempty"`
-	// Transport is the transport type (e.g., "http", "stdio")
-	Transport string `json:"transport,omitempty"`
-	// Endpoint is the custom endpoint (e.g., URL, socket path)
-	Endpoint string `json:"endpoint,omitempty"`
+	Command   string            `json:"command"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	Port      int               `json:"port,omitempty"`
+	Transport string            `json:"transport,omitempty"`
+	Endpoint  string            `json:"endpoint,omitempty"`
 }
 
 // SecretsProvider resolves secrets for flows (env, AWS-SM, Vault, etc.)
@@ -70,6 +66,9 @@ type SecretsProvider interface {
 }
 
 func LoadConfig(path string) (*Config, error) {
+	if os.Getenv("BEEMFLOW_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "[beemflow] Entered LoadConfig with path: %s\n", path)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -79,70 +78,56 @@ func LoadConfig(path string) (*Config, error) {
 	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
 		return nil, err
 	}
-
-	// Prepare MCPServers map and save user overrides
-	userOverrides := make(map[string]MCPServerConfig)
-	if cfg.MCPServers != nil {
-		for k, v := range cfg.MCPServers {
-			userOverrides[k] = v
-		}
+	if os.Getenv("BEEMFLOW_DEBUG") != "" {
+		b, _ := json.MarshalIndent(cfg, "", "  ")
+		fmt.Fprintf(os.Stderr, "[beemflow] Raw loaded config after decode:\n%s\n", string(b))
 	}
-	cfg.MCPServers = make(map[string]MCPServerConfig)
-
-	// Load curated defaults from mcp_servers/*.json
-	files, err := ioutil.ReadDir("mcp_servers")
-	if err == nil {
-		for _, file := range files {
-			if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
-				continue
-			}
-			filename := filepath.Join("mcp_servers", file.Name())
-			if os.Getenv("BEEMFLOW_DEBUG") != "" {
-				fmt.Fprintf(os.Stderr, "[beemflow] Attempting to load curated MCP config: %s\n", filename)
-			}
-			data, err := ioutil.ReadFile(filename)
-			if err != nil {
-				if os.Getenv("BEEMFLOW_DEBUG") != "" {
-					fmt.Fprintf(os.Stderr, "[beemflow] Could not read curated MCP config: %v\n", err)
-				}
-				continue
-			}
-			var curated map[string]MCPServerConfig
-			if err := json.Unmarshal(data, &curated); err != nil {
-				if os.Getenv("BEEMFLOW_DEBUG") != "" {
-					fmt.Fprintf(os.Stderr, "[beemflow] Could not parse curated MCP config: %v\n", err)
-				}
-				continue
-			}
-			for k, v := range curated {
-				cfg.MCPServers[k] = v
-				if os.Getenv("BEEMFLOW_DEBUG") != "" {
-					fmt.Fprintf(os.Stderr, "[beemflow] Loaded curated MCP config for '%s': %+v\n", k, v)
-				}
-			}
-		}
-	}
-
-	// Apply user overrides on top of curated defaults
-	for k, override := range userOverrides {
-		existing, _ := cfg.MCPServers[k]
-		if len(override.InstallCmd) > 0 {
-			existing.InstallCmd = override.InstallCmd
-		}
-		if len(override.RequiredEnv) > 0 {
-			existing.RequiredEnv = override.RequiredEnv
-		}
-		if override.Port != 0 {
-			existing.Port = override.Port
-		}
-		if len(override.Transport) > 0 {
-			existing.Transport = override.Transport
-		}
-		if len(override.Endpoint) > 0 {
-			existing.Endpoint = override.Endpoint
-		}
-		cfg.MCPServers[k] = existing
-	}
-
+	// No legacy merging needed
 	return &cfg, nil
+}
+
+// GetMergedMCPServerConfig returns the merged MCPServerConfig for a given host, merging the main config and curated config from mcp_servers/<host>.json if available.
+func GetMergedMCPServerConfig(cfg *Config, host string) (MCPServerConfig, error) {
+	info, ok := cfg.MCPServers[host]
+	if !ok {
+		return MCPServerConfig{}, fmt.Errorf("MCP server '%s' not found in config", host)
+	}
+	curatedPath := "mcp_servers/" + host + ".json"
+	data, err := os.ReadFile(curatedPath)
+	if err == nil {
+		var m map[string]MCPServerConfig
+		if err := json.Unmarshal(data, &m); err == nil {
+			if ci, ok2 := m[host]; ok2 {
+				if info.Command == "" {
+					info = ci
+				} else {
+					if ci.Env == nil {
+						ci.Env = map[string]string{}
+					}
+					if info.Env == nil {
+						info.Env = map[string]string{}
+					}
+					if len(info.Args) > 0 {
+						ci.Args = info.Args
+					}
+					if len(info.Env) > 0 {
+						for k, v := range info.Env {
+							ci.Env[k] = v
+						}
+					}
+					if info.Port != 0 {
+						ci.Port = info.Port
+					}
+					if info.Transport != "" {
+						ci.Transport = info.Transport
+					}
+					if info.Endpoint != "" {
+						ci.Endpoint = info.Endpoint
+					}
+					info = ci
+				}
+			}
+		}
+	}
+	return info, nil
 }

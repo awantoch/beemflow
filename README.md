@@ -1061,3 +1061,26 @@ Reference outputs from previous steps using their `id`:
 BeemFlow is designed for extensibility and practical iteration. Some features are intentionally stubbed or in-memory only, with clear extension points:
 
 - **Adapters:** Easy to add new tool adapters. See `
+
+## MCP Server Config Compatibility
+
+This project supports the community/Claude-style MCP server config format. Use this style in your config files or curated configs:
+
+### Claude-style (camelCase)
+```json
+{
+  "mcpServers": {
+    "airtable": {
+      "command": "npx",
+      "args": ["-y", "airtable-mcp-server"],
+      "env": { "AIRTABLE_API_KEY": "pat123.abc123" }
+    }
+  }
+}
+```
+
+## 🛠️ Roadmap, Stubs, and Extensibility
+
+BeemFlow is designed for extensibility and practical iteration. Some features are intentionally stubbed or in-memory only, with clear extension points:
+
+- **Adapters:** Easy to add new tool adapters. See `

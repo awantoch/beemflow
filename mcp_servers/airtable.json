@@ -1,7 +1,7 @@
 {
   "airtable": {
-    "install_cmd": ["npx", "-y", "airtable-mcp-server"],
-    "required_env": ["AIRTABLE_API_KEY"],
-    "transport": "stdio"
+    "command": "npx",
+    "args": ["-y", "airtable-mcp-server"],
+    "env": { "AIRTABLE_API_KEY": "$env" }
   }
 } 

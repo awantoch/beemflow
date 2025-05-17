@@ -1,6 +1,7 @@
 {
   "supabase": {
-    "install_cmd": ["npx", "-y", "@supabase/mcp-server-postgrest@latest"],
-    "required_env": ["SUPABASE_URL", "SUPABASE_ANON_KEY"]
+    "command": "npx",
+    "args": ["-y", "@supabase/mcp-server-postgrest@latest"],
+    "env": { "SUPABASE_URL": "$env", "SUPABASE_ANON_KEY": "$env" }
   }
 } 

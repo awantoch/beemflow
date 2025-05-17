@@ -7,14 +7,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
-	"strings"
 	"sync"
 
 	"github.com/awantoch/beemflow/config"
 	mcp "github.com/metoro-io/mcp-golang"
-	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
 )
 
@@ -52,31 +49,11 @@ var mcpRe = regexp.MustCompile(`^mcp://([^/]+)/([\w.-]+)$`)
 
 // Helper to resolve MCP server config from environment/config file
 func getMCPServerConfig(host string) (config.MCPServerConfig, error) {
-	// Load main runtime config
-	cfgPath := os.Getenv("BEEMFLOW_CONFIG")
-	if cfgPath == "" {
-		cfgPath = "flow.config.json"
-	}
-	cfg, err := config.LoadConfig(cfgPath)
+	cfg, err := config.LoadConfig("flow.config.json")
 	if err != nil {
 		return config.MCPServerConfig{}, err
 	}
-	// Get stub from flow.config.json
-	info, ok := cfg.MCPServers[host]
-	if !ok {
-		return config.MCPServerConfig{}, fmt.Errorf("MCP server '%s' not found in config", host)
-	}
-	// Merge curated config from mcp_servers/<host>.json if available
-	curatedPath := filepath.Join("mcp_servers", host+".json")
-	if data, err := os.ReadFile(curatedPath); err == nil {
-		var m map[string]config.MCPServerConfig
-		if err := json.Unmarshal(data, &m); err == nil {
-			if ci, ok2 := m[host]; ok2 {
-				info = ci
-			}
-		}
-	}
-	return info, nil
+	return config.GetMergedMCPServerConfig(cfg, host)
 }
 
 // Execute calls a tool on the specified MCP server.
@@ -100,22 +77,21 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 		if err != nil {
 			return nil, err
 		}
-		// Default to stdio transport if InstallCmd is provided and no transport is set
-		if cfg.Transport == "" && len(cfg.InstallCmd) > 0 {
-			cfg.Transport = "stdio"
-		}
-		if len(cfg.InstallCmd) > 0 {
+		if cfg.Command != "" {
 			a.mu.Lock()
 			cmd, ok := a.processes[host]
 			a.mu.Unlock()
 			if !ok {
-				if len(cfg.InstallCmd) == 0 {
-					return nil, fmt.Errorf("MCP server '%s' config is missing 'install_cmd'", host)
-				}
-				cmd = exec.Command(cfg.InstallCmd[0], cfg.InstallCmd[1:]...)
+				cmd = exec.Command(cfg.Command, cfg.Args...)
 				cmd.Env = os.Environ()
-				for _, key := range cfg.RequiredEnv {
-					cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, os.Getenv(key)))
+				for k, v := range cfg.Env {
+					if v == "$env" {
+						if val := os.Getenv(k); val != "" {
+							cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, val))
+						}
+					} else {
+						cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+					}
 				}
 				stdin, err := cmd.StdinPipe()
 				if err != nil {
@@ -140,10 +116,8 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 			a.mu.Lock()
 			pipes := a.pipes[host]
 			a.mu.Unlock()
-			// pipes.stdout is the process's stdout (io.Reader), pipes.stdin is the process's stdin (io.Writer)
 			transport := mcpstdio.NewStdioServerTransportWithIO(pipes.stdout, pipes.stdin)
 			client = mcp.NewClient(transport)
-			// Initialize the client
 			if _, err := client.Initialize(ctx); err != nil {
 				return nil, fmt.Errorf("failed to initialize MCP stdio client: %w", err)
 			}
@@ -151,23 +125,7 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 			a.clients[host] = client
 			a.mu.Unlock()
 		} else {
-			endpoint := cfg.Endpoint
-			if endpoint == "" && cfg.Port > 0 {
-				endpoint = fmt.Sprintf("http://localhost:%d", cfg.Port)
-			}
-			if endpoint == "" {
-				if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.0.0.1") {
-					endpoint = "http://" + host
-				} else {
-					endpoint = "https://" + host
-				}
-			}
-			// HTTP transport is stateless and does not support notifications
-			httpTransport := mcphttp.NewHTTPClientTransport("/mcp").WithBaseURL(endpoint)
-			client = mcp.NewClient(httpTransport)
-			a.mu.Lock()
-			a.clients[host] = client
-			a.mu.Unlock()
+			return nil, fmt.Errorf("MCP server '%s' config is missing 'command' (stdio only supported; HTTP fallback is disabled)", host)
 		}
 	}
 	// List tools to check if the tool exists
