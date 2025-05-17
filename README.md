@@ -1,7 +1,7 @@
 # BeemFlow 🚀
 ### The Open Protocol for AI-Powered, Event-Driven Automations
 
-[![Star](https://img.shields.io/github/stars/awantoch/beemflow?style=social)](https://github.com/awantoch/beemflow) [![Join our Discord](https://img.shields.io/discord/000000000000000000?label=Community)](https://discord.gg/your-invite)
+[![Star](https://img.shields.io/github/stars/awantoch/beemflow?style=social)](https://github.com/awantoch/beemflow)
 
 **TL;DR:** Write, share, and run AI-driven workflows in YAML. 100% open, Git-friendly, vendor-neutral.
 
@@ -11,14 +11,13 @@
 
 AI is everywhere. APIs are everywhere. Yet automation is still stuck in siloed, proprietary platforms. It's time for a revolution.
 
-Meet **BeemFlow** – the *Dockerfile* for AI workflows:
+Meet **BeemFlow** – *GitHub Actions* for AI workflows:
 
-- Text-first, Git-diffable, versioned in Git
+- Text-first: human-readable, versioned in Git
 - Vendor-neutral: run on cloud, self-hosted, or embed anywhere
-- Community-driven: remix, share, and build on top
+- Community-driven: remix, share, and build on top using interoperable standards
 - Extensible: plug in LLMs, webhooks, cron, custom adapters
-
-**Stop clicking drag-n-drop—start coding powerful flows!**
+- Easy to use: chat + GUI visual workflow builder for technical and non-technical users
 
 ---
 
@@ -31,7 +30,7 @@ Meet **BeemFlow** – the *Dockerfile* for AI workflows:
 5. **Pluggable Tools**: JSON-Schema–based manifests, local & hub discovery
 6. **MCP Client**: **BeemFlow is a true MCP client**—it can connect to any MCP server (Node.js, Python, Go, etc.), dynamically discover tools at runtime via the `tools/list` method, and invoke them via `tools/call`, supporting both HTTP and stdio transports. Configure server installation, environment variables, and ports under the `mcp_servers` section of your runtime config for transparent auto-installation and startup. No static manifest is required for MCP tools; BeemFlow uses the schema provided by the server, or allows raw JSON if none is present.
 7. **Any Backend**: Postgres, S3, Redis, SQLite, in-memory
-8. **CLI & API**: Lint, run, serve, graph, scaffold—dev workflow optimized
+8. **CLI, API, GUI**: Lint, run, serve, graph, scaffold—dev workflow optimized
 
 ---
 
