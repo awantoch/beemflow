@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BeemFlow Flow Schema",
+  "type": "object",
+  "required": ["name", "on", "steps"],
+  "properties": {
+    "name": { "type": "string" },
+    "version": { "type": "string" },
+    "on": {},
+    "vars": { "type": "object" },
+    "steps": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "use": { "type": "string" },
+          "with": { "type": "object" },
+          "if": { "type": "string" },
+          "foreach": { "type": "string" },
+          "as": { "type": "string" },
+          "do": { "type": "array" },
+          "parallel": { "type": "array", "items": { "type": "string" } },
+          "retry": {
+            "type": "object",
+            "properties": {
+              "attempts": { "type": "integer" },
+              "delay_sec": { "type": "integer" }
+            }
+          },
+          "await_event": {
+            "type": "object",
+            "properties": {
+              "source": { "type": "string" },
+              "match": { "type": "object" },
+              "timeout": { "type": "string" }
+            }
+          },
+          "wait": {
+            "type": "object",
+            "properties": {
+              "seconds": { "type": "integer" },
+              "until": { "type": "string" }
+            }
+          }
+        },
+        "required": ["use"]
+      }
+    },
+    "catch": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "use": { "type": "string" },
+          "with": { "type": "object" }
+        },
+        "required": ["use"]
+      }
+    }
+  }
+} 

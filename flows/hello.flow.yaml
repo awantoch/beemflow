@@ -1,0 +1,7 @@
+name: hello
+on: cli.manual
+steps:
+  greet:
+    use: core.echo
+    with:
+      text: "Hello, world!" 

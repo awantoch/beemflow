@@ -1,0 +1,31 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Output folders
+bin/
+
+# Dependency directories
+gopath/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Go modules
+vendor/
+
+# BeemFlow runtime
+flow.config.json
+.env
+
+# Build artifacts
+*.log

@@ -1,0 +1,134 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/awantoch/beemflow/internal/model"
+	"github.com/awantoch/beemflow/internal/parser"
+)
+
+func captureOutput(f func()) string {
+	orig := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	f()
+	w.Close()
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	os.Stdout = orig
+	return buf.String()
+}
+
+func captureStderrExit(f func()) (string, int) {
+	origStderr := os.Stderr
+	origExit := exit
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	exitCode := 0
+	exit = func(code int) {
+		exitCode = code
+		w.Close()
+		panic("exit")
+	}
+	var buf bytes.Buffer
+	var out string
+	func() {
+		defer func() {
+			recover()
+		}()
+		f()
+	}()
+	w.Close()
+	io.Copy(&buf, r)
+	os.Stderr = origStderr
+	exit = origExit
+	out = buf.String()
+	return out, exitCode
+}
+
+func TestMainCommands(t *testing.T) {
+	cases := [][]string{
+		{"flow", "serve"},
+		{"flow", "run"},
+		{"flow", "graph"},
+		{"flow", "test"},
+		{"flow", "tool", "scaffold"},
+	}
+	for _, args := range cases {
+		os.Args = args
+		out := captureOutput(func() { main() })
+		if out == "" {
+			t.Errorf("expected output for %v, got empty", args)
+		}
+	}
+}
+
+func TestMain_LintValidateCommands(t *testing.T) {
+	// Valid flow file
+	valid := `name: test
+on: cli.manual
+steps:
+  s1:
+    use: core.echo
+    with: {text: hi}`
+	tmp, err := os.CreateTemp("", "valid.flow.yaml")
+	if err != nil {
+		t.Fatalf("create temp: %v", err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write([]byte(valid)); err != nil {
+		t.Fatalf("write temp: %v", err)
+	}
+	tmp.Close()
+
+	os.Args = []string{"flow", "lint", tmp.Name()}
+	out := captureOutput(func() { main() })
+	if !strings.Contains(out, "Lint OK") {
+		t.Errorf("expected Lint OK, got %q", out)
+	}
+
+	os.Args = []string{"flow", "validate", tmp.Name()}
+	out = captureOutput(func() { main() })
+	if !strings.Contains(out, "Validation OK") {
+		t.Errorf("expected Validation OK, got %q", out)
+	}
+
+	// Missing file
+	os.Args = []string{"flow", "lint", "/nonexistent/file.yaml"}
+	stderr, code := captureStderrExit(func() { main() })
+	if code != 1 || !strings.Contains(stderr, "YAML parse error") {
+		t.Errorf("expected exit 1 and YAML parse error, got code=%d, stderr=%q", code, stderr)
+	}
+
+	// Invalid YAML
+	bad := "name: bad\nsteps: [this is: not valid yaml]"
+	tmp2, err := os.CreateTemp("", "bad.flow.yaml")
+	if err != nil {
+		t.Fatalf("create temp: %v", err)
+	}
+	defer os.Remove(tmp2.Name())
+	if _, err := tmp2.Write([]byte(bad)); err != nil {
+		t.Fatalf("write temp: %v", err)
+	}
+	tmp2.Close()
+	os.Args = []string{"flow", "lint", tmp2.Name()}
+	stderr, code = captureStderrExit(func() { main() })
+	if code != 1 || !strings.Contains(stderr, "YAML parse error") {
+		t.Errorf("expected exit 1 and YAML parse error, got code=%d, stderr=%q", code, stderr)
+	}
+
+	// Schema error (simulate by patching parser.ValidateFlow)
+	os.Args = []string{"flow", "lint", tmp.Name()}
+	origValidate := parser.ValidateFlow
+	parser.ValidateFlow = func(flow *model.Flow, schemaPath string) error { return fmt.Errorf("schema fail") }
+	stderr, code = captureStderrExit(func() { main() })
+	parser.ValidateFlow = origValidate
+	if code != 2 || !strings.Contains(stderr, "Schema validation error") {
+		t.Errorf("expected exit 2 and schema error, got code=%d, stderr=%q", code, stderr)
+	}
+}
