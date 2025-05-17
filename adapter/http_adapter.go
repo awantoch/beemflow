@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -94,20 +95,26 @@ func (a *HTTPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[s
 	return out, err
 }
 
-// HTTPFetchAdapter implements Adapter for http.fetch, returning the response body.
+// HTTPFetchAdapter implements Adapter for HTTP requests, supporting GET/POST/PUT/etc.
 type HTTPFetchAdapter struct{}
 
-// ID returns the adapter ID.
+// ID returns the unique identifier of the HTTP request adapter.
 func (a *HTTPFetchAdapter) ID() string {
-	return "http.fetch"
+	return "http"
 }
 
-// Execute performs an HTTP GET on the given URL with optional headers and returns the body.
+// Execute performs an HTTP request on the given URL with optional method, headers, and body, and returns the response body.
 func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
 	url, ok := inputs["url"].(string)
 	if !ok || url == "" {
-		return nil, fmt.Errorf("http.fetch: missing url")
+		return nil, fmt.Errorf("missing url")
 	}
+	// Determine method
+	method := "GET"
+	if m, ok := inputs["method"].(string); ok && m != "" {
+		method = strings.ToUpper(m)
+	}
+	// Collect headers
 	headers := make(map[string]string)
 	if h, ok := inputs["headers"].(map[string]any); ok {
 		for k, v := range h {
@@ -116,11 +123,33 @@ func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (
 			}
 		}
 	}
-	body, err := HTTPGetRaw(ctx, url, headers)
-	if err != nil {
-		return nil, err
+	// Execute request
+	switch method {
+	case "GET":
+		body, err := HTTPGetRaw(ctx, url, headers)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"body": body}, nil
+	case "POST", "PUT", "PATCH", "DELETE":
+		// JSON body if provided
+		var payload any
+		if p, ok := inputs["body"]; ok {
+			payload = p
+		} else {
+			payload = map[string]any{}
+		}
+		var out any
+		err := HTTPPostJSON(ctx, url, payload, headers, &out)
+		if err != nil {
+			return nil, err
+		}
+		// Convert JSON result to raw string
+		b, _ := json.Marshal(out)
+		return map[string]any{"body": string(b)}, nil
+	default:
+		return nil, fmt.Errorf("unsupported method %s", method)
 	}
-	return map[string]any{"body": body}, nil
 }
 
 func (a *HTTPFetchAdapter) Manifest() *ToolManifest {

@@ -4,7 +4,7 @@ vars:
   fetch_url: "https://raw.githubusercontent.com/awantoch/beemflow/refs/heads/main/README.md"
 steps:
   - id: fetch_page
-    use: http.fetch
+    use: http
     with:
       url: "{{.vars.fetch_url}}"
   - id: summarize
@@ -19,4 +19,4 @@ steps:
   - id: print
     use: core.echo
     with:
-      text: "Summary: {{ (index .summarize.choices 0).message.content }}"
+      text: "Summary: {{(index .summarize.choices 0).message.content}}"
