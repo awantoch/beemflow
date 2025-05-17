@@ -10,7 +10,7 @@ steps:
   - id: summarize
     use: openai.chat
     with:
-      model: "o4-mini"
+      model: "gpt-4o"
       api_key: "{{.secrets.OPENAI_API_KEY}}"
       messages:
         - role: system
