@@ -24,13 +24,41 @@ var (
 
 func StartServer(addr string) error {
 	eng = engine.NewEngine()
-	http.HandleFunc("/runs", runsHandler)
+	http.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			runsListHandler(w, r)
+		} else {
+			runsHandler(w, r)
+		}
+	})
 	http.HandleFunc("/runs/", runStatusHandler)
 	http.HandleFunc("/resume/", resumeHandler)
 	http.HandleFunc("/graph", graphHandler)
 	http.HandleFunc("/validate", validateHandler)
 	http.HandleFunc("/test", testHandler)
 	return http.ListenAndServe(addr, nil)
+}
+
+// GET /runs (list all runs)
+func runsListHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	runsMu.Lock()
+	defer runsMu.Unlock()
+	var allRuns []map[string]interface{}
+	for _, run := range runs {
+		allRuns = append(allRuns, map[string]interface{}{
+			"id":         run.ID.String(),
+			"status":     run.Status,
+			"flow":       run.FlowName,
+			"started_at": run.StartedAt,
+			"ended_at":   run.EndedAt,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(allRuns)
 }
 
 // POST /runs { flow: <filename>, event: <object> }
