@@ -61,7 +61,7 @@ func TestMainCommands(t *testing.T) {
 	}
 	for _, args := range cases {
 		os.Args = args
-		out := captureOutput(func() { main() })
+		out := captureOutput(func() { NewRootCmd().Execute() })
 		if out == "" {
 			t.Errorf("expected output for %v, got empty", args)
 		}
@@ -87,20 +87,20 @@ steps:
 	tmp.Close()
 
 	os.Args = []string{"flow", "lint", tmp.Name()}
-	out := captureOutput(func() { main() })
+	out := captureOutput(func() { NewRootCmd().Execute() })
 	if !strings.Contains(out, "Lint OK") {
 		t.Errorf("expected Lint OK, got %q", out)
 	}
 
 	os.Args = []string{"flow", "validate", tmp.Name()}
-	out = captureOutput(func() { main() })
+	out = captureOutput(func() { NewRootCmd().Execute() })
 	if !strings.Contains(out, "Validation OK") {
 		t.Errorf("expected Validation OK, got %q", out)
 	}
 
 	// Missing file
 	os.Args = []string{"flow", "lint", "/nonexistent/file.yaml"}
-	stderr, code := captureStderrExit(func() { main() })
+	stderr, code := captureStderrExit(func() { NewRootCmd().Execute() })
 	if code != 1 || !strings.Contains(stderr, "YAML parse error") {
 		t.Errorf("expected exit 1 and YAML parse error, got code=%d, stderr=%q", code, stderr)
 	}
@@ -117,7 +117,7 @@ steps:
 	}
 	tmp2.Close()
 	os.Args = []string{"flow", "lint", tmp2.Name()}
-	stderr, code = captureStderrExit(func() { main() })
+	stderr, code = captureStderrExit(func() { NewRootCmd().Execute() })
 	if code != 1 || !strings.Contains(stderr, "YAML parse error") {
 		t.Errorf("expected exit 1 and YAML parse error, got code=%d, stderr=%q", code, stderr)
 	}
@@ -126,7 +126,7 @@ steps:
 	os.Args = []string{"flow", "lint", tmp.Name()}
 	origValidate := parser.ValidateFlow
 	parser.ValidateFlow = func(flow *model.Flow, schemaPath string) error { return fmt.Errorf("schema fail") }
-	stderr, code = captureStderrExit(func() { main() })
+	stderr, code = captureStderrExit(func() { NewRootCmd().Execute() })
 	parser.ValidateFlow = origValidate
 	if code != 2 || !strings.Contains(stderr, "Schema validation error") {
 		t.Errorf("expected exit 2 and schema error, got code=%d, stderr=%q", code, stderr)
