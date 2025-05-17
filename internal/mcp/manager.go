@@ -38,8 +38,8 @@ func findMCPInStep(step model.Step, servers map[string]bool) {
 	}
 }
 
-// EnsureMCPServers uses runtime configuration to check and run all MCP servers referenced in the flow.
-func EnsureMCPServers(flow *model.Flow, cfg *config.Config) error {
+// EnsureMCPServersWithTimeout uses runtime configuration to check and run all MCP servers referenced in the flow, with a configurable timeout.
+func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout time.Duration) error {
 	servers := FindMCPServersInFlow(flow)
 	for server := range servers {
 		info, ok := cfg.MCPServers[server]
@@ -81,12 +81,29 @@ func EnsureMCPServers(flow *model.Flow, cfg *config.Config) error {
 		}
 		// Wait for readiness if a port is specified
 		if info.Port > 0 {
-			if err := waitForMCP(baseURL, 15*time.Second); err != nil {
-				return fmt.Errorf("MCP server '%s' did not become ready: %v", server, err)
+			maxRetries := 3
+			var lastErr error
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				fmt.Fprintf(os.Stderr, "[beemflow] Waiting for MCP server '%s' to become ready on port %d... (attempt %d/%d)\n", server, info.Port, attempt, maxRetries)
+				lastErr = waitForMCP(baseURL, timeout)
+				if lastErr == nil {
+					break
+				}
+				if attempt < maxRetries {
+					fmt.Fprintf(os.Stderr, "[beemflow] MCP server '%s' did not become ready, retrying...\n", server)
+				}
+			}
+			if lastErr != nil {
+				return fmt.Errorf("MCP server '%s' did not become ready after %d attempts: %v", server, maxRetries, lastErr)
 			}
 		}
 	}
 	return nil
+}
+
+// EnsureMCPServers uses a default timeout of 15s for backward compatibility.
+func EnsureMCPServers(flow *model.Flow, cfg *config.Config) error {
+	return EnsureMCPServersWithTimeout(flow, cfg, 15*time.Second)
 }
 
 // isPortOpen checks if a TCP port is open on localhost
@@ -99,10 +116,12 @@ func isPortOpen(port int) bool {
 	return true
 }
 
-// waitForMCP polls the MCP server until it responds to ListTools or timeout
+// waitForMCP polls the MCP server until it responds to ListTools or timeout, with exponential backoff
 func waitForMCP(baseURL string, timeout time.Duration) error {
 	client := NewHTTPMCPClient(baseURL)
 	deadline := time.Now().Add(timeout)
+	interval := 500 * time.Millisecond
+	maxInterval := 5 * time.Second
 	for {
 		_, err := client.ListTools()
 		if err == nil {
@@ -111,6 +130,12 @@ func waitForMCP(baseURL string, timeout time.Duration) error {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timeout after %v waiting for MCP at %s: %w", timeout, baseURL, err)
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(interval)
+		if interval < maxInterval {
+			interval *= 2
+			if interval > maxInterval {
+				interval = maxInterval
+			}
+		}
 	}
 }

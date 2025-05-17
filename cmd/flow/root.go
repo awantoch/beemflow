@@ -2,15 +2,18 @@ package main
 
 import (
 	"os"
+	"time"
+
 	// Load environment variables from .env file
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
 var (
-	exit       = os.Exit
-	configPath string
-	debug      bool
+	exit              = os.Exit
+	configPath        string
+	debug             bool
+	mcpStartupTimeout time.Duration
 )
 
 // NewRootCmd creates the root 'flow' command with persistent flags and subcommands.
@@ -18,6 +21,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{Use: "flow"}
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "runtime.config.json", "Path to runtime config JSON")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logs")
+	rootCmd.PersistentFlags().DurationVar(&mcpStartupTimeout, "mcp-timeout", 60*time.Second, "Timeout for MCP server startup")
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		// Load environment variables from .env file, if present
 		_ = godotenv.Load()

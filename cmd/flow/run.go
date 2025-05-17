@@ -45,7 +45,7 @@ func newRunCmd() *cobra.Command {
 					exit(2)
 				}
 			}
-			if err := mcp.EnsureMCPServers(flow, cfg); err != nil {
+			if err := mcp.EnsureMCPServersWithTimeout(flow, cfg, mcpStartupTimeout); err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to ensure MCP servers: %v\n", err)
 				exit(3)
 			}
