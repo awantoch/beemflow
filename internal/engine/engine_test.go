@@ -16,7 +16,7 @@ func TestNewEngine(t *testing.T) {
 
 func TestExecuteNoop(t *testing.T) {
 	e := NewEngine()
-	err := e.Execute(context.Background(), &model.Flow{}, map[string]any{})
+	_, err := e.Execute(context.Background(), &model.Flow{}, map[string]any{})
 	if err != nil {
 		t.Errorf("Execute returned error: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestNewCronScheduler(t *testing.T) {
 
 func TestExecute_NilFlow(t *testing.T) {
 	e := NewEngine()
-	err := e.Execute(context.Background(), nil, map[string]any{})
+	_, err := e.Execute(context.Background(), nil, map[string]any{})
 	if err != nil {
 		t.Errorf("expected nil error for nil flow, got %v", err)
 	}
@@ -40,7 +40,7 @@ func TestExecute_NilFlow(t *testing.T) {
 func TestExecute_NilEvent(t *testing.T) {
 	e := NewEngine()
 	f := &model.Flow{Name: "test", Steps: map[string]model.Step{}}
-	err := e.Execute(context.Background(), f, nil)
+	_, err := e.Execute(context.Background(), f, nil)
 	if err != nil {
 		t.Errorf("expected nil error for nil event, got %v", err)
 	}
@@ -49,7 +49,7 @@ func TestExecute_NilEvent(t *testing.T) {
 func TestExecute_MinimalValidFlow(t *testing.T) {
 	e := NewEngine()
 	f := &model.Flow{Name: "test", Steps: map[string]model.Step{"s1": {Use: "core.echo"}}}
-	err := e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
+	_, err := e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
 	if err != nil {
 		t.Errorf("expected nil error for minimal valid flow, got %v", err)
 	}
@@ -72,7 +72,7 @@ func TestExecute_AllStepTypes(t *testing.T) {
 		},
 		"s2": {Use: "core.echo", With: map[string]interface{}{"text": "hi"}},
 	}}
-	err := e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
+	_, err := e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
 	if err != nil {
 		t.Errorf("expected nil error for all step types, got %v", err)
 	}
@@ -83,11 +83,11 @@ func TestExecute_Concurrency(t *testing.T) {
 	f := &model.Flow{Name: "concurrent", Steps: map[string]model.Step{"s1": {Use: "core.echo"}}}
 	done := make(chan bool, 2)
 	go func() {
-		e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
+		_, _ = e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
 		done <- true
 	}()
 	go func() {
-		e.Execute(context.Background(), f, map[string]any{"foo": "baz"})
+		_, _ = e.Execute(context.Background(), f, map[string]any{"foo": "baz"})
 		done <- true
 	}()
 	<-done
