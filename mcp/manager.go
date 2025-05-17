@@ -183,7 +183,7 @@ func waitForMCP(baseURL string, timeout time.Duration) error {
 	interval := 500 * time.Millisecond
 	maxInterval := 5 * time.Second
 	for {
-		_, err := client.ListTools(context.Background(), nil)
+		_, err := client.ListTools(context.Background(), new(string))
 		if err == nil {
 			return nil
 		}

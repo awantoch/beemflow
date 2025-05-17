@@ -171,7 +171,7 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 		}
 	}
 	// List tools to check if the tool exists
-	toolsResp, err := client.ListTools(ctx, nil)
+	toolsResp, err := client.ListTools(ctx, new(string))
 	if err != nil {
 		return nil, fmt.Errorf("MCP ListTools failed: %w", err)
 	}
