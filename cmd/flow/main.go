@@ -17,11 +17,18 @@ var (
 	configPath string
 	eventPath  string
 	eventJSON  string
+	debug      bool
 )
 
 func main() {
 	rootCmd := &cobra.Command{Use: "flow"}
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "runtime.config.json", "Path to runtime config JSON")
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logs")
+	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if debug {
+			os.Setenv("BEEMFLOW_DEBUG", "1")
+		}
+	}
 
 	rootCmd.AddCommand(
 		&cobra.Command{
@@ -34,6 +41,9 @@ func main() {
 			Short: "Run a flow",
 			Args:  cobra.ExactArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
+				if debug {
+					os.Setenv("BEEMFLOW_DEBUG", "1")
+				}
 				file := args[0]
 				flow, err := parser.ParseFlow(file)
 				if err != nil {
@@ -82,9 +92,11 @@ func main() {
 					fmt.Fprintf(os.Stderr, "Flow execution error: %v\n", err)
 					exit(7)
 				}
-				fmt.Println("[beemflow] Flow executed successfully.")
-				outJSON, _ := json.MarshalIndent(outputs, "", "  ")
-				fmt.Printf("[beemflow] Step outputs:\n%s\n", outJSON)
+				if debug {
+					fmt.Fprintln(os.Stderr, "[beemflow] Flow executed successfully.")
+					outJSON, _ := json.MarshalIndent(outputs, "", "  ")
+					fmt.Fprintf(os.Stderr, "[beemflow] Step outputs:\n%s\n", outJSON)
+				}
 			},
 		},
 		&cobra.Command{
@@ -204,9 +216,11 @@ func main() {
 				fmt.Fprintf(os.Stderr, "Flow execution error: %v\n", err)
 				exit(7)
 			}
-			fmt.Println("[beemflow] Flow executed successfully.")
-			outJSON, _ := json.MarshalIndent(outputs, "", "  ")
-			fmt.Printf("[beemflow] Step outputs:\n%s\n", outJSON)
+			if debug {
+				fmt.Fprintln(os.Stderr, "[beemflow] Flow executed successfully.")
+				outJSON, _ := json.MarshalIndent(outputs, "", "  ")
+				fmt.Fprintf(os.Stderr, "[beemflow] Step outputs:\n%s\n", outJSON)
+			}
 		},
 	}
 	runCmd.Flags().StringVar(&eventPath, "event", "", "Path to event JSON file")

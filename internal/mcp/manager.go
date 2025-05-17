@@ -51,14 +51,18 @@ func EnsureMCPServers(flow *model.Flow, cfg *config.Config) error {
 			}
 		}
 		// TODO: Check if port is open (server running)
-		fmt.Printf("[beemflow] Ensuring MCP server '%s' is running...\n", server)
+		if os.Getenv("BEEMFLOW_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "[beemflow] Ensuring MCP server '%s' is running...\n", server)
+		}
 		cmd := exec.Command(info.InstallCmd[0], info.InstallCmd[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
 			return fmt.Errorf("failed to start MCP server %s: %v", server, err)
 		}
-		fmt.Printf("[beemflow] MCP server '%s' started.\n", server)
+		if os.Getenv("BEEMFLOW_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "[beemflow] MCP server '%s' started.\n", server)
+		}
 	}
 	return nil
 }
