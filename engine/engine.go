@@ -382,9 +382,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	// Debug: log fully rendered payload for openai.chat
 	if step.Use == "openai" {
 		payload, _ := json.Marshal(inputs)
-		if os.Getenv("BEEMFLOW_DEBUG") != "" {
-			fmt.Fprintf(os.Stderr, "[beemflow] [debug] openai.chat payload: %s\n", payload)
-		}
+		debugLog("[debug] openai.chat payload: %s", payload)
 	}
 	if strings.HasPrefix(step.Use, "mcp://") {
 		inputs["__use"] = step.Use

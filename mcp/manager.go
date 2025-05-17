@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -14,6 +15,8 @@ import (
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 )
+
+var logger = log.New(os.Stderr, "[beemflow] ", log.LstdFlags)
 
 // FindMCPServersInFlow scans a Flow for MCP tool usage and returns a set of required MCP server addresses.
 func FindMCPServersInFlow(flow *model.Flow) map[string]bool {
@@ -53,7 +56,7 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 		missingVars := []string{}
 		for k := range info.Env {
 			val := os.Getenv(k)
-			fmt.Fprintf(os.Stderr, "[beemflow] MCP server '%s' expects env %s=%q\n", server, k, val)
+			logger.Printf("MCP server '%s' expects env %s", server, k)
 			if val == "" {
 				missingVars = append(missingVars, k)
 			}
@@ -64,7 +67,7 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 		if info.Command == "" {
 			return fmt.Errorf("MCP server '%s' config is missing 'command' (stdio only supported; HTTP fallback is disabled)", server)
 		}
-		fmt.Fprintf(os.Stderr, "[beemflow] Spawning MCP server '%s' (stdio) with command: %s %v\n", server, info.Command, info.Args)
+		logger.Printf("Spawning MCP server '%s' (stdio) with command: %s %v", server, info.Command, info.Args)
 		cmd := exec.Command(info.Command, info.Args...)
 		cmd.Env = os.Environ()
 		for k, v := range info.Env {
@@ -79,13 +82,13 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
-			fmt.Fprintf(os.Stderr, "[beemflow] ERROR: Failed to start MCP server %s: %v\n", server, err)
-			fmt.Fprintf(os.Stderr, "[beemflow] Command: %s %v\n", info.Command, info.Args)
-			fmt.Fprintf(os.Stderr, "[beemflow] Env: %v\n", cmd.Env)
+			logger.Printf("ERROR: Failed to start MCP server %s: %v", server, err)
+			logger.Printf("Command: %s %v", info.Command, info.Args)
+			logger.Printf("Env: %v", cmd.Env)
 			return fmt.Errorf("failed to start MCP server %s: %v", server, err)
 		}
 		if os.Getenv("BEEMFLOW_DEBUG") != "" {
-			fmt.Fprintf(os.Stderr, "[beemflow] MCP server '%s' (stdio) started\n", server)
+			logger.Printf("MCP server '%s' (stdio) started", server)
 		}
 	}
 	return nil

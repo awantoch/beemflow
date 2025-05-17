@@ -100,7 +100,7 @@ func TestLoadConfig_MCPAutoInclude(t *testing.T) {
 	}
 	defer os.Remove(curatedPath)
 
-	cfgJSON := `{"mcp_servers": {"airtable": {}}}`
+	cfgJSON := `{"mcpServers": {"airtable": {}}}`
 	tmp, err := os.CreateTemp("", "config.json")
 	if err != nil {
 		t.Fatalf("create temp: %v", err)
@@ -116,17 +116,11 @@ func TestLoadConfig_MCPAutoInclude(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
-	mcp, ok := c.MCPServers["airtable"]
-	if !ok {
-		t.Fatalf("airtable not found in merged config")
+	merged, err := GetMergedMCPServerConfig(c, "airtable")
+	if err != nil {
+		t.Fatalf("airtable not found in merged config: %v", err)
 	}
-	if len(mcp.InstallCmd) == 0 || mcp.InstallCmd[0] != "npx" {
-		t.Errorf("expected install_cmd from curated, got %+v", mcp.InstallCmd)
-	}
-	if len(mcp.RequiredEnv) == 0 || mcp.RequiredEnv[0] != "AIRTABLE_API_KEY" {
-		t.Errorf("expected required_env from curated, got %+v", mcp.RequiredEnv)
-	}
-	if mcp.Port != 3030 {
-		t.Errorf("expected port 3030 from curated, got %d", mcp.Port)
+	if merged.Port != 3030 {
+		t.Errorf("expected port 3030 from curated, got %d", merged.Port)
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/parser"
+	"github.com/awantoch/beemflow/pkg/logger"
 )
 
 func captureOutput(f func()) string {
@@ -29,6 +30,7 @@ func captureStderrExit(f func()) (string, int) {
 	origExit := exit
 	r, w, _ := os.Pipe()
 	os.Stderr = w
+	logger.Logger.SetOutput(w)
 	exitCode := 0
 	exit = func(code int) {
 		exitCode = code
@@ -46,6 +48,7 @@ func captureStderrExit(f func()) (string, int) {
 	w.Close()
 	io.Copy(&buf, r)
 	os.Stderr = origStderr
+	logger.Logger.SetOutput(origStderr)
 	exit = origExit
 	out = buf.String()
 	return out, exitCode

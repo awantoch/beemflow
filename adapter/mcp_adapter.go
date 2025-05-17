@@ -1,10 +1,12 @@
 package adapter
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
@@ -49,7 +51,11 @@ var mcpRe = regexp.MustCompile(`^mcp://([^/]+)/([\w.-]+)$`)
 
 // Helper to resolve MCP server config from environment/config file
 func getMCPServerConfig(host string) (config.MCPServerConfig, error) {
-	cfg, err := config.LoadConfig("flow.config.json")
+	cfgPath := os.Getenv("BEEMFLOW_CONFIG")
+	if cfgPath == "" {
+		cfgPath = "flow.config.json"
+	}
+	cfg, err := config.LoadConfig(cfgPath)
 	if err != nil {
 		return config.MCPServerConfig{}, err
 	}
@@ -70,14 +76,53 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 	host, tool := matches[1], matches[2]
 
 	a.mu.Lock()
-	client, ok := a.clients[host]
+	client, exists := a.clients[host]
 	a.mu.Unlock()
-	if !ok {
+	if !exists {
 		cfg, err := getMCPServerConfig(host)
 		if err != nil {
 			return nil, err
 		}
-		if cfg.Command != "" {
+		// HTTP transport fallback if configured
+		if cfg.Transport == "http" && cfg.Endpoint != "" {
+			// Minimal HTTP JSON-RPC fallback (tools/list and tools/call)
+			// List tools
+			listReq := map[string]any{"method": "tools/list", "params": []any{}, "id": 1}
+			bodyBytes, _ := json.Marshal(listReq)
+			resp, err := http.Post(cfg.Endpoint, "application/json", bytes.NewReader(bodyBytes))
+			if err != nil {
+				return nil, fmt.Errorf("failed to list tools: %w", err)
+			}
+			defer resp.Body.Close()
+			var listResp struct{ Tools []struct{ Name string } }
+			if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
+				return nil, fmt.Errorf("failed to decode tools list: %w", err)
+			}
+			found := false
+			for _, t := range listResp.Tools {
+				if t.Name == tool {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("tool %s not found on MCP server %s", tool, host)
+			}
+			// Call tool
+			callReq := map[string]any{"method": "tools/call", "params": map[string]any{"name": tool, "arguments": inputs}, "id": 1}
+			callBytes, _ := json.Marshal(callReq)
+			resp2, err := http.Post(cfg.Endpoint, "application/json", bytes.NewReader(callBytes))
+			if err != nil {
+				return nil, fmt.Errorf("MCP CallTool failed: %w", err)
+			}
+			defer resp2.Body.Close()
+			var callResp struct{ Result map[string]any }
+			if err := json.NewDecoder(resp2.Body).Decode(&callResp); err != nil {
+				return nil, fmt.Errorf("failed to decode call response: %w", err)
+			}
+			return callResp.Result, nil
+		} else if cfg.Command != "" {
+			// stdio transport
 			a.mu.Lock()
 			cmd, ok := a.processes[host]
 			a.mu.Unlock()
@@ -125,7 +170,7 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 			a.clients[host] = client
 			a.mu.Unlock()
 		} else {
-			return nil, fmt.Errorf("MCP server '%s' config is missing 'command' (stdio only supported; HTTP fallback is disabled)", host)
+			return nil, fmt.Errorf("MCP server '%s' config is missing 'command' or 'http' transport config", host)
 		}
 	}
 	// List tools to check if the tool exists

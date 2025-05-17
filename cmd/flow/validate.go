@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/awantoch/beemflow/parser"
+	"github.com/awantoch/beemflow/pkg/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -18,12 +18,12 @@ func newValidateCmd() *cobra.Command {
 			file := args[0]
 			flow, err := parser.ParseFlow(file)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "YAML parse error: %v\n", err)
+				logger.Logger.Printf("YAML parse error: %v\n", err)
 				exit(1)
 			}
 			err = parser.ValidateFlow(flow, "../../beemflow.schema.json")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Schema validation error: %v\n", err)
+				logger.Logger.Printf("Schema validation error: %v\n", err)
 				exit(2)
 			}
 			fmt.Println("Validation OK: flow is valid!")

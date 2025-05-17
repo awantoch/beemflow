@@ -9,6 +9,7 @@ import (
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/parser"
+	"github.com/awantoch/beemflow/pkg/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -32,45 +33,45 @@ func newRunCmd() *cobra.Command {
 			file := args[0]
 			flow, err := parser.ParseFlow(file)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "YAML parse error: %v\n", err)
+				logger.Logger.Printf("YAML parse error: %v\n", err)
 				exit(1)
 			}
 			cfg, err := config.LoadConfig(configPath)
 			if err != nil {
 				if os.IsNotExist(err) {
-					fmt.Fprintf(os.Stderr, "[beemflow] config file %s not found, using defaults\n", configPath)
+					logger.Logger.Printf("config file %s not found, using defaults\n", configPath)
 					cfg = &config.Config{}
 				} else {
-					fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+					logger.Logger.Printf("Failed to load config: %v\n", err)
 					exit(2)
 				}
 			}
 			if debug {
 				cfgJSON, _ := json.MarshalIndent(cfg.MCPServers, "", "  ")
-				fmt.Fprintf(os.Stderr, "[beemflow] Loaded MCPServers config:\n%s\n", cfgJSON)
+				logger.Logger.Printf("Loaded MCPServers config:\n%s\n", cfgJSON)
 			}
 			if err := mcp.EnsureMCPServersWithTimeout(flow, cfg, mcpStartupTimeout); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to ensure MCP servers: %v\n", err)
+				logger.Logger.Printf("Failed to ensure MCP servers: %v\n", err)
 				exit(3)
 			}
 			event, err := loadEvent(eventPath, eventJSON)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to load event: %v\n", err)
+				logger.Logger.Printf("Failed to load event: %v\n", err)
 				exit(4)
 			}
 			eng := engine.NewEngine()
 			outputs, err := eng.Execute(cmd.Context(), flow, event)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Flow execution error: %v\n", err)
+				logger.Logger.Printf("Flow execution error: %v\n", err)
 				exit(5)
 			}
 			// Print outputs as JSON to stdout for scripting
 			outJSONBytes, _ := json.Marshal(outputs)
 			fmt.Println(string(outJSONBytes))
 			if debug {
-				fmt.Fprintln(os.Stderr, "[beemflow] Flow executed successfully.")
+				logger.Logger.Println("Flow executed successfully.")
 				outJSON, _ := json.MarshalIndent(outputs, "", "  ")
-				fmt.Fprintf(os.Stderr, "[beemflow] Step outputs:\n%s\n", outJSON)
+				logger.Logger.Printf("Step outputs:\n%s\n", outJSON)
 			}
 		},
 	}
