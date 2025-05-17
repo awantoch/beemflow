@@ -12,6 +12,14 @@ import (
 	"github.com/awantoch/beemflow/model"
 )
 
+func TestMain(m *testing.M) {
+	// Cleanup before and after tests
+	os.RemoveAll(".beemflow")
+	code := m.Run()
+	os.RemoveAll(".beemflow")
+	os.Exit(code)
+}
+
 func TestNewEngine(t *testing.T) {
 	e := NewEngine()
 	if e == nil {

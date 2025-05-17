@@ -95,34 +95,34 @@ func GetMergedMCPServerConfig(cfg *Config, host string) (MCPServerConfig, error)
 		var m map[string]MCPServerConfig
 		if err := json.Unmarshal(data, &m); err == nil {
 			if ci, ok2 := m[host]; ok2 {
-				if info.Command == "" {
-					info = ci
-				} else {
-					if ci.Env == nil {
-						ci.Env = map[string]string{}
-					}
-					if info.Env == nil {
-						info.Env = map[string]string{}
-					}
-					if len(info.Args) > 0 {
-						ci.Args = info.Args
-					}
-					if len(info.Env) > 0 {
-						for k, v := range info.Env {
-							ci.Env[k] = v
-						}
-					}
-					if info.Port != 0 {
-						ci.Port = info.Port
-					}
-					if info.Transport != "" {
-						ci.Transport = info.Transport
-					}
-					if info.Endpoint != "" {
-						ci.Endpoint = info.Endpoint
-					}
-					info = ci
+				merged := ci
+				// Args: prefer original if present
+				if len(info.Args) > 0 {
+					merged.Args = info.Args
 				}
+				// Env: merge, original overrides curated
+				if merged.Env == nil {
+					merged.Env = map[string]string{}
+				}
+				if info.Env != nil {
+					for k, v := range info.Env {
+						merged.Env[k] = v
+					}
+				}
+				// Port: prefer original if present
+				if info.Port != 0 {
+					merged.Port = info.Port
+				}
+				// Transport: prefer original if present
+				if info.Transport != "" {
+					merged.Transport = info.Transport
+				}
+				// Endpoint: prefer original if present
+				if info.Endpoint != "" {
+					merged.Endpoint = info.Endpoint
+				}
+				// Command: always use curated (even if empty)
+				info = merged
 			}
 		}
 	}

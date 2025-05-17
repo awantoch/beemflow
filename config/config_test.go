@@ -8,6 +8,17 @@ import (
 	"testing"
 )
 
+// TestMain ensures the mcp_servers folder is cleaned up before and after tests
+func TestMain(m *testing.M) {
+	// Remove any existing mcp_servers directory before tests
+	os.RemoveAll("mcp_servers")
+	// Run tests
+	code := m.Run()
+	// Clean up after tests
+	os.RemoveAll("mcp_servers")
+	os.Exit(code)
+}
+
 func TestLoadConfig(t *testing.T) {
 	cfgJSON := `{"storage":{"driver":"d","dsn":"u"},"blob":{"driver":"b","bucket":"c"},"event":{"driver":"e","url":"u"},"secrets":{"driver":"s","region":"r","prefix":"p"},"registries":["r1","r2"],"http":{"host":"h","port":8080},"log":{"level":"l"}}`
 	tmp, err := os.CreateTemp("", "config.json")
@@ -96,11 +107,11 @@ func TestLoadConfig_MCPAutoInclude(t *testing.T) {
 	curated := `{"airtable": {"install_cmd": ["npx", "-y", "airtable-mcp-server"], "required_env": ["AIRTABLE_API_KEY"], "port": 3030}}`
 	curatedPath := "mcp_servers/airtable.json"
 	_ = os.MkdirAll("mcp_servers", 0755)
+	defer os.Remove(curatedPath)
 	err := ioutil.WriteFile(curatedPath, []byte(curated), 0644)
 	if err != nil {
 		t.Fatalf("failed to write curated: %v", err)
 	}
-	defer os.Remove(curatedPath)
 
 	cfgJSON := `{"mcpServers": {"airtable": {}}}`
 	tmp, err := os.CreateTemp("", "config.json")
@@ -159,6 +170,7 @@ func TestGetMergedMCPServerConfig_CuratedMissingCommand(t *testing.T) {
 	}}
 	data, _ := json.Marshal(curated)
 	path := "mcp_servers/foo.json"
+	_ = os.MkdirAll("mcp_servers", 0755)
 	os.WriteFile(path, data, 0644)
 	defer os.Remove(path)
 
@@ -184,6 +196,7 @@ func TestGetMergedMCPServerConfig_CuratedMergeOriginal(t *testing.T) {
 	}}
 	data, _ := json.Marshal(curated)
 	path := "mcp_servers/foo.json"
+	_ = os.MkdirAll("mcp_servers", 0755)
 	os.WriteFile(path, data, 0644)
 	defer os.Remove(path)
 
@@ -217,6 +230,7 @@ func TestGetMergedMCPServerConfig_CuratedMergeOriginal(t *testing.T) {
 // TestGetMergedMCPServerConfig_MalformedCuratedIgnored ensures that malformed JSON is ignored and original returned.
 func TestGetMergedMCPServerConfig_MalformedCuratedIgnored(t *testing.T) {
 	path := "mcp_servers/foo.json"
+	_ = os.MkdirAll("mcp_servers", 0755)
 	os.WriteFile(path, []byte("not json"), 0644)
 	defer os.Remove(path)
 
