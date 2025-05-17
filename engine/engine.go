@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/adapter"
+	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/templater"
@@ -22,6 +23,7 @@ type Engine struct {
 	Adapters  *adapter.Registry
 	Templater *templater.Templater
 	EventBus  event.EventBus
+	BlobStore blob.BlobStore
 	// In-memory state for waiting runs: token -> *PausedRun
 	waiting map[string]*PausedRun
 	mu      sync.Mutex
@@ -39,8 +41,8 @@ type PausedRun struct {
 	Token   string
 }
 
-// NewEngine creates a new Engine with built-in adapters and default in-memory state.
-func NewEngine() *Engine {
+// NewEngineWithBlobStore creates a new Engine with a custom BlobStore.
+func NewEngineWithBlobStore(blobStore blob.BlobStore) *Engine {
 	reg := adapter.NewRegistry()
 	reg.Register(&adapter.CoreAdapter{})
 	reg.Register(adapter.NewMCPAdapter())
@@ -74,9 +76,20 @@ func NewEngine() *Engine {
 		Adapters:         reg,
 		Templater:        templater.NewTemplater(),
 		EventBus:         event.NewInProcEventBus(),
+		BlobStore:        blobStore,
 		waiting:          make(map[string]*PausedRun),
 		completedOutputs: make(map[string]map[string]any),
 	}
+}
+
+// NewEngine creates a new Engine with the default BlobStore (filesystem, zero config).
+func NewEngine() *Engine {
+	bs, err := blob.NewDefaultBlobStore(nil)
+	if err != nil {
+		log.Printf("[WARN] Failed to create default blob store: %v, using in-memory fallback", err)
+		bs = nil // or fallback to a stub if you want
+	}
+	return NewEngineWithBlobStore(bs)
 }
 
 // Execute now supports pausing and resuming at await_event.

@@ -167,7 +167,7 @@ Event   `in-proc | redis | nats | sns`
 ```json
 {
   "storage": { "driver": "postgres", "dsn": "postgres://user:pw@host/db" },
-  "blob":    { "driver": "s3",       "bucket": "beemflow-files" },
+  "blob":    { "driver": "filesystem", "directory": "./beemflow-files" },
   "event":   { "driver": "redis",    "url": "redis://host:6379" },
   "registries": [
     "https://hub.beemflow.com/index.json",
@@ -188,6 +188,33 @@ Event   `in-proc | redis | nats | sns`
 }
 ```
 Omit adapters for dev quick‑start: falls back to in‑memory + base64.
+
+**Blob Store Drivers:**
+- `filesystem` (default, recommended for local/dev/prod): stores blobs as files in a configurable directory on disk.
+- `inline-base64` (dev): stores blobs in memory as base64-encoded strings.
+- `s3`, `gcs`, `minio`: for distributed/cloud deployments.
+
+**Filesystem Blob Store Example:**
+```json
+{
+  "blob": {
+    "driver": "filesystem",
+    "directory": "./beemflow-files"
+  }
+}
+```
+- `driver`: Must be set to `filesystem` to use the local disk blob store.
+- `directory`: Path to the directory where blobs will be stored. This directory will be created if it does not exist.
+
+**S3 Example:**
+```json
+{
+  "blob": {
+    "driver": "s3",
+    "bucket": "beemflow-files"
+  }
+}
+```
 
 ──────────────────────────────────────────────
 10. PROJECT SKELETON

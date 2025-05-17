@@ -256,7 +256,7 @@ BeemFlow is driven by a JSON configuration file (default `flow.config.json`). Yo
 ```json
 {
   "storage": { "driver": "postgres", "dsn": "postgres://user:pw@host/db" },
-  "blob":    { "driver": "s3",       "bucket": "beemflow-files" },
+  "blob":    { "driver": "filesystem", "directory": "./beemflow-files" },
   "event":   { "driver": "redis",    "url": "redis://host:6379" },
   "secrets": { "driver": "aws-secrets-manager", "region": "us-east-1", "prefix": "/beemflow/" },
   "registries": [
@@ -281,7 +281,7 @@ BeemFlow is driven by a JSON configuration file (default `flow.config.json`). Yo
 ```
 
 - **storage**: choose from `memory` (dev), `sqlite`, `postgres`, `dynamo`, `cockroachdb`.
-- **blob**: choose from `inline-base64` (dev), `s3`, `gcs`, `minio`.
+- **blob**: choose from `filesystem` (default, recommended for local/dev/prod), `inline-base64` (dev), `s3`, `gcs`, `minio`.
 - **event**: choose from `in-proc` (local), `redis`, `nats`, `sns`.
 - **secrets**: configure how `{{secrets.KEY}}` is resolved (supported drivers: `env`, `aws-secrets-manager`, `vault`).
 - **registries**: list of manifest index URLs for discovering community tools.
@@ -290,6 +290,37 @@ BeemFlow is driven by a JSON configuration file (default `flow.config.json`). Yo
 - **mcp_servers**: map of MCP server addresses to their install commands, required environment variables, and optional ports.
 
 Omit any section to use sensible defaults (in-memory adapters, built-in hubs, console logging). For development, you can skip `flow.config.json` entirely and BeemFlow will fall back to in-memory storage, inline blob encoding, an in-process event bus, and no registries.
+
+### Local Filesystem Blob Store
+
+The local filesystem blob store is the default and recommended option for most deployments. It stores blobs as files in a configurable directory on disk. Example configuration:
+
+```json
+{
+  "blob": {
+    "driver": "filesystem",
+    "directory": "./beemflow-files"
+  }
+}
+```
+
+- `driver`: Must be set to `filesystem` to use the local disk blob store.
+- `directory`: Path to the directory where blobs will be stored. This directory will be created if it does not exist.
+
+### S3 and Other Cloud Blob Stores
+
+For distributed or cloud-native deployments, you can use S3 or other cloud blob stores by changing the `driver` and providing the necessary configuration. Example:
+
+```json
+{
+  "blob": {
+    "driver": "s3",
+    "bucket": "beemflow-files"
+  }
+}
+```
+
+See the documentation for more details on configuring S3, GCS, or Minio.
 
 ## 🛠 Official MCP Server Configurations
 
