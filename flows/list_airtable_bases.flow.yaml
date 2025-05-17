@@ -1,0 +1,10 @@
+name: list_airtable_tables
+on:
+  - cli.manual
+steps:
+  - id: list_bases
+    use: mcp://airtable/list_bases
+  - id: print
+    use: core.print
+    with:
+      text: "{{.list_bases.bases}}"

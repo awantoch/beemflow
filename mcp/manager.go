@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/model"
+	mcp "github.com/metoro-io/mcp-golang"
+	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 )
 
 // FindMCPServersInFlow scans a Flow for MCP tool usage and returns a set of required MCP server addresses.
@@ -46,28 +49,76 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 		if !ok {
 			return fmt.Errorf("MCP server '%s' is not configured; please add it to 'mcp_servers' in runtime config", server)
 		}
+		// Default to stdio transport if InstallCmd provided and no transport set
+		if info.Transport == "" && len(info.InstallCmd) > 0 {
+			info.Transport = "stdio"
+		}
 		// Validate required environment variables
+		missingVars := []string{}
 		for _, key := range info.RequiredEnv {
-			if os.Getenv(key) == "" {
-				return fmt.Errorf("environment variable %s is required for MCP server %s", key, server)
+			val := os.Getenv(key)
+			fmt.Fprintf(os.Stderr, "[beemflow] MCP server '%s' requires env %s=%q\n", server, key, val)
+			if val == "" {
+				missingVars = append(missingVars, key)
 			}
 		}
+		if len(missingVars) > 0 {
+			return fmt.Errorf("environment variable(s) %v required for MCP server %s but not set. Check your .env or shell environment.", missingVars, server)
+		}
 		// Ensure MCP server process is running and ready
-		baseURL := fmt.Sprintf("http://localhost:%d", info.Port)
+		if info.Transport == "stdio" {
+			// For stdio, just start the process if not already running (no port check)
+			if len(info.InstallCmd) == 0 {
+				return fmt.Errorf("MCP server '%s' config is missing 'install_cmd' (got: %+v). Check your config and curated files.", server, info)
+			}
+			fmt.Fprintf(os.Stderr, "[beemflow] Spawning MCP server '%s' (stdio) with command: %v\n", server, info.InstallCmd)
+			cmd := exec.Command(info.InstallCmd[0], info.InstallCmd[1:]...)
+			cmd.Env = os.Environ()
+			for _, key := range info.RequiredEnv {
+				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, os.Getenv(key)))
+			}
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Start(); err != nil {
+				fmt.Fprintf(os.Stderr, "[beemflow] ERROR: Failed to start MCP server %s: %v\n", server, err)
+				fmt.Fprintf(os.Stderr, "[beemflow] Command: %v\n", info.InstallCmd)
+				fmt.Fprintf(os.Stderr, "[beemflow] Env: %v\n", cmd.Env)
+				return fmt.Errorf("failed to start MCP server %s: %v", server, err)
+			}
+			if os.Getenv("BEEMFLOW_DEBUG") != "" {
+				fmt.Fprintf(os.Stderr, "[beemflow] MCP server '%s' (stdio) started\n", server)
+			}
+			continue // skip HTTP readiness checks
+		}
+		// Default: HTTP transport (or unspecified)
+		baseURL := info.Endpoint
+		if baseURL == "" && info.Port > 0 {
+			baseURL = fmt.Sprintf("http://localhost:%d", info.Port)
+		}
+		if baseURL == "" {
+			baseURL = fmt.Sprintf("http://%s", server)
+		}
 		if os.Getenv("BEEMFLOW_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "[beemflow] MCP config for '%s': %+v\n", server, info)
 			fmt.Fprintf(os.Stderr, "[beemflow] Ensuring MCP server '%s' at %s is running...\n", server, baseURL)
 		}
 		// Check if port is open (server already running)
 		if info.Port > 0 && isPortOpen(info.Port) {
+			fmt.Fprintf(os.Stderr, "[beemflow] MCP server '%s' port %d is open. Checking if it responds to tools/list...\n", server, info.Port)
+			if err := waitForMCP(baseURL, 3*time.Second); err != nil {
+				fmt.Fprintf(os.Stderr, "[beemflow] WARNING: Port %d is open but MCP server did not respond as expected: %v\n", info.Port, err)
+				fmt.Fprintf(os.Stderr, "[beemflow] This may mean another process is using the port, or the MCP server is misconfigured.\n")
+				return fmt.Errorf("MCP server '%s' port %d is open but not responding as MCP. Please check for conflicting processes or restart the MCP server.", server, info.Port)
+			}
 			if os.Getenv("BEEMFLOW_DEBUG") != "" {
-				fmt.Fprintf(os.Stderr, "[beemflow] MCP server '%s' already listening on port %d\n", server, info.Port)
+				fmt.Fprintf(os.Stderr, "[beemflow] MCP server '%s' already listening and responding on port %d\n", server, info.Port)
 			}
 		} else {
 			// Defensive check for InstallCmd
 			if len(info.InstallCmd) == 0 {
 				return fmt.Errorf("MCP server '%s' config is missing 'install_cmd' (got: %+v). Check your config and curated files.", server, info)
 			}
+			fmt.Fprintf(os.Stderr, "[beemflow] Spawning MCP server '%s' with command: %v\n", server, info.InstallCmd)
 			// Start MCP server process
 			cmd := exec.Command(info.InstallCmd[0], info.InstallCmd[1:]...)
 			// Inherit current environment and inject required vars
@@ -78,6 +129,9 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			if err := cmd.Start(); err != nil {
+				fmt.Fprintf(os.Stderr, "[beemflow] ERROR: Failed to start MCP server %s: %v\n", server, err)
+				fmt.Fprintf(os.Stderr, "[beemflow] Command: %v\n", info.InstallCmd)
+				fmt.Fprintf(os.Stderr, "[beemflow] Env: %v\n", cmd.Env)
 				return fmt.Errorf("failed to start MCP server %s: %v", server, err)
 			}
 			if os.Getenv("BEEMFLOW_DEBUG") != "" {
@@ -99,6 +153,7 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 				}
 			}
 			if lastErr != nil {
+				fmt.Fprintf(os.Stderr, "[beemflow] ERROR: MCP server '%s' did not become ready after %d attempts: %v\n", server, maxRetries, lastErr)
 				return fmt.Errorf("MCP server '%s' did not become ready after %d attempts: %v", server, maxRetries, lastErr)
 			}
 		}
@@ -128,7 +183,7 @@ func waitForMCP(baseURL string, timeout time.Duration) error {
 	interval := 500 * time.Millisecond
 	maxInterval := 5 * time.Second
 	for {
-		_, err := client.ListTools()
+		_, err := client.ListTools(context.Background(), nil)
 		if err == nil {
 			return nil
 		}
@@ -143,4 +198,10 @@ func waitForMCP(baseURL string, timeout time.Duration) error {
 			}
 		}
 	}
+}
+
+// NewHTTPMCPClient creates an HTTP MCP client for manager readiness checks.
+func NewHTTPMCPClient(baseURL string) *mcp.Client {
+	transport := mcphttp.NewHTTPClientTransport("/mcp").WithBaseURL(baseURL)
+	return mcp.NewClient(transport)
 }

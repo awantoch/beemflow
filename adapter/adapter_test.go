@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -257,5 +258,69 @@ func TestMCPAdapter_SupabaseQuery(t *testing.T) {
 	rows, ok := out["rows"].([]any)
 	if !ok || len(rows) == 0 {
 		t.Fatalf("expected rows in output, got %v", out)
+	}
+}
+
+func TestMCPAdapter_AirtableCreateRecord(t *testing.T) {
+	// Simulate an Airtable MCP server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		json.NewDecoder(r.Body).Decode(&req)
+		if req["method"] == "tools/list" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"tools":[{"name":"create_record","description":"Create Airtable record","input_schema":{"type":"object","properties":{"baseId":{"type":"string"},"tableId":{"type":"string"},"fields":{"type":"object"}}}}]}`))
+			return
+		}
+		if req["method"] == "tools/call" {
+			params := req["params"].(map[string]any)
+			if params["name"] == "create_record" {
+				args := params["arguments"].(map[string]any)
+				if args["baseId"] == "test_base" && args["tableId"] == "test_table" {
+					w.Header().Set("Content-Type", "application/json")
+					w.Write([]byte(`{"result":{"id":"rec123","fields":{"Copy":"Hello!","Status":"Pending"}}}`))
+					return
+				}
+			}
+			w.WriteHeader(400)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer server.Close()
+
+	// Patch config loader to point to mock server for airtable
+	os.Setenv("BEEMFLOW_CONFIG", "test_airtable_config.json")
+	defer os.Unsetenv("BEEMFLOW_CONFIG")
+	cfg := map[string]any{
+		"airtable": map[string]any{
+			"install_cmd":  []string{"npx", "-y", "airtable-mcp-server"},
+			"required_env": []string{"AIRTABLE_API_KEY"},
+			"port":         0,
+			"transport":    "http",
+			"endpoint":     server.URL,
+		},
+	}
+	b, _ := json.Marshal(map[string]any{"mcp_servers": cfg})
+	_ = os.WriteFile("test_airtable_config.json", b, 0644)
+	defer os.Remove("test_airtable_config.json")
+
+	adapter := NewMCPAdapter()
+	inputs := map[string]any{
+		"__use":   "mcp://airtable/create_record",
+		"baseId":  "test_base",
+		"tableId": "test_table",
+		"fields":  map[string]any{"Copy": "Hello!", "Status": "Pending"},
+	}
+	out, err := adapter.Execute(context.Background(), inputs)
+	if err != nil {
+		t.Fatalf("MCPAdapter.Execute failed: %v", err)
+	}
+	id, ok := out["id"].(string)
+	if !ok || id != "rec123" {
+		t.Fatalf("expected id 'rec123' in output, got %v", out)
+	}
+	fields, ok := out["fields"].(map[string]any)
+	if !ok || fields["Copy"] != "Hello!" || fields["Status"] != "Pending" {
+		t.Fatalf("expected fields in output, got %v", out)
 	}
 }

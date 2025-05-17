@@ -64,6 +64,9 @@ func newRunCmd() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "Flow execution error: %v\n", err)
 				exit(5)
 			}
+			// Print outputs as JSON to stdout for scripting
+			outJSONBytes, _ := json.Marshal(outputs)
+			fmt.Println(string(outJSONBytes))
 			if debug {
 				fmt.Fprintln(os.Stderr, "[beemflow] Flow executed successfully.")
 				outJSON, _ := json.MarshalIndent(outputs, "", "  ")

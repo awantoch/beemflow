@@ -58,6 +58,10 @@ type MCPServerConfig struct {
 	RequiredEnv []string `json:"required_env,omitempty"`
 	// Port is an optional port number to check if the server is already running
 	Port int `json:"port,omitempty"`
+	// Transport is the transport type (e.g., "http", "stdio")
+	Transport string `json:"transport,omitempty"`
+	// Endpoint is the custom endpoint (e.g., URL, socket path)
+	Endpoint string `json:"endpoint,omitempty"`
 }
 
 // SecretsProvider resolves secrets for flows (env, AWS-SM, Vault, etc.)
@@ -130,6 +134,12 @@ func LoadConfig(path string) (*Config, error) {
 		}
 		if override.Port != 0 {
 			existing.Port = override.Port
+		}
+		if len(override.Transport) > 0 {
+			existing.Transport = override.Transport
+		}
+		if len(override.Endpoint) > 0 {
+			existing.Endpoint = override.Endpoint
 		}
 		cfg.MCPServers[k] = existing
 	}
