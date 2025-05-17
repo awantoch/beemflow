@@ -28,6 +28,7 @@ type Engine struct {
 	// Store completed outputs for resumed runs (token -> outputs)
 	completedOutputs map[string]map[string]any
 	// NOTE: Storage, blob, eventbus, and cron are pluggable; in-memory is the default for now.
+	// Call Close() to clean up resources (e.g., MCPAdapter subprocesses) when done.
 }
 
 type PausedRun struct {
@@ -420,4 +421,12 @@ func debugLog(format string, v ...any) {
 	if os.Getenv("BEEMFLOW_DEBUG") != "" {
 		log.Printf(format, v...)
 	}
+}
+
+// Close cleans up all adapters and resources managed by the Engine.
+func (e *Engine) Close() error {
+	if e.Adapters != nil {
+		return e.Adapters.CloseAll()
+	}
+	return nil
 }

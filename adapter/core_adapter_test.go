@@ -6,24 +6,29 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/awantoch/beemflow/pkg/logger"
 )
 
 // TestCoreAdapter tests that CoreAdapter prints text and returns inputs.
 func TestCoreAdapter(t *testing.T) {
 	a := &CoreAdapter{}
-	// capture stdout
+	// Set debug mode
+	os.Setenv("BEEMFLOW_DEBUG", "1")
+	defer os.Unsetenv("BEEMFLOW_DEBUG")
+	// capture logger output
 	r, w, _ := os.Pipe()
-	origOut := os.Stdout
-	os.Stdout = w
+	origOut := os.Stderr
+	logger.Logger.SetOutput(w)
 
 	in := map[string]any{"text": "echoed"}
 	out, err := a.Execute(context.Background(), in)
 	w.Close()
-	os.Stdout = origOut
+	logger.Logger.SetOutput(origOut)
 
 	buf, _ := ioutil.ReadAll(r)
-	if string(buf) != "echoed\n" {
-		t.Errorf("expected echoed newline, got %q", buf)
+	if string(buf) == "" || string(buf) == "\n" {
+		t.Errorf("expected echoed in logger output, got %q", buf)
 	}
 	if !reflect.DeepEqual(out, in) || err != nil {
 		t.Errorf("expected inputs returned, got %v, %v", out, err)

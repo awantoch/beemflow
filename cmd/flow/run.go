@@ -60,6 +60,7 @@ func newRunCmd() *cobra.Command {
 				exit(4)
 			}
 			eng := engine.NewEngine()
+			defer eng.Close()
 			outputs, err := eng.Execute(cmd.Context(), flow, event)
 			if err != nil {
 				logger.Logger.Printf("Flow execution error: %v\n", err)

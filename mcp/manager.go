@@ -44,6 +44,22 @@ func findMCPInStep(step model.Step, servers map[string]bool) {
 	}
 }
 
+// NewMCPCommand creates an *exec.Cmd for the given MCP server config, merging environment variables.
+func NewMCPCommand(info config.MCPServerConfig) *exec.Cmd {
+	cmd := exec.Command(info.Command, info.Args...)
+	cmd.Env = os.Environ()
+	for k, v := range info.Env {
+		if v == "$env" {
+			if val := os.Getenv(k); val != "" {
+				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, val))
+			}
+		} else {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+	return cmd
+}
+
 // EnsureMCPServersWithTimeout uses runtime configuration to check and run all MCP servers referenced in the flow, with a configurable timeout.
 func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout time.Duration) error {
 	servers := FindMCPServersInFlow(flow)
@@ -68,17 +84,7 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 			return fmt.Errorf("MCP server '%s' config is missing 'command' (stdio only supported; HTTP fallback is disabled)", server)
 		}
 		logger.Printf("Spawning MCP server '%s' (stdio) with command: %s %v", server, info.Command, info.Args)
-		cmd := exec.Command(info.Command, info.Args...)
-		cmd.Env = os.Environ()
-		for k, v := range info.Env {
-			if v == "$env" {
-				if val := os.Getenv(k); val != "" {
-					cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, val))
-				}
-			} else {
-				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-			}
-		}
+		cmd := NewMCPCommand(info)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {

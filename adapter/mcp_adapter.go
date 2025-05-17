@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/awantoch/beemflow/config"
+	mcpmanager "github.com/awantoch/beemflow/mcp"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
 )
@@ -26,8 +27,8 @@ type MCPAdapter struct {
 		stdin  io.WriteCloser
 		stdout io.ReadCloser
 	}
-	mu sync.Mutex // protects clients, processes, pipes
-	// TODO: handle process cleanup for stdio MCP servers (e.g., on shutdown or error)
+	mu     sync.Mutex // protects clients, processes, pipes
+	closed bool       // tracks if Close has been called
 }
 
 // NewMCPAdapter creates a new MCPAdapter with an empty client cache.
@@ -127,17 +128,8 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 			cmd, ok := a.processes[host]
 			a.mu.Unlock()
 			if !ok {
-				cmd = exec.Command(cfg.Command, cfg.Args...)
-				cmd.Env = os.Environ()
-				for k, v := range cfg.Env {
-					if v == "$env" {
-						if val := os.Getenv(k); val != "" {
-							cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, val))
-						}
-					} else {
-						cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-					}
-				}
+				// use centralized command builder to merge env
+				cmd = mcpmanager.NewMCPCommand(cfg)
 				stdin, err := cmd.StdinPipe()
 				if err != nil {
 					return nil, fmt.Errorf("failed to get stdin pipe: %w", err)
@@ -211,4 +203,30 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 
 func (a *MCPAdapter) Manifest() *ToolManifest {
 	return nil
+}
+
+// Close terminates all started stdio MCP server processes and closes their pipes.
+func (a *MCPAdapter) Close() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return nil
+	}
+	a.closed = true
+	var firstErr error
+	for host, cmd := range a.processes {
+		if cmd.Process != nil {
+			if err := cmd.Process.Kill(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		if pipes, ok := a.pipes[host]; ok {
+			_ = pipes.stdin.Close()
+			_ = pipes.stdout.Close()
+		}
+		delete(a.processes, host)
+		delete(a.pipes, host)
+		delete(a.clients, host)
+	}
+	return firstErr
 }

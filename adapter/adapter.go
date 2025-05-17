@@ -9,6 +9,12 @@ type Adapter interface {
 	Manifest() *ToolManifest
 }
 
+// ClosableAdapter is an optional interface for adapters that need cleanup.
+type ClosableAdapter interface {
+	Adapter
+	Close() error
+}
+
 // Registry holds registered adapters and provides lookup and registration methods.
 type Registry struct {
 	adapters map[string]Adapter
@@ -46,4 +52,17 @@ func (r *Registry) LoadAndRegisterTool(name, toolsDir string) error {
 
 func (a *HTTPAdapter) Manifest() *ToolManifest {
 	return a.manifest
+}
+
+// Add CloseAll to Registry to close all adapters that support it.
+func (r *Registry) CloseAll() error {
+	var firstErr error
+	for _, a := range r.adapters {
+		if ca, ok := a.(ClosableAdapter); ok {
+			if err := ca.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
 }
