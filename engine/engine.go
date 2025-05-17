@@ -15,7 +15,9 @@ import (
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/pkg/logger"
+	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/templater"
+	"github.com/google/uuid"
 )
 
 // Engine is the core runtime for executing BeemFlow flows. It manages adapters, templating, event bus, and in-memory state.
@@ -24,6 +26,7 @@ type Engine struct {
 	Templater *templater.Templater
 	EventBus  event.EventBus
 	BlobStore blob.BlobStore
+	Storage   storage.Storage
 	// In-memory state for waiting runs: token -> *PausedRun
 	waiting map[string]*PausedRun
 	mu      sync.Mutex
@@ -39,6 +42,7 @@ type PausedRun struct {
 	StepCtx *StepContext
 	Outputs map[string]any
 	Token   string
+	RunID   uuid.UUID
 }
 
 // NewEngineWithBlobStore creates a new Engine with a custom BlobStore.
@@ -92,6 +96,82 @@ func NewEngine() *Engine {
 	return NewEngineWithBlobStore(bs)
 }
 
+// NewEngineWithStorage creates a new Engine with a custom Storage backend.
+func NewEngineWithStorage(store storage.Storage) *Engine {
+	reg := adapter.NewRegistry()
+	reg.Register(&adapter.CoreAdapter{})
+	reg.Register(adapter.NewMCPAdapter())
+	reg.Register(&adapter.HTTPFetchAdapter{})
+
+	// Load openai.chat manifest
+	var openaiManifest *adapter.ToolManifest
+	manifestPath := filepath.Join("tools", "openai.json")
+	if f, err := os.ReadFile(manifestPath); err == nil {
+		var m adapter.ToolManifest
+		if err := json.Unmarshal(f, &m); err == nil {
+			openaiManifest = &m
+		}
+	}
+	reg.Register(&adapter.OpenAIAdapter{ManifestField: openaiManifest})
+
+	// Auto-register all tools in tools/ directory
+	toolsDir := "tools"
+	entries, err := os.ReadDir(toolsDir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+				continue
+			}
+			name := entry.Name()[:len(entry.Name())-len(".json")]
+			_ = reg.LoadAndRegisterTool(name, toolsDir) // ignore errors for now
+		}
+	}
+
+	eng := &Engine{
+		Adapters:         reg,
+		Templater:        templater.NewTemplater(),
+		EventBus:         event.NewInProcEventBus(),
+		BlobStore:        nil, // or set to a default if needed
+		Storage:          store,
+		waiting:          make(map[string]*PausedRun),
+		completedOutputs: make(map[string]map[string]any),
+	}
+	// Load paused runs from storage
+	if store != nil {
+		if sqlite, ok := store.(*storage.SqliteStorage); ok {
+			paused, err := sqlite.LoadPausedRuns()
+			if err == nil {
+				for token, persist := range paused {
+					// Convert PausedRunPersist to PausedRun
+					pr := &PausedRun{
+						Flow:    persist.Flow,
+						StepIdx: persist.StepIdx,
+						StepCtx: &StepContext{},
+						Outputs: persist.Outputs,
+						Token:   token,
+					}
+					// Convert map[string]any to StepContext
+					b, _ := json.Marshal(persist.StepCtx)
+					_ = json.Unmarshal(b, pr.StepCtx)
+					if persist.RunID != "" {
+						pr.RunID, _ = uuid.Parse(persist.RunID)
+					}
+					eng.waiting[token] = pr
+					// Re-subscribe to event bus
+					eng.EventBus.Subscribe("resume:"+token, func(payload any) {
+						resumeEvent, ok := payload.(map[string]any)
+						if !ok {
+							return
+						}
+						eng.Resume(token, resumeEvent)
+					})
+				}
+			}
+		}
+	}
+	return eng
+}
+
 // Execute now supports pausing and resuming at await_event.
 func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string]any) (map[string]any, error) {
 	if flow == nil {
@@ -131,7 +211,41 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 		Outputs: outputs,
 		Secrets: secretsCopy,
 	}
-	outputs, err := e.executeStepsWithPause(ctx, flow, stepCtx, 0)
+
+	// Create and persist the run
+	var runID uuid.UUID = uuid.New()
+	if e.Storage != nil {
+		run := &model.Run{
+			ID:        runID,
+			FlowName:  flow.Name,
+			Event:     event,
+			Vars:      flow.Vars,
+			Status:    model.RunRunning,
+			StartedAt: time.Now(),
+		}
+		e.Storage.SaveRun(ctx, run)
+	}
+
+	outputs, err := e.executeStepsWithPersistence(ctx, flow, stepCtx, 0, runID)
+
+	// On completion, update run status
+	if e.Storage != nil {
+		status := model.RunSucceeded
+		if err != nil {
+			status = model.RunFailed
+		}
+		run := &model.Run{
+			ID:        runID,
+			FlowName:  flow.Name,
+			Event:     event,
+			Vars:      flow.Vars,
+			Status:    status,
+			StartedAt: time.Now(),
+			EndedAt:   ptrTime(time.Now()),
+		}
+		e.Storage.SaveRun(ctx, run)
+	}
+
 	if err != nil && flow.Catch != nil && len(flow.Catch) > 0 {
 		// Run catch steps if error and catch block exists
 		catchOutputs := map[string]any{}
@@ -146,8 +260,16 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	return outputs, err
 }
 
-// executeStepsWithPause executes steps, pausing at await_event and resuming as needed.
-func (e *Engine) executeStepsWithPause(ctx context.Context, flow *model.Flow, stepCtx *StepContext, startIdx int) (map[string]any, error) {
+// Helper to get pointer to time.Time
+func ptrTime(t time.Time) *time.Time {
+	return &t
+}
+
+// executeStepsWithPersistence executes steps, persisting each step after execution
+func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Flow, stepCtx *StepContext, startIdx int, runID uuid.UUID) (map[string]any, error) {
+	if runID == uuid.Nil {
+		runID = runIDFromContext(ctx)
+	}
 	for i := startIdx; i < len(flow.Steps); i++ {
 		step := &flow.Steps[i]
 		if step.AwaitEvent != nil {
@@ -177,6 +299,13 @@ func (e *Engine) executeStepsWithPause(ctx context.Context, flow *model.Flow, st
 				StepCtx: stepCtx,
 				Outputs: stepCtx.Outputs,
 				Token:   token,
+				RunID:   runID,
+			}
+			// Persist paused run if storage is available
+			if e.Storage != nil {
+				if sqlite, ok := e.Storage.(*storage.SqliteStorage); ok {
+					_ = sqlite.SavePausedRun(token, pausedRunToMap(e.waiting[token]))
+				}
 			}
 			e.mu.Unlock()
 			e.EventBus.Subscribe("resume:"+token, func(payload any) {
@@ -189,6 +318,29 @@ func (e *Engine) executeStepsWithPause(ctx context.Context, flow *model.Flow, st
 			return nil, fmt.Errorf("step %s is waiting for event (await_event pause)", step.ID)
 		}
 		err := e.executeStep(ctx, step, stepCtx, step.ID)
+		// Persist the step after execution
+		if e.Storage != nil {
+			var stepOutputs map[string]any
+			if out, ok := stepCtx.Outputs[step.ID].(map[string]any); ok {
+				stepOutputs = out
+			} else {
+				stepOutputs = nil
+			}
+			srun := &model.StepRun{
+				ID:        uuid.New(),
+				RunID:     runID,
+				StepName:  step.ID,
+				Status:    model.StepSucceeded,
+				StartedAt: time.Now(),
+				EndedAt:   ptrTime(time.Now()),
+				Outputs:   stepOutputs,
+			}
+			if err != nil {
+				srun.Status = model.StepFailed
+				srun.Error = err.Error()
+			}
+			e.Storage.SaveStep(ctx, srun)
+		}
 		if err != nil {
 			return stepCtx.Outputs, err
 		}
@@ -206,6 +358,11 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 		return
 	}
 	delete(e.waiting, token)
+	if e.Storage != nil {
+		if sqlite, ok := e.Storage.(*storage.SqliteStorage); ok {
+			_ = sqlite.DeletePausedRun(token)
+		}
+	}
 	e.mu.Unlock()
 	// Update event context
 	for k, v := range resumeEvent {
@@ -213,7 +370,8 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 	}
 	logger.Debug("Outputs map before resume for token %s: %+v", token, paused.StepCtx.Outputs)
 	// Continue execution from next step
-	outputs, _ := e.executeStepsWithPause(context.Background(), paused.Flow, paused.StepCtx, paused.StepIdx+1)
+	ctx := context.WithValue(context.Background(), "run_id", paused.RunID)
+	outputs, err := e.executeStepsWithPersistence(ctx, paused.Flow, paused.StepCtx, paused.StepIdx+1, paused.RunID)
 	// Merge outputs from before and after resume
 	allOutputs := make(map[string]any)
 	for k, v := range paused.StepCtx.Outputs {
@@ -226,6 +384,23 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 	e.mu.Lock()
 	e.completedOutputs[token] = allOutputs
 	e.mu.Unlock()
+	// Update the run in storage after resume
+	if e.Storage != nil {
+		status := model.RunSucceeded
+		if err != nil {
+			status = model.RunFailed
+		}
+		run := &model.Run{
+			ID:        paused.RunID,
+			FlowName:  paused.Flow.Name,
+			Event:     paused.StepCtx.Event,
+			Vars:      paused.StepCtx.Vars,
+			Status:    status,
+			StartedAt: time.Now(),
+			EndedAt:   ptrTime(time.Now()),
+		}
+		e.Storage.SaveRun(context.Background(), run)
+	}
 }
 
 // GetCompletedOutputs returns and clears the outputs for a completed resumed run.
@@ -435,4 +610,26 @@ func (e *Engine) Close() error {
 		return e.Adapters.CloseAll()
 	}
 	return nil
+}
+
+// Helper to convert PausedRun to map[string]any for storage
+func pausedRunToMap(pr *PausedRun) map[string]any {
+	return map[string]any{
+		"flow":     pr.Flow,
+		"step_idx": pr.StepIdx,
+		"step_ctx": pr.StepCtx,
+		"outputs":  pr.Outputs,
+		"token":    pr.Token,
+		"run_id":   pr.RunID.String(),
+	}
+}
+
+// Add a helper to extract runID from context (or use a global if needed)
+func runIDFromContext(ctx context.Context) uuid.UUID {
+	if v := ctx.Value("run_id"); v != nil {
+		if id, ok := v.(uuid.UUID); ok {
+			return id
+		}
+	}
+	return uuid.Nil
 }

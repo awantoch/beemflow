@@ -59,6 +59,7 @@ type Run struct {
 
 type StepRun struct {
 	ID        uuid.UUID      `json:"id"`
+	RunID     uuid.UUID      `json:"run_id"`
 	StepName  string         `json:"step_name"`
 	Status    StepStatus     `json:"status"`
 	StartedAt time.Time      `json:"started_at"`
