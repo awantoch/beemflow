@@ -55,6 +55,7 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 		// Ensure MCP server process is running and ready
 		baseURL := fmt.Sprintf("http://localhost:%d", info.Port)
 		if os.Getenv("BEEMFLOW_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "[beemflow] MCP config for '%s': %+v\n", server, info)
 			fmt.Fprintf(os.Stderr, "[beemflow] Ensuring MCP server '%s' at %s is running...\n", server, baseURL)
 		}
 		// Check if port is open (server already running)
@@ -63,6 +64,10 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 				fmt.Fprintf(os.Stderr, "[beemflow] MCP server '%s' already listening on port %d\n", server, info.Port)
 			}
 		} else {
+			// Defensive check for InstallCmd
+			if len(info.InstallCmd) == 0 {
+				return fmt.Errorf("MCP server '%s' config is missing 'install_cmd' (got: %+v). Check your config and curated files.", server, info)
+			}
 			// Start MCP server process
 			cmd := exec.Command(info.InstallCmd[0], info.InstallCmd[1:]...)
 			// Inherit current environment and inject required vars

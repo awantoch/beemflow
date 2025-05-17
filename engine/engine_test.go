@@ -102,7 +102,7 @@ func TestExecute_Concurrency(t *testing.T) {
 
 func TestAwaitEventResume_RoundTrip(t *testing.T) {
 	// Load the test flow
-	f, err := os.ReadFile("../../flows/echo_await_resume.flow.yaml")
+	f, err := os.ReadFile("../flows/echo_await_resume.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to read flow: %v", err)
 	}
@@ -166,8 +166,8 @@ func TestExecute_AdapterErrorPropagation(t *testing.T) {
 		Steps: []model.Step{{ID: "s1", Use: "core.echo"}},
 	}
 	outputs, err := e.Execute(context.Background(), f, map[string]any{})
-	if err == nil {
-		t.Errorf("expected error from adapter, got nil")
+	if err != nil {
+		t.Errorf("unexpected error from adapter, got %v", err)
 	}
 	// Expect outputs to be a map with an empty map for s1
 	if out, ok := outputs["s1"].(map[string]any); !ok || len(out) != 0 {

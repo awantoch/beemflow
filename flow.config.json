@@ -1,0 +1,6 @@
+{
+  "mcp_servers": {
+    "airtable": {},
+    "supabase": {}
+  }
+} 

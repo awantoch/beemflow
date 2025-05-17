@@ -2,7 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 type Config struct {
@@ -71,5 +75,64 @@ func LoadConfig(path string) (*Config, error) {
 	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
 		return nil, err
 	}
+
+	// Prepare MCPServers map and save user overrides
+	userOverrides := make(map[string]MCPServerConfig)
+	if cfg.MCPServers != nil {
+		for k, v := range cfg.MCPServers {
+			userOverrides[k] = v
+		}
+	}
+	cfg.MCPServers = make(map[string]MCPServerConfig)
+
+	// Load curated defaults from mcp_servers/*.json
+	files, err := ioutil.ReadDir("mcp_servers")
+	if err == nil {
+		for _, file := range files {
+			if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
+				continue
+			}
+			filename := filepath.Join("mcp_servers", file.Name())
+			if os.Getenv("BEEMFLOW_DEBUG") != "" {
+				fmt.Fprintf(os.Stderr, "[beemflow] Attempting to load curated MCP config: %s\n", filename)
+			}
+			data, err := ioutil.ReadFile(filename)
+			if err != nil {
+				if os.Getenv("BEEMFLOW_DEBUG") != "" {
+					fmt.Fprintf(os.Stderr, "[beemflow] Could not read curated MCP config: %v\n", err)
+				}
+				continue
+			}
+			var curated map[string]MCPServerConfig
+			if err := json.Unmarshal(data, &curated); err != nil {
+				if os.Getenv("BEEMFLOW_DEBUG") != "" {
+					fmt.Fprintf(os.Stderr, "[beemflow] Could not parse curated MCP config: %v\n", err)
+				}
+				continue
+			}
+			for k, v := range curated {
+				cfg.MCPServers[k] = v
+				if os.Getenv("BEEMFLOW_DEBUG") != "" {
+					fmt.Fprintf(os.Stderr, "[beemflow] Loaded curated MCP config for '%s': %+v\n", k, v)
+				}
+			}
+		}
+	}
+
+	// Apply user overrides on top of curated defaults
+	for k, override := range userOverrides {
+		existing, _ := cfg.MCPServers[k]
+		if len(override.InstallCmd) > 0 {
+			existing.InstallCmd = override.InstallCmd
+		}
+		if len(override.RequiredEnv) > 0 {
+			existing.RequiredEnv = override.RequiredEnv
+		}
+		if override.Port != 0 {
+			existing.Port = override.Port
+		}
+		cfg.MCPServers[k] = existing
+	}
+
 	return &cfg, nil
 }

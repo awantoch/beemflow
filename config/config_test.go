@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -85,5 +86,47 @@ func TestLoadConfig_InvalidJSON(t *testing.T) {
 	_, err = LoadConfig(tmp.Name())
 	if err == nil {
 		t.Error("expected error for invalid JSON, got nil")
+	}
+}
+
+func TestLoadConfig_MCPAutoInclude(t *testing.T) {
+	// Write a curated config file for airtable
+	curated := `{"airtable": {"install_cmd": ["npx", "-y", "airtable-mcp-server"], "required_env": ["AIRTABLE_API_KEY"], "port": 3030}}`
+	curatedPath := "mcp_servers/airtable.json"
+	_ = os.MkdirAll("mcp_servers", 0755)
+	err := ioutil.WriteFile(curatedPath, []byte(curated), 0644)
+	if err != nil {
+		t.Fatalf("failed to write curated: %v", err)
+	}
+	defer os.Remove(curatedPath)
+
+	cfgJSON := `{"mcp_servers": {"airtable": {}}}`
+	tmp, err := os.CreateTemp("", "config.json")
+	if err != nil {
+		t.Fatalf("create temp: %v", err)
+	}
+	defer os.Remove(tmp.Name())
+
+	if _, err := tmp.Write([]byte(cfgJSON)); err != nil {
+		t.Fatalf("write temp: %v", err)
+	}
+	tmp.Close()
+
+	c, err := LoadConfig(tmp.Name())
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	mcp, ok := c.MCPServers["airtable"]
+	if !ok {
+		t.Fatalf("airtable not found in merged config")
+	}
+	if len(mcp.InstallCmd) == 0 || mcp.InstallCmd[0] != "npx" {
+		t.Errorf("expected install_cmd from curated, got %+v", mcp.InstallCmd)
+	}
+	if len(mcp.RequiredEnv) == 0 || mcp.RequiredEnv[0] != "AIRTABLE_API_KEY" {
+		t.Errorf("expected required_env from curated, got %+v", mcp.RequiredEnv)
+	}
+	if mcp.Port != 3030 {
+		t.Errorf("expected port 3030 from curated, got %d", mcp.Port)
 	}
 }

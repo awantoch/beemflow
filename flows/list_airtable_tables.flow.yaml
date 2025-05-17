@@ -7,6 +7,6 @@ vars:
 
 steps:
   - id: list_tables
-    use: mcp://airtable-mcp-server/list_tables
+    use: mcp://airtable/list_tables
     with:
       baseId: "{{secrets.AIRTABLE_BASE_ID}}" 

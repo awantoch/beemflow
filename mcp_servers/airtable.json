@@ -1,5 +1,5 @@
 {
-  "airtable-mcp-server": {
+  "airtable": {
     "install_cmd": ["npx", "-y", "airtable-mcp-server"],
     "required_env": ["AIRTABLE_API_KEY"],
     "port": 3030

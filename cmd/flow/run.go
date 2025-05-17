@@ -20,6 +20,9 @@ func newRunCmd() *cobra.Command {
 		Short: "Run a flow",
 		Args:  cobra.RangeArgs(0, 1),
 		Run: func(cmd *cobra.Command, args []string) {
+			if debug {
+				os.Setenv("BEEMFLOW_DEBUG", "1")
+			}
 			// Stub behavior when no file argument is provided
 			if len(args) == 0 {
 				fmt.Println("flow run (stub)")
@@ -27,9 +30,6 @@ func newRunCmd() *cobra.Command {
 			}
 			// Real execution when a file is provided
 			file := args[0]
-			if debug {
-				os.Setenv("BEEMFLOW_DEBUG", "1")
-			}
 			flow, err := parser.ParseFlow(file)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "YAML parse error: %v\n", err)
@@ -44,6 +44,10 @@ func newRunCmd() *cobra.Command {
 					fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 					exit(2)
 				}
+			}
+			if debug {
+				cfgJSON, _ := json.MarshalIndent(cfg.MCPServers, "", "  ")
+				fmt.Fprintf(os.Stderr, "[beemflow] Loaded MCPServers config:\n%s\n", cfgJSON)
 			}
 			if err := mcp.EnsureMCPServersWithTimeout(flow, cfg, mcpStartupTimeout); err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to ensure MCP servers: %v\n", err)

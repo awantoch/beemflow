@@ -176,7 +176,7 @@ func (e *Engine) executeStepsWithPause(ctx context.Context, flow *model.Flow, st
 		}
 		err := e.executeStep(ctx, step, stepCtx, step.ID)
 		if err != nil {
-			return nil, err
+			return stepCtx.Outputs, err
 		}
 	}
 	return stepCtx.Outputs, nil
@@ -274,6 +274,59 @@ func (e *Engine) renderValue(val any, data map[string]any) (any, error) {
 
 // executeStep runs a single step (use/with) and stores output
 func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
+	// Foreach logic: handle steps with Foreach and Do
+	if step.Foreach != "" {
+		s := strings.TrimSpace(step.Foreach)
+		if strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}") {
+			key := strings.TrimSpace(s[2 : len(s)-2])
+			val, ok := stepCtx.Event[key]
+			if !ok {
+				return fmt.Errorf("foreach variable not found: %s", key)
+			}
+			list, ok := val.([]any)
+			if !ok {
+				return fmt.Errorf("foreach variable %s is not a list", key)
+			}
+			if len(list) == 0 {
+				stepCtx.Outputs[stepID] = make(map[string]any)
+				return nil
+			}
+			if step.Parallel {
+				var wg sync.WaitGroup
+				errChan := make(chan error, len(list))
+				for range list {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						for _, inner := range step.Do {
+							if err := e.executeStep(ctx, &inner, stepCtx, inner.ID); err != nil {
+								errChan <- err
+								return
+							}
+						}
+					}()
+				}
+				wg.Wait()
+				close(errChan)
+				for err := range errChan {
+					if err != nil {
+						return err
+					}
+				}
+			} else {
+				for range list {
+					for _, inner := range step.Do {
+						if err := e.executeStep(ctx, &inner, stepCtx, inner.ID); err != nil {
+							return err
+						}
+					}
+				}
+			}
+			stepCtx.Outputs[stepID] = make(map[string]any)
+			return nil
+		}
+		return fmt.Errorf("unsupported foreach expression: %s", step.Foreach)
+	}
 	if step.Use == "" {
 		return nil
 	}
@@ -282,9 +335,11 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		if strings.HasPrefix(step.Use, "mcp://") {
 			adapterInst, ok = e.Adapters.Get("mcp")
 			if !ok {
+				stepCtx.Outputs[stepID] = make(map[string]any)
 				return fmt.Errorf("MCPAdapter not registered")
 			}
 		} else {
+			stepCtx.Outputs[stepID] = make(map[string]any)
 			return fmt.Errorf("adapter not found: %s", step.Use)
 		}
 	}
@@ -336,6 +391,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	}
 	outputs, err := adapterInst.Execute(ctx, inputs)
 	if err != nil {
+		stepCtx.Outputs[stepID] = outputs
 		return fmt.Errorf("step %s failed: %w", stepID, err)
 	}
 	debugLog("[DEBUG] Writing outputs for step %s: %+v", stepID, outputs)

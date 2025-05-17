@@ -12,7 +12,7 @@ steps:
           content: "Generate a tweet about {{event.topic}}"
 
   - id: create_airtable_record
-    use: mcp://airtable-mcp-server/create_record
+    use: mcp://airtable/create_record
     with:
       baseId: "{{secrets.AIRTABLE_BASE_ID}}"
       tableId: "{{secrets.AIRTABLE_TABLE_ID}}"
@@ -35,7 +35,7 @@ steps:
       text: "{{outputs.generate_copy.choices.0.message.content}}"
 
   - id: mark_posted
-    use: mcp://airtable-mcp-server/update_records
+    use: mcp://airtable/update_records
     with:
       baseId: "{{secrets.AIRTABLE_BASE_ID}}"
       tableId: "{{secrets.AIRTABLE_TABLE_ID}}"

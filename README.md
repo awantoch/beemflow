@@ -241,6 +241,14 @@ BeemFlow uses a unified `secrets` scope to inject credentials, API keys, and HMA
    - Ensure the runtime host has AWS credentials (IAM role, or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` and `AWS_REGION` env vars).
    - Secrets are looked up by name under the given prefix, e.g. `{{secrets.DB_PASSWORD}}` fetches the secret at `/beemflow/DB_PASSWORD`.
 
+## ❓ FAQ
+
+### Why does BeemFlow include a `tools/http.fetch.json` manifest but not one for `core.echo`?
+BeemFlow treats `http.fetch` as a first-class, overridable JSON-Schema tool—we ship a manifest so teams can tweak its parameters (timeouts, headers, defaults) or swap in their own fetch implementation. In contrast, `core.echo` is an internal debug adapter with a fixed single `text` parameter and no need for runtime schema changes, so it has no external JSON manifest.
+
+### Why is there an `openai.json` manifest if there's a built-in OpenAI adapter?
+The Go adapter implements the execution logic (auth, HTTP calls, streaming, function-calling), but the JSON manifest declares the full input schema (all parameters, defaults, descriptions) so flows can validate and introspect the exact arguments—and so you can customize the schema without rebuilding the engine.
+
 ## 💼 Runtime Configuration
 
 BeemFlow is driven by a JSON configuration file (default `flow.config.json`). You can also pass a custom path via `flow serve --config path/to/config.json`. Key sections:
@@ -289,15 +297,18 @@ We've curated a set of official MCP server configurations in the `mcp_servers/` 
 - `airtable.json`
 - `supabase.json`
 
-To use one of these, simply copy the desired mapping from the above file into the `mcp_servers` section of your `flow.config.json` (or `runtime.config.json`):
+To use one of these, simply add the desired server key (matching the filename in mcp_servers/) to the `mcp_servers` section of your `flow.config.json`:
 
 ```json
 {
   "mcp_servers": {
-    // Paste mapping here
+    "airtable": {},
+    "supabase": {}
   }
 }
 ```
+
+BeemFlow will automatically load the full configuration from `mcp_servers/<key>.json` for each key you specify. No need to copy or duplicate JSON objects.
 
 ## 🧩 Integration Guide
 
@@ -1049,14 +1060,4 @@ Reference outputs from previous steps using their `id`:
 
 BeemFlow is designed for extensibility and practical iteration. Some features are intentionally stubbed or in-memory only, with clear extension points:
 
-- **Adapters:** Easy to add new tool adapters. See `adapter/`.
-- **Templating:** Custom helpers can be registered; see `Templater` in `templater/templater.go`. Consider [sprig](https://github.com/Masterminds/sprig) for more helpers in the future.
-- **MCP Client:** HTTP transport is supported; stdio is a placeholder for future work.
-- **Storage, Blob, EventBus:** In-memory is the default. Pluggable for Postgres, S3, Redis, etc. (see `storage/`, `blob/`, `event/`).
-- **CronScheduler:** Stubbed for now; see `engine/engine.go` for extension points.
-- **CLI & HTTP API:** Some commands and endpoints (e.g., `flow serve`, `/graph`, `/validate`, `/test`) are stubs, planned for future releases.
-- **Tests:** Some commented-out tests are placeholders for future coverage.
-
-Want to contribute or extend? Check the code comments for TODOs and extension points, or open an issue/PR!
-
---- 
+- **Adapters:** Easy to add new tool adapters. See `

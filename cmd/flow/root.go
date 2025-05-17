@@ -19,7 +19,7 @@ var (
 // NewRootCmd creates the root 'flow' command with persistent flags and subcommands.
 func NewRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{Use: "flow"}
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "runtime.config.json", "Path to runtime config JSON")
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "flow.config.json", "Path to flow config JSON")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logs")
 	rootCmd.PersistentFlags().DurationVar(&mcpStartupTimeout, "mcp-timeout", 60*time.Second, "Timeout for MCP server startup")
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
