@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -12,11 +11,10 @@ import (
 
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/pkg/logger"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 )
-
-var logger = log.New(os.Stderr, "[beemflow] ", log.LstdFlags)
 
 // FindMCPServersInFlow scans a Flow for MCP tool usage and returns a set of required MCP server addresses.
 func FindMCPServersInFlow(flow *model.Flow) map[string]bool {
@@ -72,7 +70,7 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 		missingVars := []string{}
 		for k := range info.Env {
 			val := os.Getenv(k)
-			logger.Printf("MCP server '%s' expects env %s", server, k)
+			logger.Info("MCP server '%s' expects env %s", server, k)
 			if val == "" {
 				missingVars = append(missingVars, k)
 			}
@@ -83,19 +81,17 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 		if info.Command == "" {
 			return fmt.Errorf("MCP server '%s' config is missing 'command' (stdio only supported; HTTP fallback is disabled)", server)
 		}
-		logger.Printf("Spawning MCP server '%s' (stdio) with command: %s %v", server, info.Command, info.Args)
+		logger.Info("Spawning MCP server '%s' (stdio) with command: %s %v", server, info.Command, info.Args)
 		cmd := NewMCPCommand(info)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
-			logger.Printf("ERROR: Failed to start MCP server %s: %v", server, err)
-			logger.Printf("Command: %s %v", info.Command, info.Args)
-			logger.Printf("Env: %v", cmd.Env)
+			logger.Error("Failed to start MCP server %s: %v", server, err)
+			logger.Error("Command: %s %v", info.Command, info.Args)
+			logger.Error("Env: %v", cmd.Env)
 			return fmt.Errorf("failed to start MCP server %s: %v", server, err)
 		}
-		if os.Getenv("BEEMFLOW_DEBUG") != "" {
-			logger.Printf("MCP server '%s' (stdio) started", server)
-		}
+		logger.Debug("MCP server '%s' (stdio) started", server)
 	}
 	return nil
 }

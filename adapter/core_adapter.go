@@ -19,7 +19,7 @@ func (a *CoreAdapter) ID() string {
 func (a *CoreAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
 	if text, ok := inputs["text"].(string); ok {
 		if os.Getenv("BEEMFLOW_DEBUG") != "" {
-			logger.Logger.Println(text)
+			logger.Info("%s", text)
 		}
 	}
 	return inputs, nil

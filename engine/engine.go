@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/pkg/logger"
 	"github.com/awantoch/beemflow/templater"
 )
 
@@ -86,7 +86,7 @@ func NewEngineWithBlobStore(blobStore blob.BlobStore) *Engine {
 func NewEngine() *Engine {
 	bs, err := blob.NewDefaultBlobStore(nil)
 	if err != nil {
-		log.Printf("[WARN] Failed to create default blob store: %v, using in-memory fallback", err)
+		logger.Warn("Failed to create default blob store: %v, using in-memory fallback", err)
 		bs = nil // or fallback to a stub if you want
 	}
 	return NewEngineWithBlobStore(bs)
@@ -198,7 +198,7 @@ func (e *Engine) executeStepsWithPause(ctx context.Context, flow *model.Flow, st
 
 // Resume resumes a paused run with the given token and event.
 func (e *Engine) Resume(token string, resumeEvent map[string]any) {
-	debugLog("[DEBUG] Resume called for token %s with event: %+v", token, resumeEvent)
+	logger.Debug("Resume called for token %s with event: %+v", token, resumeEvent)
 	e.mu.Lock()
 	paused, ok := e.waiting[token]
 	if !ok {
@@ -211,7 +211,7 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 	for k, v := range resumeEvent {
 		paused.StepCtx.Event[k] = v
 	}
-	debugLog("[DEBUG] Outputs map before resume for token %s: %+v", token, paused.StepCtx.Outputs)
+	logger.Debug("Outputs map before resume for token %s: %+v", token, paused.StepCtx.Outputs)
 	// Continue execution from next step
 	outputs, _ := e.executeStepsWithPause(context.Background(), paused.Flow, paused.StepCtx, paused.StepIdx+1)
 	// Merge outputs from before and after resume
@@ -222,7 +222,7 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 	for k, v := range outputs {
 		allOutputs[k] = v
 	}
-	debugLog("[DEBUG] Outputs map after resume for token %s: %+v", token, allOutputs)
+	logger.Debug("Outputs map after resume for token %s: %+v", token, allOutputs)
 	e.mu.Lock()
 	e.completedOutputs[token] = allOutputs
 	e.mu.Unlock()
@@ -230,11 +230,11 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 
 // GetCompletedOutputs returns and clears the outputs for a completed resumed run.
 func (e *Engine) GetCompletedOutputs(token string) map[string]any {
-	debugLog("[DEBUG] GetCompletedOutputs called for token %s", token)
+	logger.Debug("GetCompletedOutputs called for token %s", token)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	outputs := e.completedOutputs[token]
-	debugLog("[DEBUG] GetCompletedOutputs for token %s returns: %+v", token, outputs)
+	logger.Debug("GetCompletedOutputs for token %s returns: %+v", token, outputs)
 	delete(e.completedOutputs, token)
 	return outputs
 }
@@ -396,7 +396,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	// Debug: log fully rendered payload for openai.chat
 	if step.Use == "openai" {
 		payload, _ := json.Marshal(inputs)
-		debugLog("[debug] openai.chat payload: %s", payload)
+		logger.Debug("openai.chat payload: %s", payload)
 	}
 	if strings.HasPrefix(step.Use, "mcp://") {
 		inputs["__use"] = step.Use
@@ -406,9 +406,9 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		stepCtx.Outputs[stepID] = outputs
 		return fmt.Errorf("step %s failed: %w", stepID, err)
 	}
-	debugLog("[DEBUG] Writing outputs for step %s: %+v", stepID, outputs)
+	logger.Debug("Writing outputs for step %s: %+v", stepID, outputs)
 	stepCtx.Outputs[stepID] = outputs
-	debugLog("[DEBUG] Outputs map after step %s: %+v", stepID, stepCtx.Outputs)
+	logger.Debug("Outputs map after step %s: %+v", stepID, stepCtx.Outputs)
 	return nil
 }
 
@@ -427,13 +427,6 @@ type CronScheduler struct {
 
 func NewCronScheduler() *CronScheduler {
 	return &CronScheduler{}
-}
-
-// debugLog prints debug logs only if BEEMFLOW_DEBUG is set.
-func debugLog(format string, v ...any) {
-	if os.Getenv("BEEMFLOW_DEBUG") != "" {
-		log.Printf(format, v...)
-	}
 }
 
 // Close cleans up all adapters and resources managed by the Engine.

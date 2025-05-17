@@ -25,9 +25,6 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		// Load environment variables from .env file, if present
 		_ = godotenv.Load()
-		if debug {
-			os.Setenv("BEEMFLOW_DEBUG", "1")
-		}
 	}
 	rootCmd.AddCommand(
 		newServeCmd(),

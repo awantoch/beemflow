@@ -21,17 +21,17 @@ func newGraphCmd() *cobra.Command {
 			file := args[0]
 			flow, err := parser.ParseFlow(file)
 			if err != nil {
-				logger.Logger.Printf("YAML parse error: %v\n", err)
+				logger.Error("YAML parse error: %v\n", err)
 				os.Exit(1)
 			}
 			diagram, err := graphviz.ExportMermaid(flow)
 			if err != nil {
-				logger.Logger.Printf("Graph export error: %v\n", err)
+				logger.Error("Graph export error: %v\n", err)
 				os.Exit(2)
 			}
 			if outPath != "" {
 				if err := os.WriteFile(outPath, []byte(diagram), 0644); err != nil {
-					logger.Logger.Printf("Failed to write graph to %s: %v\n", outPath, err)
+					logger.Error("Failed to write graph to %s: %v\n", outPath, err)
 					os.Exit(3)
 				}
 			} else {

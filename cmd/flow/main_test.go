@@ -30,15 +30,15 @@ func captureStderrExit(f func()) (string, int) {
 	origExit := exit
 	r, w, _ := os.Pipe()
 	os.Stderr = w
-	logger.Logger.SetOutput(w)
+	logger.SetOutput(w)
+	var buf bytes.Buffer
+	var out string
 	exitCode := 0
 	exit = func(code int) {
 		exitCode = code
 		w.Close()
 		panic("exit")
 	}
-	var buf bytes.Buffer
-	var out string
 	func() {
 		defer func() {
 			recover()
@@ -48,7 +48,7 @@ func captureStderrExit(f func()) (string, int) {
 	w.Close()
 	io.Copy(&buf, r)
 	os.Stderr = origStderr
-	logger.Logger.SetOutput(origStderr)
+	logger.SetOutput(origStderr)
 	exit = origExit
 	out = buf.String()
 	return out, exitCode

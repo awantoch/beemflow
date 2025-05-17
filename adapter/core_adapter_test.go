@@ -18,13 +18,13 @@ func TestCoreAdapter(t *testing.T) {
 	defer os.Unsetenv("BEEMFLOW_DEBUG")
 	// capture logger output
 	r, w, _ := os.Pipe()
-	origOut := os.Stderr
-	logger.Logger.SetOutput(w)
+	orig := os.Stderr
+	logger.SetOutput(w)
 
 	in := map[string]any{"text": "echoed"}
 	out, err := a.Execute(context.Background(), in)
 	w.Close()
-	logger.Logger.SetOutput(origOut)
+	logger.SetOutput(orig)
 
 	buf, _ := ioutil.ReadAll(r)
 	if string(buf) == "" || string(buf) == "\n" {

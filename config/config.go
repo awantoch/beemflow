@@ -3,11 +3,10 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
-)
 
-var logger = log.New(os.Stderr, "[beemflow] ", log.LstdFlags)
+	"github.com/awantoch/beemflow/pkg/logger"
+)
 
 type Config struct {
 	Storage    StorageConfig              `json:"storage"`
@@ -69,9 +68,7 @@ type SecretsProvider interface {
 }
 
 func LoadConfig(path string) (*Config, error) {
-	if os.Getenv("BEEMFLOW_DEBUG") != "" {
-		logger.Printf("Entered LoadConfig with path: %s", path)
-	}
+	logger.Debug("Entered LoadConfig with path: %s", path)
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -81,10 +78,7 @@ func LoadConfig(path string) (*Config, error) {
 	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
 		return nil, err
 	}
-	if os.Getenv("BEEMFLOW_DEBUG") != "" {
-		b, _ := json.MarshalIndent(cfg, "", "  ")
-		logger.Printf("Raw loaded config after decode:\n%s", string(b))
-	}
+	logger.Debug("Raw loaded config after decode: %+v", cfg)
 	// No legacy merging needed
 	return &cfg, nil
 }

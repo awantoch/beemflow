@@ -18,12 +18,12 @@ func newValidateCmd() *cobra.Command {
 			file := args[0]
 			flow, err := parser.ParseFlow(file)
 			if err != nil {
-				logger.Logger.Printf("YAML parse error: %v\n", err)
+				logger.Error("YAML parse error: %v\n", err)
 				exit(1)
 			}
 			err = parser.ValidateFlow(flow, "../../beemflow.schema.json")
 			if err != nil {
-				logger.Logger.Printf("Schema validation error: %v\n", err)
+				logger.Error("Schema validation error: %v\n", err)
 				exit(2)
 			}
 			fmt.Println("Validation OK: flow is valid!")

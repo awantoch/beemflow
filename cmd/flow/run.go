@@ -21,9 +21,6 @@ func newRunCmd() *cobra.Command {
 		Short: "Run a flow",
 		Args:  cobra.RangeArgs(0, 1),
 		Run: func(cmd *cobra.Command, args []string) {
-			if debug {
-				os.Setenv("BEEMFLOW_DEBUG", "1")
-			}
 			// Stub behavior when no file argument is provided
 			if len(args) == 0 {
 				fmt.Println("flow run (stub)")
@@ -33,37 +30,37 @@ func newRunCmd() *cobra.Command {
 			file := args[0]
 			flow, err := parser.ParseFlow(file)
 			if err != nil {
-				logger.Logger.Printf("YAML parse error: %v\n", err)
+				logger.Error("YAML parse error: %v", err)
 				exit(1)
 			}
 			cfg, err := config.LoadConfig(configPath)
 			if err != nil {
 				if os.IsNotExist(err) {
-					logger.Logger.Printf("config file %s not found, using defaults\n", configPath)
+					logger.Warn("config file %s not found, using defaults", configPath)
 					cfg = &config.Config{}
 				} else {
-					logger.Logger.Printf("Failed to load config: %v\n", err)
+					logger.Error("Failed to load config: %v", err)
 					exit(2)
 				}
 			}
 			if debug {
 				cfgJSON, _ := json.MarshalIndent(cfg.MCPServers, "", "  ")
-				logger.Logger.Printf("Loaded MCPServers config:\n%s\n", cfgJSON)
+				logger.Debug("Loaded MCPServers config:\n%s\n", cfgJSON)
 			}
 			if err := mcp.EnsureMCPServersWithTimeout(flow, cfg, mcpStartupTimeout); err != nil {
-				logger.Logger.Printf("Failed to ensure MCP servers: %v\n", err)
+				logger.Error("Failed to ensure MCP servers: %v", err)
 				exit(3)
 			}
 			event, err := loadEvent(eventPath, eventJSON)
 			if err != nil {
-				logger.Logger.Printf("Failed to load event: %v\n", err)
+				logger.Error("Failed to load event: %v", err)
 				exit(4)
 			}
 			eng := engine.NewEngine()
 			defer eng.Close()
 			outputs, err := eng.Execute(cmd.Context(), flow, event)
 			if err != nil {
-				logger.Logger.Printf("Flow execution error: %v\n", err)
+				logger.Error("Flow execution error: %v", err)
 				exit(5)
 			}
 
@@ -71,8 +68,8 @@ func newRunCmd() *cobra.Command {
 				// Print all outputs as JSON for debugging
 				outJSONBytes, _ := json.MarshalIndent(outputs, "", "  ")
 				fmt.Println(string(outJSONBytes))
-				logger.Logger.Println("Flow executed successfully.")
-				logger.Logger.Printf("Step outputs:\n%s\n", string(outJSONBytes))
+				logger.Info("Flow executed successfully.")
+				logger.Info("Step outputs:\n%s\n", string(outJSONBytes))
 			} else {
 				// Only print the output of core.echo steps (by convention, steps with id 'print' or use 'core.echo')
 				for _, stepOutput := range outputs {
