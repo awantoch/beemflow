@@ -1,4 +1,5 @@
 # Binaries
+flow
 *.exe
 *.exe~
 *.dll

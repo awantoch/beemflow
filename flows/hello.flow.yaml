@@ -4,4 +4,4 @@ steps:
   greet:
     use: core.echo
     with:
-      text: "Hello, world!" 
+      text: "Hello, world, I'm BeemFlow!" 

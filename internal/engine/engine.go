@@ -29,12 +29,12 @@ func NewEngine() *Engine {
 	}
 }
 
-func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string]any) error {
+func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string]any) (map[string]any, error) {
 	if flow == nil {
-		return nil
+		return nil, nil
 	}
 	if flow.Steps == nil || len(flow.Steps) == 0 {
-		return nil
+		return nil, nil
 	}
 	stepCtx := &StepContext{
 		Event:   event,
@@ -53,7 +53,7 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 				"outputs": stepCtx.Outputs,
 			})
 			if err != nil {
-				return fmt.Errorf("template error in step %s: %w", label, err)
+				return nil, fmt.Errorf("template error in step %s: %w", label, err)
 			}
 			if cond == "false" || cond == "0" || cond == "" {
 				continue
@@ -67,12 +67,12 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 				"outputs": stepCtx.Outputs,
 			})
 			if err != nil {
-				return fmt.Errorf("template error in foreach %s: %w", label, err)
+				return nil, fmt.Errorf("template error in foreach %s: %w", label, err)
 			}
 			// For now, expect arrVal to be a JSON array string
 			var arr []any
 			if err := json.Unmarshal([]byte(arrVal), &arr); err != nil {
-				return fmt.Errorf("foreach expects JSON array, got: %s", arrVal)
+				return nil, fmt.Errorf("foreach expects JSON array, got: %s", arrVal)
 			}
 			for _, item := range arr {
 				for _, subStep := range step.Do {
@@ -90,7 +90,7 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 						loopCtx.Vars[step.As] = item
 					}
 					if err := e.executeStepWithWaitAndAwait(ctx, &subStep, loopCtx, label); err != nil {
-						return err
+						return nil, err
 					}
 				}
 			}
@@ -118,7 +118,7 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 			close(errCh)
 			for err := range errCh {
 				if err != nil {
-					return err
+					return nil, err
 				}
 			}
 			continue
@@ -158,15 +158,15 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 				catchCtx.Vars["error"] = lastErr.Error()
 				for catchLabel, catchStep := range flow.Catch {
 					if err := e.executeStepWithWaitAndAwait(ctx, &catchStep, catchCtx, catchLabel); err != nil {
-						return fmt.Errorf("catch step %s failed: %w", catchLabel, err)
+						return nil, fmt.Errorf("catch step %s failed: %w", catchLabel, err)
 					}
 				}
-				return nil
+				return stepCtx.Outputs, nil
 			}
-			return lastErr
+			return nil, lastErr
 		}
 	}
-	return nil
+	return stepCtx.Outputs, nil
 }
 
 // executeStepWithWaitAndAwait handles wait and await_event before running the step
