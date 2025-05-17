@@ -126,11 +126,34 @@ func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (
 	// Execute request
 	switch method {
 	case "GET":
-		body, err := HTTPGetRaw(ctx, url, headers)
+		// Perform GET, then try to unmarshal JSON
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"body": body}, nil
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		req.Header.Set("Accept", "application/json, text/*;q=0.9, */*;q=0.8")
+		resp, err := defaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("HTTP GET %s: status %d: %s", url, resp.StatusCode, string(data))
+		}
+		// Try JSON unmarshal
+		var parsed any
+		if err := json.Unmarshal(data, &parsed); err == nil {
+			return map[string]any{"body": parsed}, nil
+		}
+		// Fallback to raw string
+		return map[string]any{"body": string(data)}, nil
 	case "POST", "PUT", "PATCH", "DELETE":
 		// JSON body if provided
 		var payload any
