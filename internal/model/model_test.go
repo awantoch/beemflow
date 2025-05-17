@@ -15,7 +15,7 @@ on: cli.manual
 vars:
   num: 1
 steps:
-  s1:
+  - id: s1
     use: core.echo
     with:
       key: val
@@ -23,11 +23,11 @@ steps:
     foreach: "{{list}}"
     as: item
     do:
-      - use: core.echo
+      - id: d1
+        use: core.echo
         with:
           text: "{{item}}"
-    parallel:
-      - s2
+    parallel: true
     retry:
       attempts: 3
       delay_sec: 2
@@ -61,10 +61,10 @@ catch:
 		t.Errorf("expected Vars len 1, got %d", len(f.Vars))
 	}
 
-	step, ok := f.Steps["s1"]
-	if !ok {
+	if len(f.Steps) == 0 || f.Steps[0].ID != "s1" {
 		t.Fatalf("expected step 's1' in Steps")
 	}
+	step := f.Steps[0]
 	if step.Use != "core.echo" {
 		t.Errorf("expected step.Use 'core.echo', got '%s'", step.Use)
 	}
@@ -82,8 +82,8 @@ catch:
 	} else if step.Do[0].Use != "core.echo" {
 		t.Errorf("expected Do[0].Use 'core.echo', got '%s'", step.Do[0].Use)
 	}
-	if len(step.Parallel) != 1 || step.Parallel[0] != "s2" {
-		t.Errorf("expected step.Parallel ['s2'], got %#v", step.Parallel)
+	if !step.Parallel {
+		t.Errorf("expected step.Parallel true, got false")
 	}
 	if step.Retry == nil || step.Retry.Attempts != 3 || step.Retry.DelaySec != 2 {
 		t.Errorf("expected Retry{3,2}, got %#v", step.Retry)
@@ -110,13 +110,14 @@ catch:
 
 func TestStep_AllFieldsSet(t *testing.T) {
 	s := model.Step{
+		ID:         "s1",
 		Use:        "core.echo",
 		With:       map[string]interface{}{"text": "hi"},
 		If:         "x > 0",
 		Foreach:    "{{list}}",
 		As:         "item",
-		Do:         []model.Step{{Use: "core.echo", With: map[string]interface{}{"text": "{{item}}"}}},
-		Parallel:   []string{"s2"},
+		Do:         []model.Step{{ID: "d1", Use: "core.echo", With: map[string]interface{}{"text": "{{item}}"}}},
+		Parallel:   true,
 		Retry:      &model.RetrySpec{Attempts: 2, DelaySec: 1},
 		AwaitEvent: &model.AwaitEventSpec{Source: "bus", Match: map[string]interface{}{"key": "value"}, Timeout: "10s"},
 		Wait:       &model.WaitSpec{Seconds: 5, Until: "2025-01-01"},
@@ -127,7 +128,7 @@ func TestStep_AllFieldsSet(t *testing.T) {
 	if len(s.Do) != 1 || s.Do[0].Use != "core.echo" {
 		t.Errorf("step.Do not set correctly: %+v", s.Do)
 	}
-	if len(s.Parallel) != 1 || s.Parallel[0] != "s2" {
+	if !s.Parallel {
 		t.Errorf("step.Parallel not set correctly: %+v", s.Parallel)
 	}
 	if s.Retry == nil || s.Retry.Attempts != 2 || s.Retry.DelaySec != 1 {
@@ -142,7 +143,7 @@ func TestStep_AllFieldsSet(t *testing.T) {
 }
 
 func TestStep_OnlyRequiredFields(t *testing.T) {
-	s := model.Step{Use: "core.echo"}
+	s := model.Step{ID: "s1", Use: "core.echo"}
 	if s.Use != "core.echo" {
 		t.Errorf("expected Use 'core.echo', got '%s'", s.Use)
 	}
@@ -154,7 +155,7 @@ func TestStep_UnknownFieldsIgnored(t *testing.T) {
 }
 
 func TestFlow_EmptyStepsCatch(t *testing.T) {
-	f := model.Flow{Name: "empty", Steps: map[string]model.Step{}, Catch: map[string]model.Step{}}
+	f := model.Flow{Name: "empty", Steps: []model.Step{}, Catch: map[string]model.Step{}}
 	if len(f.Steps) != 0 {
 		t.Errorf("expected 0 steps, got %d", len(f.Steps))
 	}
@@ -171,9 +172,7 @@ func TestStep_NilAndEmptySubfields(t *testing.T) {
 	if s.Do != nil && len(s.Do) != 0 {
 		t.Errorf("expected Do nil or empty, got %+v", s.Do)
 	}
-	if s.Parallel != nil && len(s.Parallel) != 0 {
-		t.Errorf("expected Parallel nil or empty, got %+v", s.Parallel)
-	}
+	// Parallel is a bool, so no nil/len check needed
 }
 
 func TestRetryAwaitWait_EdgeCases(t *testing.T) {

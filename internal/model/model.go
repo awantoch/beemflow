@@ -2,6 +2,7 @@ package model
 
 import (
 	"time"
+
 	"github.com/google/uuid"
 )
 
@@ -10,18 +11,20 @@ type Flow struct {
 	Version string                 `yaml:"version,omitempty" json:"version,omitempty"`
 	On      interface{}            `yaml:"on" json:"on"`
 	Vars    map[string]interface{} `yaml:"vars,omitempty" json:"vars,omitempty"`
-	Steps   map[string]Step        `yaml:"steps" json:"steps"`
+	Steps   []Step                 `yaml:"steps" json:"steps"`
 	Catch   map[string]Step        `yaml:"catch,omitempty" json:"catch,omitempty"`
 }
 
 type Step struct {
+	ID         string                 `yaml:"id" json:"id"`
 	Use        string                 `yaml:"use,omitempty" json:"use,omitempty"`
 	With       map[string]interface{} `yaml:"with,omitempty" json:"with,omitempty"`
+	DependsOn  []string               `yaml:"depends_on,omitempty" json:"depends_on,omitempty"`
+	Parallel   bool                   `yaml:"parallel,omitempty" json:"parallel,omitempty"`
 	If         string                 `yaml:"if,omitempty" json:"if,omitempty"`
 	Foreach    string                 `yaml:"foreach,omitempty" json:"foreach,omitempty"`
 	As         string                 `yaml:"as,omitempty" json:"as,omitempty"`
 	Do         []Step                 `yaml:"do,omitempty" json:"do,omitempty"`
-	Parallel   []string               `yaml:"parallel,omitempty" json:"parallel,omitempty"`
 	Retry      *RetrySpec             `yaml:"retry,omitempty" json:"retry,omitempty"`
 	AwaitEvent *AwaitEventSpec        `yaml:"await_event,omitempty" json:"await_event,omitempty"`
 	Wait       *WaitSpec              `yaml:"wait,omitempty" json:"wait,omitempty"`
@@ -44,24 +47,24 @@ type WaitSpec struct {
 }
 
 type Run struct {
-	ID        uuid.UUID         `json:"id"`
-	FlowName  string            `json:"flow_name"`
-	Event     map[string]any    `json:"event"`
-	Vars      map[string]any    `json:"vars"`
-	Status    RunStatus         `json:"status"`
-	StartedAt time.Time         `json:"started_at"`
-	EndedAt   *time.Time        `json:"ended_at,omitempty"`
-	Steps     []StepRun         `json:"steps"`
+	ID        uuid.UUID      `json:"id"`
+	FlowName  string         `json:"flow_name"`
+	Event     map[string]any `json:"event"`
+	Vars      map[string]any `json:"vars"`
+	Status    RunStatus      `json:"status"`
+	StartedAt time.Time      `json:"started_at"`
+	EndedAt   *time.Time     `json:"ended_at,omitempty"`
+	Steps     []StepRun      `json:"steps"`
 }
 
 type StepRun struct {
-	ID        uuid.UUID         `json:"id"`
-	StepName  string            `json:"step_name"`
-	Status    StepStatus        `json:"status"`
-	StartedAt time.Time         `json:"started_at"`
-	EndedAt   *time.Time        `json:"ended_at,omitempty"`
-	Outputs   map[string]any    `json:"outputs,omitempty"`
-	Error     string            `json:"error,omitempty"`
+	ID        uuid.UUID      `json:"id"`
+	StepName  string         `json:"step_name"`
+	Status    StepStatus     `json:"status"`
+	StartedAt time.Time      `json:"started_at"`
+	EndedAt   *time.Time     `json:"ended_at,omitempty"`
+	Outputs   map[string]any `json:"outputs,omitempty"`
+	Error     string         `json:"error,omitempty"`
 }
 
 type RunStatus string

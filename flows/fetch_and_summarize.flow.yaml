@@ -1,0 +1,25 @@
+name: fetch_and_summarize
+on: cli.manual
+vars:
+  fetch_url: "https://raw.githubusercontent.com/awantoch/beemflow/refs/heads/main/README.md"
+steps:
+  - id: fetch_page
+    use: http.fetch
+    with:
+      url: "{{.vars.fetch_url}}"
+  - id: summarize
+    use: openai.chat
+    with:
+      model: "o4-mini"
+      api_key: "{{.secrets.OPENAI_API_KEY}}"
+      messages:
+        - role: system
+          content: "You are a concise assistant. Summarize the following web page in a simple paragraph."
+        - role: user
+          content: "{{.outputs.fetch_page.body}}"
+    depends_on: [fetch_page]
+  - id: print
+    use: core.echo
+    with:
+      text: "Summary: {{ (index .outputs.summarize.choices 0).message.content }}"
+    depends_on: [summarize] 

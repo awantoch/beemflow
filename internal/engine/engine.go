@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +25,22 @@ func NewEngine() *Engine {
 	reg := adapter.NewRegistry()
 	reg.Register(&adapter.CoreEchoAdapter{})
 	reg.Register(adapter.NewMCPAdapter())
+	reg.Register(&adapter.HTTPFetchAdapter{})
+	reg.Register(&adapter.OpenAIChatAdapter{})
+
+	// Auto-register all tools in tools/ directory
+	toolsDir := "tools"
+	entries, err := os.ReadDir(toolsDir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+				continue
+			}
+			name := entry.Name()[:len(entry.Name())-len(".json")]
+			_ = reg.LoadAndRegisterTool(name, toolsDir) // ignore errors for now
+		}
+	}
+
 	return &Engine{
 		Adapters:  reg,
 		Templater: templater.NewTemplater(),
@@ -36,141 +54,96 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	if flow.Steps == nil || len(flow.Steps) == 0 {
 		return nil, nil
 	}
+
+	// Build step map for id lookup
+	stepMap := make(map[string]*model.Step)
+	for i := range flow.Steps {
+		step := &flow.Steps[i]
+		if step.ID == "" {
+			return nil, fmt.Errorf("step at index %d missing id", i)
+		}
+		if _, exists := stepMap[step.ID]; exists {
+			return nil, fmt.Errorf("duplicate step id: %s", step.ID)
+		}
+		stepMap[step.ID] = step
+	}
+
+	// Track completed steps
+	completed := make(map[string]bool)
+	outputs := make(map[string]any)
+	secrets := map[string]string{}
+	for _, env := range os.Environ() {
+		if eq := strings.Index(env, "="); eq != -1 {
+			k := env[:eq]
+			v := env[eq+1:]
+			secrets[k] = v
+		}
+	}
 	stepCtx := &StepContext{
 		Event:   event,
 		Vars:    flow.Vars,
-		Outputs: make(map[string]any),
+		Outputs: outputs,
+		Secrets: secrets,
 	}
-	for label, step := range flow.Steps {
-		if step.Use == "" && step.Parallel == nil && step.Foreach == "" {
-			continue
-		}
-		// IF logic
-		if step.If != "" {
-			cond, err := e.Templater.Render(step.If, map[string]any{
-				"event":   stepCtx.Event,
-				"vars":    stepCtx.Vars,
-				"outputs": stepCtx.Outputs,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("template error in step %s: %w", label, err)
-			}
-			if cond == "false" || cond == "0" || cond == "" {
+
+	totalSteps := len(flow.Steps)
+	for len(completed) < totalSteps {
+		ready := []*model.Step{}
+		for i := range flow.Steps {
+			step := &flow.Steps[i]
+			if completed[step.ID] {
 				continue
 			}
-		}
-		// FOREACH logic
-		if step.Foreach != "" {
-			arrVal, err := e.Templater.Render(step.Foreach, map[string]any{
-				"event":   stepCtx.Event,
-				"vars":    stepCtx.Vars,
-				"outputs": stepCtx.Outputs,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("template error in foreach %s: %w", label, err)
-			}
-			// For now, expect arrVal to be a JSON array string
-			var arr []any
-			if err := json.Unmarshal([]byte(arrVal), &arr); err != nil {
-				return nil, fmt.Errorf("foreach expects JSON array, got: %s", arrVal)
-			}
-			for _, item := range arr {
-				for _, subStep := range step.Do {
-					// Set loop var in context
-					loopCtx := &StepContext{
-						Event:   stepCtx.Event,
-						Vars:    stepCtx.Vars,
-						Outputs: stepCtx.Outputs,
-					}
-					if step.As != "" {
-						loopCtx.Vars = make(map[string]any)
-						for k, v := range stepCtx.Vars {
-							loopCtx.Vars[k] = v
-						}
-						loopCtx.Vars[step.As] = item
-					}
-					if err := e.executeStepWithWaitAndAwait(ctx, &subStep, loopCtx, label); err != nil {
-						return nil, err
-					}
+			// Check dependencies
+			depsMet := true
+			for _, dep := range step.DependsOn {
+				if !completed[dep] {
+					depsMet = false
+					break
 				}
 			}
-			continue
+			if depsMet {
+				ready = append(ready, step)
+			}
 		}
-		// PARALLEL logic
-		if step.Parallel != nil && len(step.Parallel) > 0 {
-			var wg sync.WaitGroup
-			errCh := make(chan error, len(step.Parallel))
-			for _, p := range step.Parallel {
+		if len(ready) == 0 {
+			return nil, fmt.Errorf("circular or unsatisfiable dependencies detected")
+		}
+		var wg sync.WaitGroup
+		errCh := make(chan error, len(ready))
+		for _, step := range ready {
+			if step.Parallel {
 				wg.Add(1)
-				go func(parLabel string) {
+				go func(s *model.Step) {
 					defer wg.Done()
-					parStep, ok := flow.Steps[parLabel]
-					if !ok {
-						errCh <- fmt.Errorf("parallel step not found: %s", parLabel)
+					err := e.executeStepWithWaitAndAwait(ctx, s, stepCtx, s.ID)
+					if err != nil {
+						errCh <- fmt.Errorf("step %s failed: %w", s.ID, err)
 						return
 					}
-					if err := e.executeStepWithWaitAndAwait(ctx, &parStep, stepCtx, parLabel); err != nil {
-						errCh <- err
-					}
-				}(p)
-			}
-			wg.Wait()
-			close(errCh)
-			for err := range errCh {
+					completed[s.ID] = true
+				}(step)
+			} else {
+				err := e.executeStepWithWaitAndAwait(ctx, step, stepCtx, step.ID)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("step %s failed: %w", step.ID, err)
 				}
-			}
-			continue
-		}
-		// RETRY logic
-		attempts := 1
-		delay := 0
-		if step.Retry != nil {
-			if step.Retry.Attempts > 0 {
-				attempts = step.Retry.Attempts
-			}
-			if step.Retry.DelaySec > 0 {
-				delay = step.Retry.DelaySec
+				completed[step.ID] = true
 			}
 		}
-		var lastErr error
-		for i := 0; i < attempts; i++ {
-			lastErr = e.executeStepWithWaitAndAwait(ctx, &step, stepCtx, label)
-			if lastErr == nil {
-				break
+		wg.Wait()
+		close(errCh)
+		for err := range errCh {
+			if err != nil {
+				return nil, err
 			}
-			if delay > 0 && i < attempts-1 {
-				time.Sleep(time.Duration(delay) * time.Second)
-			}
-		}
-		if lastErr != nil {
-			// CATCH logic
-			if flow.Catch != nil && len(flow.Catch) > 0 {
-				catchCtx := &StepContext{
-					Event:   stepCtx.Event,
-					Vars:    make(map[string]any),
-					Outputs: stepCtx.Outputs,
-				}
-				for k, v := range stepCtx.Vars {
-					catchCtx.Vars[k] = v
-				}
-				catchCtx.Vars["error"] = lastErr.Error()
-				for catchLabel, catchStep := range flow.Catch {
-					if err := e.executeStepWithWaitAndAwait(ctx, &catchStep, catchCtx, catchLabel); err != nil {
-						return nil, fmt.Errorf("catch step %s failed: %w", catchLabel, err)
-					}
-				}
-				return stepCtx.Outputs, nil
-			}
-			return nil, lastErr
 		}
 	}
 	return stepCtx.Outputs, nil
 }
 
 // executeStepWithWaitAndAwait handles wait and await_event before running the step
-func (e *Engine) executeStepWithWaitAndAwait(ctx context.Context, step *model.Step, stepCtx *StepContext, label string) error {
+func (e *Engine) executeStepWithWaitAndAwait(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
 	// WAIT logic
 	if step.Wait != nil {
 		if step.Wait.Seconds > 0 {
@@ -183,13 +156,41 @@ func (e *Engine) executeStepWithWaitAndAwait(ctx context.Context, step *model.St
 	// AWAIT_EVENT logic
 	if step.AwaitEvent != nil {
 		// For now, simulate by returning a special error
-		return fmt.Errorf("step %s is waiting for event (await_event stub)", label)
+		return fmt.Errorf("step %s is waiting for event (await_event stub)", stepID)
 	}
-	return e.executeStep(ctx, step, stepCtx, label)
+	return e.executeStep(ctx, step, stepCtx, stepID)
+}
+
+// renderValue recursively renders template strings in nested values.
+func (e *Engine) renderValue(val any, data map[string]any) (any, error) {
+	switch x := val.(type) {
+	case string:
+		return e.Templater.Render(x, data)
+	case []any:
+		for i, elem := range x {
+			rendered, err := e.renderValue(elem, data)
+			if err != nil {
+				return nil, err
+			}
+			x[i] = rendered
+		}
+		return x, nil
+	case map[string]any:
+		for k, elem := range x {
+			rendered, err := e.renderValue(elem, data)
+			if err != nil {
+				return nil, err
+			}
+			x[k] = rendered
+		}
+		return x, nil
+	default:
+		return val, nil
+	}
 }
 
 // executeStep runs a single step (use/with) and stores output
-func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *StepContext, label string) error {
+func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
 	if step.Use == "" {
 		return nil
 	}
@@ -206,28 +207,30 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	}
 	inputs := make(map[string]any)
 	for k, v := range step.With {
-		if str, ok := v.(string); ok {
-			rendered, err := e.Templater.Render(str, map[string]any{
-				"event":   stepCtx.Event,
-				"vars":    stepCtx.Vars,
-				"outputs": stepCtx.Outputs,
-			})
-			if err != nil {
-				return fmt.Errorf("template error in step %s: %w", label, err)
-			}
-			inputs[k] = rendered
-		} else {
-			inputs[k] = v
+		rendered, err := e.renderValue(v, map[string]any{
+			"event":   stepCtx.Event,
+			"vars":    stepCtx.Vars,
+			"outputs": stepCtx.Outputs,
+			"secrets": stepCtx.Secrets,
+		})
+		if err != nil {
+			return fmt.Errorf("template error in step %s: %w", stepID, err)
 		}
+		inputs[k] = rendered
+	}
+	// Debug: log fully rendered payload for openai.chat
+	if step.Use == "openai.chat" {
+		payload, _ := json.Marshal(inputs)
+		fmt.Printf("[beemflow] [debug] openai.chat payload: %s\n", payload)
 	}
 	if strings.HasPrefix(step.Use, "mcp://") {
 		inputs["__use"] = step.Use
 	}
 	outputs, err := adapterInst.Execute(ctx, inputs)
 	if err != nil {
-		return fmt.Errorf("step %s failed: %w", label, err)
+		return fmt.Errorf("step %s failed: %w", stepID, err)
 	}
-	stepCtx.Outputs[label] = outputs
+	stepCtx.Outputs[stepID] = outputs
 	return nil
 }
 
@@ -236,6 +239,7 @@ type StepContext struct {
 	Event   map[string]any
 	Vars    map[string]any
 	Outputs map[string]any
+	Secrets map[string]string
 }
 
 // CronScheduler is a stub for cron-based triggers.

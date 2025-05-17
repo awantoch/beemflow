@@ -42,22 +42,36 @@ func toString(v any) string {
 }
 
 func (t *Templater) Render(tmpl string, data map[string]any) (string, error) {
-	tpl := template.New("").Option("missingkey=error")
-	if t.helperFuncs != nil {
-		tpl = tpl.Funcs(t.helperFuncs)
+	const maxIterations = 5
+	prev := tmpl
+	for i := 0; i < maxIterations; i++ {
+		tpl := template.New("").Option("missingkey=error")
+		if t.helperFuncs != nil {
+			tpl = tpl.Funcs(t.helperFuncs)
+		}
+		var err error
+		tpl, err = tpl.Parse(prev)
+		if err != nil {
+			if i > 0 {
+				// Runtime data may contain literal template delimiters; stop further parsing
+				return prev, nil
+			}
+			return "", err
+		}
+		if data == nil {
+			return "", template.ExecError{Err: err}
+		}
+		var buf bytes.Buffer
+		if err := tpl.Execute(&buf, data); err != nil {
+			return "", err
+		}
+		result := buf.String()
+		if result == prev {
+			return result, nil // stabilized
+		}
+		prev = result
 	}
-	tpl, err := tpl.Parse(tmpl)
-	if err != nil {
-		return "", err
-	}
-	if data == nil {
-		return "", template.ExecError{Err: err}
-	}
-	var buf bytes.Buffer
-	if err := tpl.Execute(&buf, data); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
+	return prev, nil // return after max iterations
 }
 
 func (t *Templater) RegisterHelpers(funcs template.FuncMap) {

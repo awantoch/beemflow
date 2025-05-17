@@ -1,0 +1,18 @@
+{
+  "name": "http.fetch",
+  "description": "Fetches a URL via HTTP GET and returns the response body as text.",
+  "kind": "task",
+  "parameters": {
+    "type": "object",
+    "required": ["url"],
+    "properties": {
+      "url": { "type": "string", "description": "The URL to fetch." },
+      "headers": {
+        "type": "object",
+        "description": "Optional HTTP headers to send.",
+        "additionalProperties": { "type": "string" },
+        "default": {}
+      }
+    }
+  }
+} 

@@ -9,41 +9,27 @@
     "on": {},
     "vars": { "type": "object" },
     "steps": {
-      "type": "object",
-      "additionalProperties": {
+      "type": "array",
+      "items": {
         "type": "object",
+        "required": ["id", "use"],
         "properties": {
-          "use": { "type": "string" },
-          "with": { "type": "object" },
-          "if": { "type": "string" },
-          "foreach": { "type": "string" },
-          "as": { "type": "string" },
-          "do": { "type": "array" },
-          "parallel": { "type": "array", "items": { "type": "string" } },
-          "retry": {
-            "type": "object",
-            "properties": {
-              "attempts": { "type": "integer" },
-              "delay_sec": { "type": "integer" }
-            }
+          "id": {"type": "string"},
+          "use": {"type": "string"},
+          "with": {"type": "object"},
+          "depends_on": {
+            "type": "array",
+            "items": {"type": "string"}
           },
-          "await_event": {
-            "type": "object",
-            "properties": {
-              "source": { "type": "string" },
-              "match": { "type": "object" },
-              "timeout": { "type": "string" }
-            }
-          },
-          "wait": {
-            "type": "object",
-            "properties": {
-              "seconds": { "type": "integer" },
-              "until": { "type": "string" }
-            }
-          }
-        },
-        "required": ["use"]
+          "parallel": {"type": "boolean"},
+          "if": {"type": "string"},
+          "foreach": {"type": "string"},
+          "as": {"type": "string"},
+          "do": {"type": "array", "items": {"$ref": "#/definitions/step"}},
+          "retry": {"$ref": "#/definitions/retry"},
+          "await_event": {"$ref": "#/definitions/await_event"},
+          "wait": {"$ref": "#/definitions/wait"}
+        }
       }
     },
     "catch": {

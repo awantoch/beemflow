@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -167,6 +168,10 @@ func (a *HTTPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[s
 
 // Registry method to load and register a tool by name from local manifests
 func (r *Registry) LoadAndRegisterTool(name, toolsDir string) error {
+	if _, exists := r.adapters[name]; exists {
+		// Do not overwrite native/built-in adapters
+		return nil
+	}
 	loader := &LocalManifestLoader{Dir: toolsDir}
 	manifest, err := loader.LoadManifest(name)
 	if err != nil {
@@ -204,7 +209,11 @@ type CoreEchoAdapter struct{}
 func (a *CoreEchoAdapter) ID() string { return "core.echo" }
 
 func (a *CoreEchoAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
-	// Just echo the input as output
+	// Print the 'text' field to stdout if present
+	if t, ok := inputs["text"].(string); ok {
+		fmt.Println(t)
+	}
+	// Return inputs unchanged
 	return inputs, nil
 }
 
@@ -287,4 +296,93 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 		args[k] = v
 	}
 	return client.CallTool(tool, args)
+}
+
+// Native HTTP fetch adapter
+
+// HTTPFetchAdapter implements Adapter for http.fetch
+// Returns: map[string]any{"body": <response body as string>}
+type HTTPFetchAdapter struct{}
+
+func (a *HTTPFetchAdapter) ID() string { return "http.fetch" }
+
+func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
+	url, ok := inputs["url"].(string)
+	if !ok || url == "" {
+		return nil, fmt.Errorf("http.fetch: missing url")
+	}
+	headers := map[string]string{}
+	if h, ok := inputs["headers"].(map[string]any); ok {
+		for k, v := range h {
+			if s, ok := v.(string); ok {
+				headers[k] = s
+			}
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"body": string(body)}, nil
+}
+
+// Native OpenAI chat adapter
+// OpenAIChatAdapter implements Adapter for openai.chat
+// Returns: full OpenAI API response as map[string]any
+
+type OpenAIChatAdapter struct{}
+
+func (a *OpenAIChatAdapter) ID() string { return "openai.chat" }
+
+func (a *OpenAIChatAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
+	apiKey, ok := inputs["api_key"].(string)
+	if !ok || apiKey == "" {
+		return nil, fmt.Errorf("openai.chat: missing api_key")
+	}
+	model, ok := inputs["model"].(string)
+	if !ok || model == "" {
+		return nil, fmt.Errorf("openai.chat: missing model")
+	}
+	messages, ok := inputs["messages"].([]any)
+	if !ok || len(messages) == 0 {
+		return nil, fmt.Errorf("openai.chat: missing messages")
+	}
+	// Prepare request
+	reqBody := map[string]any{
+		"model":    model,
+		"messages": messages,
+	}
+	b, _ := json.Marshal(reqBody)
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(respBody, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

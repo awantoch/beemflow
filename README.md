@@ -844,4 +844,60 @@ MIT. Use it, remix it, ship it.
 
 ---
 
-**BeemFlow: Power the AI automation revolution.** 
+**BeemFlow: Power the AI automation revolution.**
+
+## Flow Definition
+
+Flows are defined in YAML. Steps are now defined as a list, not a map. Each step must have an `id` and can specify dependencies and parallel execution.
+
+### Step Fields
+- `id`: Unique identifier for the step (required)
+- `use`: The tool or adapter to use
+- `with`: Input parameters
+- `depends_on`: (optional) List of step ids this step depends on
+- `parallel`: (optional) Boolean, if true and no dependencies, can run concurrently
+
+### Example
+
+```yaml
+steps:
+  - id: fetch_page
+    use: http.fetch
+    with:
+      url: "{{.vars.fetch_url}}"
+  - id: fetch_meta
+    use: http.fetch
+    with:
+      url: "{{.vars.meta_url}}"
+    parallel: true
+  - id: echo_html
+    use: core.echo
+    with:
+      text: "{{.outputs.fetch_page.body}}"
+    depends_on: [fetch_page]
+  - id: summarize
+    use: openai.chat
+    with:
+      model: "o4-mini"
+      api_key: "{{.secrets.OPENAI_API_KEY}}"
+      messages:
+        - role: user
+          content: "{{.outputs.fetch_page.body}}"
+    depends_on: [fetch_page]
+  - id: print
+    use: core.echo
+    with:
+      text: "Summary: {{ (index .outputs.summarize.choices 0).message.content }}"
+    depends_on: [summarize]
+```
+
+### Output Referencing
+
+Reference outputs from previous steps using their `id`:
+- `outputs.fetch_page.body`
+- `outputs.summarize.choices`
+
+### Execution Model
+- Steps are executed in dependency order.
+- Steps with no dependencies and `parallel: true` can run concurrently.
+- Steps with dependencies wait for their dependencies to finish. 
