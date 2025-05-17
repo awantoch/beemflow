@@ -29,14 +29,14 @@ func NewEngine() *Engine {
 
 	// Load openai.chat manifest
 	var openaiManifest *adapter.ToolManifest
-	manifestPath := filepath.Join("tools", "openai.chat.json")
+	manifestPath := filepath.Join("tools", "openai.json")
 	if f, err := os.ReadFile(manifestPath); err == nil {
 		var m adapter.ToolManifest
 		if err := json.Unmarshal(f, &m); err == nil {
 			openaiManifest = &m
 		}
 	}
-	reg.Register(&adapter.OpenAIChatAdapter{ManifestField: openaiManifest})
+	reg.Register(&adapter.OpenAIAdapter{ManifestField: openaiManifest})
 
 	// Auto-register all tools in tools/ directory
 	toolsDir := "tools"
@@ -273,7 +273,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		}
 	}
 	// Debug: log fully rendered payload for openai.chat
-	if step.Use == "openai.chat" {
+	if step.Use == "openai" {
 		payload, _ := json.Marshal(inputs)
 		if os.Getenv("BEEMFLOW_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "[beemflow] [debug] openai.chat payload: %s\n", payload)

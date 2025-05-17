@@ -152,11 +152,14 @@ BeemFlow will:
    on: cli.manual
    steps:
      - id: greet
-       use: openai.chat
+       use: openai
        with:
          model: "gpt-4o"
-         system: "Please give a reply to the following message:"
-         text: "Hello, BeemFlow!"
+         messages:
+           - role: system
+             content: "Please give a reply to the following message:"
+           - role: user
+             content: "Hello, BeemFlow!"
      - id: print
        use: core.echo
        with:
@@ -208,7 +211,7 @@ BeemFlow uses a unified `secrets` scope to inject credentials, API keys, and HMA
 
 3. **Adapter defaults**
    Many adapter manifests declare default parameters from environment variables. If your Slack adapter sets `token: { "default": { "$env": "SLACK_TOKEN" } }`, you can omit `token:` entirely in the flow.
-   Similarly, the OpenAI adapter (`openai.chat`) sets `api_key` default from the `OPENAI_API_KEY` environment variable, so you can omit `api_key:` entirely when using `openai.chat`.
+   Similarly, the OpenAI adapter (`openai`) sets `api_key` default from the `OPENAI_API_KEY` environment variable, so you can omit `api_key:` entirely when using `openai`.
 
 4. **Shell steps**
    Shell commands inherit the same environment:
@@ -308,17 +311,17 @@ steps:
       id: "{{event.id}}"
 
   - id: rewrite
-    use: openai.chat
+    use: openai
     with:
       model: "gpt-3.5-turbo"
-      api_key: "{{secrets.OPENAI_API_KEY}}"
-      text: "{{fetch_tweet.text}}"
-      style: "instagram"
+      messages:
+        - role: system
+          content: "Rewrite the following text in an Instagram style: {{fetch_tweet.text}}"
 
   - id: post_instagram
     use: instagram.media.create
     with:
-      caption: "{{rewrite.text}}"
+      caption: "{{ (index .rewrite.choices 0).message.content }}"
       image_url: "{{fetch_tweet.media_url}}"
 ```
 
@@ -339,24 +342,24 @@ steps:
   - id: search_docs
     use: docs.search
     with:
-      query: "{{event.feature}}"
+      query: "{{.event.feature}}"
       top_k: 5
 
   - id: marketing_context
-    use: openai.chat
+    use: openai
     with:
       model: "gpt-3.5-turbo"
       api_key: "{{secrets.OPENAI_API_KEY}}"
       system: "You are product marketing."
       text: |
         ### Feature
-        {{event.feature}}
+        {{.event.feature}}
         ### Docs
-        {{search_docs.results | join("\n\n")}}
+        {{.search_docs.results | join("\n\n")}}
       max_tokens: 400
 
   - id: gen_copy
-    use: openai.chat
+    use: openai
     with:
       model: "gpt-3.5-turbo"
       api_key: "{{secrets.OPENAI_API_KEY}}"
@@ -369,25 +372,25 @@ steps:
         }}}
       prompt: |
         Write 3 Tweets, 1 IG caption, and 1 FB post about:
-        {{marketing_context.summary}}
+        {{.marketing_context.summary}}
 
   - id: airtable_row
     use: airtable.records.create
     with:
-      base_id: "{{secrets.AIR_BASE}}"
+      base_id: "{{.secrets.AIR_BASE}}"
       table: "Launch Copy"
       fields:
-        Feature: "{{event.feature}}"
-        Twitter: "{{gen_copy.twitter | join("\n\n---\n\n")}}"
-        Instagram: "{{gen_copy.instagram}}"
-        Facebook: "{{gen_copy.facebook}}"
+        Feature: "{{.event.feature}}"
+        Twitter: "{{.gen_copy.twitter | join("\n\n---\n\n")}}"
+        Instagram: "{{.gen_copy.instagram}}"
+        Facebook: "{{.gen_copy.facebook}}"
         Status: "Pending"
 
   - id: await_approval
     await_event:
       source: airtable
       match:
-        record_id: "{{airtable_row.id}}"
+        record_id: "{{.airtable_row.id}}"
         field: Status
         equals: Approved
 
@@ -397,24 +400,24 @@ steps:
     - path: push_facebook
 
   - id: push_twitter
-    foreach: "{{gen_copy.twitter}}"
+    foreach: "{{.gen_copy.twitter}}"
     as: tweet
     do:
       - id: post_tw
         use: twitter.tweet.create
         with:
-          text: "{{tweet}}"
+          text: "{{.tweet}}"
 
   - id: push_instagram
     use: instagram.media.create
     with:
-      caption: "{{gen_copy.instagram}}"
-      image_url: "{{event.image_url}}"
+      caption: "{{.gen_copy.instagram}}"
+      image_url: "{{.event.image_url}}"
 
   - id: push_facebook
     use: facebook.post.create
     with:
-      message: "{{gen_copy.facebook}}"
+      message: "{{.gen_copy.facebook}}"
 ```
 
 ---
@@ -435,7 +438,7 @@ steps:
       range: "{{event.before}}..{{event.after}}"
 
   - id: summarise
-    use: openai.chat
+    use: openai
     with:
       model: "gpt-3.5-turbo"
       api_key: "{{secrets.OPENAI_API_KEY}}"
@@ -587,55 +590,40 @@ steps:
         FROM user_metrics
 
   - id: predict_churn
-    use: openai.chat
+    use: openai
     with:
       function_schema: |
         { "name": "predict_churn", "parameters": { "type": "object", "properties": { "users": { "type": "array", "items": { "type": "object", "properties": { "user_id": {"type":"string"}, "name": {"type":"string"}, "email": {"type":"string"}, "last_login": {"type":"string"}, "purchase_history": {"type":"array","items":{"type":"object"}} } } } } } }
       prompt: |
         Given the following user data, predict a churn risk score (0.0–1.0) for each:
-        {{fetch_usage.results}}
+        {{.fetch_usage.results}}
 
-  - id: foreach
-    foreach: "{{predict_churn.churn_predictions}}"
+  - id: retain
+    foreach: "{{.predict_churn.churn_predictions}}"
     as: prediction
     do:
       - id: maybe_retain
-        if: "{{prediction.risk >= vars.churn_threshold}}"
+        if: "{{.prediction.risk >= .vars.churn_threshold}}"
         do:
           - id: gen_offer
-            use: openai.chat
+            use: openai
             with:
               system: "Retention Specialist"
               text: |
-                Compose a personalized 20% discount win-back email for {{prediction.name}} ({{prediction.email}}).
+                Compose a personalized 20% discount win-back email for {{.prediction.name}} ({{.prediction.email}}).
           - id: send_email
             use: email.send
             with:
-              to: "{{prediction.email}}"
-              subject: "We miss you, {{prediction.name}}!"
-              body: "{{gen_offer.text}}"
-          - id: crm_update
-            use: crm.contact.update
-            with:
-              table: "{{vars.crm_table}}"
-              record_id: "{{prediction.user_id}}"
-              fields:
-                churn_alerted: true
-                last_contacted: "{{today()}}"
-
-      - id: summary_alert
-        use: slack.chat.postMessage
-        with:
-          channel: "#churn-alerts"
-          text: |
-            Sent win-back offers to {{length(predict_churn.churn_predictions | select(p => p.risk >= vars.churn_threshold))}} at-risk users.
+              to: "{{.prediction.email}}"
+              subject: "We miss you, {{.prediction.name}}!"
+              body: "{{.gen_offer.text}}"
 
 catch:
   - id: notify_ops_churn
     use: slack.chat.postMessage
     with:
       channel: "#churn-alerts"
-      text: "Churn prevention pipeline failed: {{error.message}}"
+      text: "Churn prevention pipeline failed: {{.error.message}}"
 ```
 
 ---
@@ -662,22 +650,22 @@ steps:
       top_k: 50
 
   - id: marketing_strategy
-    use: openai.chat
+    use: openai
     with:
       system: "You are a CMO-level marketing strategist."
       text: |
         Analyze the following developer docs and propose a high-impact marketing plan for {{vars.product_name}}:
-        {{fetch_docs.results | join("\n\n")}}
+        {{.fetch_docs.results | join("\n\n")}}
 
   - id: website_copy
-    use: openai.chat
+    use: openai
     with:
       system: "You are a UX copywriter."
       text: |
         Based on the marketing plan, write hero section copy, feature bullet points, and a memorable tagline for {{vars.product_name}}.
 
   - id: twitter_posts
-    use: openai.chat
+    use: openai
     with:
       function_schema: |
         { "name": "mk_social", "parameters": {
@@ -688,15 +676,15 @@ steps:
         }}
       prompt: |
         Generate 5 tweet threads and 1 LinkedIn post based on this marketing plan:
-        {{marketing_strategy.text}}
+        {{.marketing_strategy.text}}
 
   - id: design_brief
-    use: openai.chat
+    use: openai
     with:
       system: "You are a UI/UX design expert."
       text: |
         Create a design brief for a Figma mockup of the homepage hero section, including color palette, style, and imagery recommendations to match the copy:
-        {{website_copy.text}}
+        {{.website_copy.text}}
 
   - id: create_website_issue
     use: github.api.create_issue
@@ -705,10 +693,10 @@ steps:
       title: "Marketing: Update homepage copy for {{vars.product_name}}"
       body: |
         **Hero & Features**
-        {{website_copy.text}}
+        {{.website_copy.text}}
 
         **Design Brief**
-        {{design_brief.text}}
+        {{.design_brief.text}}
 
   - id: create_social_issue
     use: github.api.create_issue
@@ -717,10 +705,10 @@ steps:
       title: "Marketing: Schedule social media content"
       body: |
         **Twitter Threads**
-        {{twitter_posts.twitter | join("\n\n")}}
+        {{.twitter_posts.twitter | join("\n\n")}}
 
         **LinkedIn Post**
-        {{twitter_posts.linkedin}}
+        {{.twitter_posts.linkedin}}
 
   - id: notify_team
     use: slack.chat.postMessage
@@ -728,15 +716,15 @@ steps:
       channel: "#marketing"
       text: |
         Marketing assets ready for *{{vars.product_name}}*:
-        • Homepage issue: {{create_website_issue.html_url}}
-        • Social issue:   {{create_social_issue.html_url}}
+        • Homepage issue: {{.create_website_issue.html_url}}
+        • Social issue:   {{.create_social_issue.html_url}}
 
 catch:
   - id: notify_ops_marketing
     use: slack.chat.postMessage
     with:
       channel: "#marketing"
-      text: "Marketing agent failed: {{error.message}}"
+      text: "Marketing agent failed: {{.error.message}}"
 ```
 
 ### 7. Automated Dependency Updater (Dependabot Replacement)
@@ -795,28 +783,28 @@ steps:
       body: "Updating dependencies to the latest versions."
 
   - id: pr_description
-    use: openai.chat
+    use: openai
     with:
       model: "gpt-3.5-turbo"
       api_key: "{{secrets.OPENAI_API_KEY}}"
       system: "Release Note Assistant"
       text: |
         Here's the diff of the update:
-        {{show_diff.stdout}}
+        {{.show_diff.stdout}}
 
   - id: update_pr
     use: github.api.update_pull_request
     with:
       repo: "awantoch/your-repo"
-      pr_number: "{{create_pr.number}}"
-      body: "{{pr_description.text}}"
+      pr_number: "{{.create_pr.number}}"
+      body: "{{.pr_description.text}}"
 
 catch:
   - id: notify_ops_depbot
     use: slack.chat.postMessage
     with:
       channel: "#devops"
-      text: "Dependency updater failed: {{error.message}}"
+      text: "Dependency updater failed: {{.error.message}}"
 ```
 
 *(Full spec & more examples in `beemflow_ultra_spec.txt`)*
@@ -890,7 +878,7 @@ steps:
       text: "{{.outputs.fetch_page.body}}"
     depends_on: [fetch_page]
   - id: summarize
-    use: openai.chat
+    use: openai
     with:
       model: "o4-mini"
       api_key: "{{.secrets.OPENAI_API_KEY}}"
