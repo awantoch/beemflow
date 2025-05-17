@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,14 +12,30 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/internal/adapter"
+	"github.com/awantoch/beemflow/internal/event"
 	"github.com/awantoch/beemflow/internal/model"
 	"github.com/awantoch/beemflow/internal/templater"
 )
 
+// Engine now supports pausing and resuming flows at await_event steps.
 type Engine struct {
 	Adapters  *adapter.Registry
 	Templater *templater.Templater
+	EventBus  event.EventBus
+	// In-memory state for waiting runs: token -> *PausedRun
+	waiting map[string]*PausedRun
+	mu      sync.Mutex
+	// Store completed outputs for resumed runs (token -> outputs)
+	completedOutputs map[string]map[string]any
 	// TODO: add storage, blob, eventbus, adapter registry, etc.
+}
+
+type PausedRun struct {
+	Flow    *model.Flow
+	StepIdx int
+	StepCtx *StepContext
+	Outputs map[string]any
+	Token   string
 }
 
 func NewEngine() *Engine {
@@ -52,11 +69,15 @@ func NewEngine() *Engine {
 	}
 
 	return &Engine{
-		Adapters:  reg,
-		Templater: templater.NewTemplater(),
+		Adapters:         reg,
+		Templater:        templater.NewTemplater(),
+		EventBus:         event.NewInProcEventBus(),
+		waiting:          make(map[string]*PausedRun),
+		completedOutputs: make(map[string]map[string]any),
 	}
 }
 
+// Execute now supports pausing and resuming at await_event.
 func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string]any) (map[string]any, error) {
 	if flow == nil {
 		return nil, nil
@@ -64,22 +85,6 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	if flow.Steps == nil || len(flow.Steps) == 0 {
 		return nil, nil
 	}
-
-	// Build step map for id lookup
-	stepMap := make(map[string]*model.Step)
-	for _, step := range flow.Steps {
-		stepCopy := step
-		if stepCopy.ID == "" {
-			return nil, fmt.Errorf("step missing id")
-		}
-		if _, exists := stepMap[stepCopy.ID]; exists {
-			return nil, fmt.Errorf("duplicate step id: %s", stepCopy.ID)
-		}
-		stepMap[stepCopy.ID] = &stepCopy
-	}
-
-	// Track completed steps
-	completed := make(map[string]bool)
 	outputs := make(map[string]any)
 	secrets := map[string]string{}
 	for _, env := range os.Environ() {
@@ -95,82 +100,100 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 		Outputs: outputs,
 		Secrets: secrets,
 	}
+	return e.executeStepsWithPause(ctx, flow, stepCtx, 0)
+}
 
-	totalSteps := len(flow.Steps)
-	for len(completed) < totalSteps {
-		ready := []*model.Step{}
-		for _, step := range flow.Steps {
-			if completed[step.ID] {
-				continue
+// executeStepsWithPause executes steps, pausing at await_event and resuming as needed.
+func (e *Engine) executeStepsWithPause(ctx context.Context, flow *model.Flow, stepCtx *StepContext, startIdx int) (map[string]any, error) {
+	for i := startIdx; i < len(flow.Steps); i++ {
+		step := &flow.Steps[i]
+		if step.AwaitEvent != nil {
+			// Render token from match (support template)
+			match := step.AwaitEvent.Match
+			tokenRaw, _ := match["token"].(string)
+			if tokenRaw == "" {
+				return nil, fmt.Errorf("await_event step missing token in match")
 			}
-			stepCopy := step
-			// Skip step if conditional `If` evaluates to false
-			if stepCopy.If != "" {
-				// Build templater data context
-				data := make(map[string]any)
-				data["event"] = stepCtx.Event
-				data["vars"] = stepCtx.Vars
-				data["outputs"] = stepCtx.Outputs
-				data["secrets"] = stepCtx.Secrets
-				for id, out := range stepCtx.Outputs {
-					data[id] = out
-				}
-				rendered, err := e.Templater.Render(stepCopy.If, data)
-				if err != nil {
-					return nil, fmt.Errorf("template error in if condition for step %s: %w", stepCopy.ID, err)
-				}
-				if strings.ToLower(rendered) != "true" {
-					// Condition false: skip this step
-					completed[stepCopy.ID] = true
-					continue
-				}
+			// Render the token template
+			data := map[string]any{
+				"event":   stepCtx.Event,
+				"vars":    stepCtx.Vars,
+				"outputs": stepCtx.Outputs,
+				"secrets": stepCtx.Secrets,
 			}
-			// Check dependencies
-			depsMet := true
-			for _, dep := range stepCopy.DependsOn {
-				if !completed[dep] {
-					depsMet = false
-					break
-				}
-			}
-			if depsMet {
-				ready = append(ready, &stepCopy)
-			}
-		}
-		if len(ready) == 0 {
-			return nil, fmt.Errorf("circular or unsatisfiable dependencies detected")
-		}
-		var wg sync.WaitGroup
-		errCh := make(chan error, len(ready))
-		for _, step := range ready {
-			if step.Parallel {
-				wg.Add(1)
-				go func(s *model.Step) {
-					defer wg.Done()
-					err := e.executeStepWithWaitAndAwait(ctx, s, stepCtx, s.ID)
-					if err != nil {
-						errCh <- fmt.Errorf("step %s failed: %w", s.ID, err)
-						return
-					}
-					completed[s.ID] = true
-				}(step)
-			} else {
-				err := e.executeStepWithWaitAndAwait(ctx, step, stepCtx, step.ID)
-				if err != nil {
-					return nil, fmt.Errorf("step %s failed: %w", step.ID, err)
-				}
-				completed[step.ID] = true
-			}
-		}
-		wg.Wait()
-		close(errCh)
-		for err := range errCh {
+			renderedToken, err := e.Templater.Render(tokenRaw, data)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to render token template: %w", err)
 			}
+			token := renderedToken
+			// Pause: store state and subscribe for resume
+			e.mu.Lock()
+			e.waiting[token] = &PausedRun{
+				Flow:    flow,
+				StepIdx: i,
+				StepCtx: stepCtx,
+				Outputs: stepCtx.Outputs,
+				Token:   token,
+			}
+			e.mu.Unlock()
+			e.EventBus.Subscribe("resume:"+token, func(payload any) {
+				resumeEvent, ok := payload.(map[string]any)
+				if !ok {
+					return
+				}
+				e.Resume(token, resumeEvent)
+			})
+			return nil, fmt.Errorf("step %s is waiting for event (await_event pause)", step.ID)
+		}
+		err := e.executeStep(ctx, step, stepCtx, step.ID)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return stepCtx.Outputs, nil
+}
+
+// Resume resumes a paused run with the given token and event.
+func (e *Engine) Resume(token string, resumeEvent map[string]any) {
+	debugLog("[DEBUG] Resume called for token %s with event: %+v", token, resumeEvent)
+	e.mu.Lock()
+	paused, ok := e.waiting[token]
+	if !ok {
+		e.mu.Unlock()
+		return
+	}
+	delete(e.waiting, token)
+	e.mu.Unlock()
+	// Update event context
+	for k, v := range resumeEvent {
+		paused.StepCtx.Event[k] = v
+	}
+	debugLog("[DEBUG] Outputs map before resume for token %s: %+v", token, paused.StepCtx.Outputs)
+	// Continue execution from next step
+	outputs, _ := e.executeStepsWithPause(context.Background(), paused.Flow, paused.StepCtx, paused.StepIdx+1)
+	// Merge outputs from before and after resume
+	allOutputs := make(map[string]any)
+	for k, v := range paused.StepCtx.Outputs {
+		allOutputs[k] = v
+	}
+	for k, v := range outputs {
+		allOutputs[k] = v
+	}
+	debugLog("[DEBUG] Outputs map after resume for token %s: %+v", token, allOutputs)
+	e.mu.Lock()
+	e.completedOutputs[token] = allOutputs
+	e.mu.Unlock()
+}
+
+// GetCompletedOutputs returns and clears the outputs for a completed resumed run.
+func (e *Engine) GetCompletedOutputs(token string) map[string]any {
+	debugLog("[DEBUG] GetCompletedOutputs called for token %s", token)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	outputs := e.completedOutputs[token]
+	debugLog("[DEBUG] GetCompletedOutputs for token %s returns: %+v", token, outputs)
+	delete(e.completedOutputs, token)
+	return outputs
 }
 
 // executeStepWithWaitAndAwait handles wait and await_event before running the step
@@ -286,7 +309,9 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	if err != nil {
 		return fmt.Errorf("step %s failed: %w", stepID, err)
 	}
+	debugLog("[DEBUG] Writing outputs for step %s: %+v", stepID, outputs)
 	stepCtx.Outputs[stepID] = outputs
+	debugLog("[DEBUG] Outputs map after step %s: %+v", stepID, stepCtx.Outputs)
 	return nil
 }
 
@@ -305,4 +330,11 @@ type CronScheduler struct {
 
 func NewCronScheduler() *CronScheduler {
 	return &CronScheduler{}
+}
+
+// debugLog prints debug logs only if BEEMFLOW_DEBUG is set.
+func debugLog(format string, v ...any) {
+	if os.Getenv("BEEMFLOW_DEBUG") != "" {
+		log.Printf(format, v...)
+	}
 }

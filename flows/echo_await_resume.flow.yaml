@@ -1,0 +1,21 @@
+name: echo_await_resume
+on:
+  - event: test.manual
+
+steps:
+  - id: echo_start
+    use: core.echo
+    with:
+      text: "Started with: {{.event.input}} (token: {{.event.token}})"
+
+  - id: wait_for_resume
+    await_event:
+      source: test
+      match:
+        token: "{{.event.token}}"
+      timeout: 1h
+
+  - id: echo_resumed
+    use: core.echo
+    with:
+      text: "Resumed with: {{.event.resume_value}} (token: {{.event.token}})" 

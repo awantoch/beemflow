@@ -2,8 +2,12 @@ package engine
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/awantoch/beemflow/internal/model"
 )
@@ -75,8 +79,8 @@ func TestExecute_AllStepTypes(t *testing.T) {
 		{ID: "s2", Use: "core.echo", With: map[string]interface{}{"text": "hi"}},
 	}}
 	_, err := e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
-	if err == nil || !strings.Contains(err.Error(), "waiting for event") {
-		t.Errorf("expected await_event stub error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "missing token in match") {
+		t.Errorf("expected await_event missing token error, got %v", err)
 	}
 }
 
@@ -94,4 +98,44 @@ func TestExecute_Concurrency(t *testing.T) {
 	}()
 	<-done
 	<-done
+}
+
+func TestAwaitEventResume_RoundTrip(t *testing.T) {
+	// Load the test flow
+	f, err := os.ReadFile("../../flows/echo_await_resume.flow.yaml")
+	if err != nil {
+		t.Fatalf("failed to read flow: %v", err)
+	}
+	var flow model.Flow
+	if err := yaml.Unmarshal(f, &flow); err != nil {
+		t.Fatalf("failed to unmarshal flow: %v", err)
+	}
+	engine := NewEngine()
+	// Start the flow with input and token
+	startEvent := map[string]any{"input": "hello world", "token": "abc123"}
+	outputs, err := engine.Execute(context.Background(), &flow, startEvent)
+	if err == nil || !strings.Contains(err.Error(), "await_event pause") {
+		t.Fatalf("expected pause on await_event, got: %v, outputs: %v", err, outputs)
+	}
+	// Wait to ensure subscription is registered
+	time.Sleep(50 * time.Millisecond)
+	// Simulate a real-world delay before resume
+	time.Sleep(7 * time.Second)
+	// Simulate resume event
+	resumeEvent := map[string]any{"resume_value": "it worked!", "token": "abc123"}
+	engine.EventBus.Publish("resume:abc123", resumeEvent)
+	// Wait briefly to allow resume goroutine to complete
+	time.Sleep(100 * time.Millisecond)
+	// After resume, the outputs should include both echo steps
+	resumedOutputs := engine.GetCompletedOutputs("abc123")
+	t.Logf("resumed outputs: %+v", resumedOutputs)
+	if resumedOutputs == nil {
+		t.Fatalf("expected outputs after resume, got nil")
+	}
+	if resumedOutputs["echo_start"] == nil {
+		t.Errorf("expected echo_start output, got: %v", resumedOutputs)
+	}
+	if resumedOutputs["echo_resumed"] == nil {
+		t.Errorf("expected echo_resumed output, got: %v", resumedOutputs)
+	}
 }
