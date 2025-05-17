@@ -1,0 +1,12 @@
+name: list_airtable_tables
+on:
+  - cli.manual
+
+vars:
+  airtableApiKey: "{{secrets.AIRTABLE_API_KEY}}"
+
+steps:
+  - id: list_tables
+    use: mcp://airtable-mcp-server/list_tables
+    with:
+      baseId: "{{secrets.AIRTABLE_BASE_ID}}" 

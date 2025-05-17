@@ -2,7 +2,8 @@ package main
 
 import (
 	"os"
-
+	// Load environment variables from .env file
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
@@ -18,6 +19,8 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "runtime.config.json", "Path to runtime config JSON")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logs")
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		// Load environment variables from .env file, if present
+		_ = godotenv.Load()
 		if debug {
 			os.Setenv("BEEMFLOW_DEBUG", "1")
 		}
