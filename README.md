@@ -299,7 +299,125 @@ To use one of these, simply copy the desired mapping from the above file into th
 }
 ```
 
+## 🧩 Integration Guide
+
+### Curating an MCP Server
+Use this when you have an existing MCP-compatible process (Node.js, Python, Go, etc.) and want BeemFlow to auto-install, start, and invoke it.
+
+• **Define a mapping**  
+  Create `mcp_servers/<your-server>.json`:
+
+```json
+{
+  "my-custom-mcp": {
+    "install_cmd": ["npx","-y","my-mcp-server@latest"],
+    "required_env": ["MY_MCP_KEY"],
+    "port": 4000
+  }
+}
+```
+
+• **Merge into your runtime config**  
+  Copy the JSON object under `"mcp_servers"` in `flow.config.json` (or `runtime.config.json`).
+
+• **Set environment variables**  
+  Ensure any `required_env` keys (e.g. `MY_MCP_KEY`) are in your shell or a `.env`.
+
+• **Invoke in your flow**  
+  No local manifest needed—BeemFlow will call `tools/list` at runtime:
+
+```yaml
+steps:
+  - id: call_tool
+    use: mcp://my-custom-mcp/toolName
+    with:
+      foo: "bar"
+```
+
 ---
+
+### Adding a Local HTTP‐Based Tool
+Use this when you want a static, JSON-Schema–driven adapter against an HTTP API endpoint.
+
+• **Drop a manifest**  
+  Place `tools/<toolName>.json`:
+
+```jsonc
+{
+  "name": "awesome.action",
+  "description": "Does something awesome",
+  "kind": "task",
+  "parameters": {
+    "type":"object",
+    "required":["input"],
+    "properties":{
+      "input":{ "type":"string" }
+    }
+  },
+  "endpoint": "https://api.awesome.com/do"
+}
+```
+
+• **Auto-registration**  
+  On startup, BeemFlow scans `tools/*.json` and registers every manifest.
+
+• **Use in a flow**  
+  Simply reference its `name`:
+
+```yaml
+steps:
+  - id: epic
+    use: awesome.action
+    with:
+      input: "data"
+```
+
+---
+
+### When You Need a Custom Adapter
+Most integrations fit into "MCP" or "HTTP-based tool" patterns. Only reach for a custom Go adapter if you must support:
+
+- A new transport (e.g. gRPC, custom stdio protocol)  
+- Complex input/output transformations beyond JSON-schema  
+
+To build one:
+
+• **Implement** the `Adapter` interface in Go (`ID()`, `Execute()`, `Manifest()`).  
+• **Register** it in `internal/engine/engine.go` before the auto-load of `tools/`.  
+• **Invoke** by its adapter ID in your YAML:
+
+```yaml
+- id: custom_step
+  use: myadapter
+  with: { /* … */ }
+```
+
+---
+
+### Best Practices
+• **Filename matches key**  
+  Name `mcp_servers/stripe.json` → key `"stripe"`.
+
+• **Version control your JSON**  
+  Keep all snippets under `mcp_servers/` or `tools/` in Git.
+
+• **Document required env vars**  
+  List them in your README or example flow.
+
+• **Provide a tiny example**  
+  Add a sample in `flows/`, e.g. `flows/my-custom-mcp.flow.yaml`.
+
+• **Smoke-test**  
+  Write a quick unit or integration test (mock HTTP, or verify `tools/list` succeeds).
+
+---
+
+With these patterns:  
+- **MCP servers** need only a JSON mapping + env vars.  
+- **HTTP tools** need only a manifest in `tools/`.  
+- **Custom adapters** are a fallback for advanced cases.  
+
+That's it—no extra wiring or code tweaks for the vast majority of integrations.
 
 ## 🖥️ CLI Commands
 

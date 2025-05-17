@@ -627,5 +627,22 @@ Adapters default MIT unless otherwise noted.
 • Metrics / observability plugin.  
 
 ──────────────────────────────────────────────
+16. INTEGRATION PATTERNS
+──────────────────────────────────────────────
+
+BeemFlow supports three main extension patterns:
+
+• **MCP Servers:**
+  Add a mapping under `mcp_servers` in your config. No manifest required; tools are discovered dynamically at runtime via the MCP protocol.
+
+• **HTTP Tools:**
+  Add a JSON-Schema manifest describing your tool. BeemFlow loads all manifests at startup and exposes them by name.
+
+• **Custom Adapters:**
+  Implement the Adapter interface for new protocols or advanced logic. Register your adapter in the runtime.
+
+This ensures maximum flexibility and minimal boilerplate for most integrations.
+
+──────────────────────────────────────────────
 END OF SPEC
 ──────────────────────────────────────────────
