@@ -304,6 +304,19 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 			token := renderedToken
 			// Pause: store state and subscribe for resume
 			e.mu.Lock()
+			// If an existing paused run uses this token, mark it skipped and remove it
+			if old, exists := e.waiting[token]; exists {
+				if e.Storage != nil {
+					if existingRun, err := e.Storage.GetRun(ctx, old.RunID); err == nil {
+						existingRun.Status = model.RunSkipped
+						existingRun.EndedAt = ptrTime(time.Now())
+						_ = e.Storage.SaveRun(ctx, existingRun)
+					}
+					_ = e.Storage.DeletePausedRun(token)
+				}
+				delete(e.waiting, token)
+			}
+			// Register new paused run
 			e.waiting[token] = &PausedRun{
 				Flow:    flow,
 				StepIdx: i,
@@ -312,7 +325,6 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				Token:   token,
 				RunID:   runID,
 			}
-			// Persist paused run if storage is available
 			if e.Storage != nil {
 				_ = e.Storage.SavePausedRun(token, pausedRunToMap(e.waiting[token]))
 			}

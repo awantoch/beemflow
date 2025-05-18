@@ -78,6 +78,7 @@ const (
 	RunSucceeded RunStatus = "SUCCEEDED"
 	RunFailed    RunStatus = "FAILED"
 	RunWaiting   RunStatus = "WAITING"
+	RunSkipped   RunStatus = "SKIPPED"
 
 	StepPending   StepStatus = "PENDING"
 	StepRunning   StepStatus = "RUNNING"
