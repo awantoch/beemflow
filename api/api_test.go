@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -409,4 +410,55 @@ steps:
 		t.Errorf("ResumeRun error: %v", err)
 	}
 	// Outputs may be nil if resume is async, but should not error
+}
+
+// TestListFlows_CustomDir ensures ListFlows reads from a custom flowsDir.
+func TestListFlows_CustomDir(t *testing.T) {
+	// capture and restore original flowsDir
+	orig := flowsDir
+	defer SetFlowsDir(orig)
+
+	tmp := t.TempDir()
+	custom := filepath.Join(tmp, "custom_flows")
+	if err := os.MkdirAll(custom, 0755); err != nil {
+		t.Fatalf("failed to create custom flows dir: %v", err)
+	}
+	// write a single flow file
+	yaml := []byte("name: testflow\non: cli.manual\nsteps: []\n")
+	if err := os.WriteFile(filepath.Join(custom, "testflow.flow.yaml"), yaml, 0644); err != nil {
+		t.Fatalf("failed to write flow file: %v", err)
+	}
+	SetFlowsDir(custom)
+	flows, err := ListFlows(context.Background())
+	if err != nil {
+		t.Fatalf("ListFlows error: %v", err)
+	}
+	if len(flows) != 1 || flows[0] != "testflow" {
+		t.Errorf("expected [testflow], got %v", flows)
+	}
+}
+
+// TestGetFlow_CustomDir ensures GetFlow reads from a custom flowsDir.
+func TestGetFlow_CustomDir(t *testing.T) {
+	orig := flowsDir
+	defer SetFlowsDir(orig)
+
+	tmp := t.TempDir()
+	cust := filepath.Join(tmp, "flows2")
+	if err := os.MkdirAll(cust, 0755); err != nil {
+		t.Fatalf("failed to create custom flows2 dir: %v", err)
+	}
+	// minimal valid flow
+	yaml := []byte("name: myflow\non: cli.manual\nsteps: []\n")
+	if err := os.WriteFile(filepath.Join(cust, "myflow.flow.yaml"), yaml, 0644); err != nil {
+		t.Fatalf("failed to write myflow file: %v", err)
+	}
+	SetFlowsDir(cust)
+	flow, err := GetFlow(context.Background(), "myflow")
+	if err != nil {
+		t.Fatalf("GetFlow error: %v", err)
+	}
+	if flow.Name != "myflow" {
+		t.Errorf("expected flow.Name=myflow; got %s", flow.Name)
+	}
 }

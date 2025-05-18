@@ -16,6 +16,7 @@ type Config struct {
 	Registries []string                   `json:"registries"`
 	HTTP       HTTPConfig                 `json:"http"`
 	Log        LogConfig                  `json:"log"`
+	FlowsDir   string                     `json:"flowsDir,omitempty"`
 	MCPServers map[string]MCPServerConfig `json:"mcpServers,omitempty"`
 }
 
@@ -67,6 +68,7 @@ type SecretsProvider interface {
 	GetSecret(key string) (string, error)
 }
 
+// LoadConfig loads the JSON config from the given path.
 func LoadConfig(path string) (*Config, error) {
 	logger.Debug("Entered LoadConfig with path: %s", path)
 	f, err := os.Open(path)

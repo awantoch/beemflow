@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/awantoch/beemflow/config"
@@ -15,9 +16,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// flowsDir is the base directory for flow definitions; can be overridden via CLI or config.
+var flowsDir = "flows"
+
+// SetFlowsDir allows overriding the base directory for flow definitions.
+func SetFlowsDir(dir string) {
+	if dir != "" {
+		flowsDir = dir
+	}
+}
+
 // ListFlows returns the names of all available flows.
 func ListFlows(ctx context.Context) ([]string, error) {
-	entries, err := os.ReadDir("flows")
+	entries, err := os.ReadDir(flowsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []string{}, nil
@@ -40,7 +51,7 @@ func ListFlows(ctx context.Context) ([]string, error) {
 
 // GetFlow returns the parsed flow definition for the given name.
 func GetFlow(ctx context.Context, name string) (model.Flow, error) {
-	path := "flows/" + name + ".flow.yaml"
+	path := filepath.Join(flowsDir, name+".flow.yaml")
 	flow, err := parser.ParseFlow(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -53,7 +64,7 @@ func GetFlow(ctx context.Context, name string) (model.Flow, error) {
 
 // ValidateFlow validates the given flow by name.
 func ValidateFlow(ctx context.Context, name string) error {
-	path := "flows/" + name + ".flow.yaml"
+	path := filepath.Join(flowsDir, name+".flow.yaml")
 	flow, err := parser.ParseFlow(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -96,7 +107,7 @@ func StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.
 		store = storage.NewMemoryStorage()
 	}
 	eng := engine.NewEngineWithStorage(store)
-	flow, err := parser.ParseFlow("flows/" + flowName + ".flow.yaml")
+	flow, err := parser.ParseFlow(filepath.Join(flowsDir, flowName+".flow.yaml"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return uuid.Nil, nil
