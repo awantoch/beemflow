@@ -1,7 +1,7 @@
 {
   "storage": {
     "driver": "sqlite",
-    "dsn": "./beemflow.db"
+    "dsn": "./beemflow/flow.db"
   },
   "mcpServers": {
     "airtable": {},

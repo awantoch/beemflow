@@ -186,7 +186,7 @@ Event   `in-proc | redis | nats | sns`
 ```json
 {
   "storage": { "driver": "postgres", "dsn": "postgres://user:pw@host/db" },
-  "blob":    { "driver": "filesystem", "directory": "./beemflow-files" },
+  "blob":    { "driver": "filesystem", "directory": "./beemflow/files" },
   "event":   { "driver": "redis",    "url": "redis://host:6379" },
   "registries": [
     "https://hub.beemflow.com/index.json",

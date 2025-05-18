@@ -9,6 +9,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// TestMain ensures that the "flows" directory is removed before and after tests.
+func TestMain(m *testing.M) {
+	// Clean up any leftover from previous runs
+	os.RemoveAll("flows")
+	code := m.Run()
+	// Clean up after tests
+	os.RemoveAll("flows")
+	os.Exit(code)
+}
+
 func TestListFlows(t *testing.T) {
 	_, err := ListFlows(context.Background())
 	if err != nil {
