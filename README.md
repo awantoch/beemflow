@@ -80,7 +80,7 @@ Step definition keys:
 - `wait`: sleep for `{ seconds: n }` or `{ until: ts }`
 - `depends_on`: (optional) List of step ids this step depends on
 
-> **Note:** Only `parallel: true` with nested `steps:` is supported for parallel execution. The old barrier/array syntax (`parallel: [a, b]`) is no longer supported.
+> **Note:** Only `parallel: true` with nested `steps:` is supported for parallel execution. This is to keep the flow simple and easy to interpret.
 
 Templating & helpers:
 - Interpolate values with `{{ … }}` (access `event`, `vars`, previous outputs)
@@ -230,7 +230,7 @@ The parent step (`fanout`) runs all its children in parallel and is considered c
 
 ## 🔐 Authentication & Secrets
 
-BeemFlow uses a unified `secrets` scope to inject credentials, API keys, and HMAC keys into your flows securely. No special syntax—just load them into the runtime environment and reference via `{{secrets.KEY}}`.
+BeemFlow uses a unified `secrets` scope to inject credentials, API keys, and HMAC keys into your flows securely. No special syntax—just load them into the runtime environment, event, or secrets backend and reference via `{{secrets.KEY}}`.
 
 1. **Load your secrets**
    - Create a `.env` file or configure your runtime to read from Vault/AWS Secrets Manager:
@@ -269,7 +269,10 @@ BeemFlow uses a unified `secrets` scope to inject credentials, API keys, and HMA
    Many adapter manifests declare default parameters from environment variables. If your Slack adapter sets `token: { "default": { "$env": "SLACK_TOKEN" } }`, you can omit `token:` entirely in the flow.
    Similarly, the OpenAI adapter (`openai`) sets `api_key` default from the `OPENAI_API_KEY` environment variable, so you can omit `api_key:` entirely when using `openai`.
 
-4. **Shell steps**
+4. **Secrets via event**
+   Secrets can also be injected via the event payload, not just environment or secrets backend.
+
+5. **Shell steps**
    Shell commands inherit the same environment:
    ```yaml
    - id: deploy
@@ -280,10 +283,10 @@ BeemFlow uses a unified `secrets` scope to inject credentials, API keys, and HMA
    ```
    Credentials like `AWS_ACCESS_KEY_ID` will be picked up automatically.
 
-5. **Durable wait callbacks**
+6. **Durable wait callbacks**
    For `await_event`, configure your HTTP adapter to verify HMAC signatures using `WEBHOOK_HMAC_KEY` from `secrets`, ensuring only valid resume requests succeed.
 
-6. **AWS Secrets Manager**
+7. **AWS Secrets Manager**
    Instead of loading from `.env`, you can configure AWS Secrets Manager as a secrets backend:
    ```json
    {
@@ -417,6 +420,7 @@ Use this when you have an existing MCP-compatible process (Node.js, Python, Go, 
 
 • **Merge into your runtime config**  
   Copy the JSON object under `"mcp_servers"` in `flow.config.json` (or `runtime.config.json`).
+  BeemFlow will automatically merge the main config and any curated config from `mcp_servers/<host>.json` for each MCP server.
 
 • **Set environment variables**  
   Ensure any `required_env` keys (e.g. `MY_MCP_KEY`) are in your shell or a `.env`.
@@ -457,7 +461,7 @@ Use this when you want a static, JSON-Schema–driven adapter against an HTTP AP
 ```
 
 • **Auto-registration**  
-  On startup, BeemFlow scans `tools/*.json` and registers every manifest.
+  On startup, BeemFlow scans `tools/*.json` and registers every manifest as an HTTPAdapter. All tools in `tools/` are auto-registered.
 
 • **Use in a flow**  
   Simply reference its `name`:
@@ -1135,11 +1139,13 @@ steps:
 Reference outputs from previous steps using their `id`:
 - `outputs.fetch_page.body`
 - `outputs.summarize.choices`
+- For nested/parallel steps, use `.outputs.<parent_step>.<child_step>.<field>` (e.g., `.outputs.fanout.chat1.choices[0].message.content`).
 
 ### Execution Model
 - Steps are executed in dependency order.
 - Steps with no dependencies and `parallel: true` can run concurrently.
 - Steps with dependencies wait for their dependencies to finish. 
+- Only block-parallel (`parallel: true` with `steps:`) is supported; array form is not implemented (roadmap).
 
 ---
 
@@ -1147,7 +1153,9 @@ Reference outputs from previous steps using their `id`:
 
 BeemFlow is designed for extensibility and practical iteration. Some features are intentionally stubbed or in-memory only, with clear extension points:
 
-- **Adapters:** Easy to add new tool adapters. See `
+- **Adapters:** Easy to add new tool adapters. See `engine/engine.go` for registration. All adapters must implement `ID()`, `Execute()`, and `Manifest()`. Optional `Close()`.
+- **Registry loader/community hub:** Registry loader exists for community hub support, but deep integration is a roadmap feature.
+- **Cron triggers, step-level resource limits, advanced event bus drivers, and adapter hot-reload are not yet implemented and are considered roadmap features.**
 
 ## MCP Server Config Compatibility
 
@@ -1165,12 +1173,6 @@ This project supports the community/Claude-style MCP server config format. Use t
   }
 }
 ```
-
-## 🛠️ Roadmap, Stubs, and Extensibility
-
-BeemFlow is designed for extensibility and practical iteration. Some features are intentionally stubbed or in-memory only, with clear extension points:
-
-- **Adapters:** Easy to add new tool adapters. See `
 
 ## 🏃‍♂️ Running Example Flows
 

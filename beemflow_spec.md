@@ -28,7 +28,7 @@ version:    string                       # optional semver
 on:         list|object                  # triggers
 vars:       map[string]                  # optional constants / secret refs
 steps:      array of step objects         # required
-catch:      map[label] → step            # optional global error flow
+catch:      map[label] → step            # optional global error flow (implemented as a map, not a list)
 ```
 
 **Trigger kinds**
@@ -51,45 +51,33 @@ label:                                  # e.g., fetch_tweet:
   foreach: expression                   # loop array
     as: string                          # loop var
     do: sequence                        # nested steps
-  parallel: [ path1, path2, … ]         # fan‑out / fan‑in
+  parallel: true                        # run all children in parallel (fan-out), parent is join (fan-in)
+  steps:
+    - id: a
+      use: ...
+    - id: b
+      use: ...
   retry: { attempts: n, delay_sec: m }  # automatic retry
   await_event:                          # durable wait
     source: string
     match:  object
     timeout: 7d|5h|60s
   wait: { seconds: 30 } | { until: ts } # sleep
-  steps:
-    - id: a
-      use: ...
-    - id: b
-      use: ...
-  parallel: true                        # run all children in parallel (fan-out), parent is join (fan-in)
-  fanout:
-    parallel: true
-    steps:
-      - id: chat1
-        use: openai.chat
-        with: { text: "Prompt 1" }
-      - id: chat2
-        use: openai.chat
-        with: { text: "Prompt 2" }
-  combine:
-    depends_on: [fanout]
-    use: core.echo
-    with: { text: "Combined: ..." }
 ```
+> Only block-parallel (`parallel: true` with nested `steps:`) is supported. The legacy array form (`parallel: [id, id]`) is not implemented and is considered a roadmap feature.
 
 **Templating** `{{ … }}`  
 Scopes: `event`, `vars`, previous step outputs (`label.field`), loop locals, helper funcs (`now()`, `duration(n,'days')`, `join`, `map`, `length`, `base64()`, etc.).
+- Secrets can be injected from environment, event, or secrets backend.
 
 ──────────────────────────────────────────────
 4. TOOL IDENTIFIER RESOLUTION
 ──────────────────────────────────────────────
 Priority order when resolving `use:` value:
 
-1. **Local manifests**: `/tools/<name>.json`.
+1. **Local manifests**: `/tools/<name>.json` (auto-registered as HTTPAdapters).
 2. **Community hub**: `https://hub.beemflow.com/index.json` (supports `tool@version`).
-3. **MCP servers**: `mcp://server/tool` → fetch manifest at `/.well-known/beemflow.json`.
+3. **MCP servers**: `mcp://server/tool` → fetch manifest at `/.well-known/beemflow.json` (MCP config is merged from main config and `mcp_servers/`).
 4. **GitHub shorthand**: `github:owner/repo[/path][@ref]`
    • default `path=tools/<tool>.json`, default `ref=main`.  
    • Runtime clones / archives repo at `ref`, caches manifest.
@@ -265,10 +253,10 @@ flow test <file>                           # run unit tests for a flow using moc
 ──────────────────────────────────────────────
 12. SECURITY PRACTICES
 ──────────────────────────────────────────────
-• Secrets only in env/Vault → refer as `{{secrets.KEY}}`.  
+• Secrets can be injected from env, event, or secrets backend.  
 • `await_event` callbacks: HMAC signature.  
-• Step‑level timeout/memory caps.  
-• SQL Row‑Level Security for multi‑tenant.  
+• Step‑level timeout/memory caps. (roadmap)  
+• SQL Row‑Level Security for multi‑tenant. (roadmap)  
 • On error → dump `context` JSON via `blob.upload` for forensics.
 
 ──────────────────────────────────────────────
@@ -671,6 +659,7 @@ Adapters default MIT unless otherwise noted.
 • Flow template gallery (`flow init`).  
 • Temporal backend adapter.  
 • Metrics / observability plugin.  
+• Cron triggers, step-level resource limits, advanced event bus drivers, and adapter hot-reload are not yet implemented and are considered roadmap features.
 
 ──────────────────────────────────────────────
 16. INTEGRATION PATTERNS

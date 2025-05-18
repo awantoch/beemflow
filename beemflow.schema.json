@@ -37,12 +37,7 @@
         "use": {"type": "string"},
         "with": {"type": "object"},
         "depends_on": {"type": "array", "items": {"type": "string"}},
-        "parallel": {
-          "oneOf": [
-            { "type": "boolean" },
-            { "type": "array", "items": { "type": "string" } }
-          ]
-        },
+        "parallel": { "type": "boolean" },
         "if": {"type": "string"},
         "foreach": {"type": "string"},
         "as": {"type": "string"},
