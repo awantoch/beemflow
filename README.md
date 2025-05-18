@@ -43,10 +43,11 @@ Top-level keys:
 - **version** (semver, optional)
 - **on** (trigger list or object): supports `event`, `cron`, `eventbus`, `cli`
 - **vars** (map): static constants or secret references
-- **steps** (ordered map): label → step definition
-- **catch** (map): global error handlers
+- **steps** (ordered list): each step is an object with an `id`
+- **catch** (list): global error handlers
 
 Step definition keys:
+- `id`: Unique identifier for the step (required)
 - `use`: tool identifier (JSON-Schema manifest)
 - `with`: input arguments for the tool
 - `if`: conditional expression to skip or branch
@@ -58,6 +59,8 @@ Step definition keys:
 - `await_event`: durable wait on external callback
   - `source`, `match`, `timeout`
 - `wait`: sleep for `{ seconds: n }` or `{ until: ts }`
+- `depends_on`: (optional) List of step ids this step depends on
+- `parallel`: (optional) Boolean, if true and no dependencies, can run concurrently
 
 Templating & helpers:
 - Interpolate values with `{{ … }}` (access `event`, `vars`, previous outputs)
@@ -163,7 +166,7 @@ BeemFlow will:
      - id: print
        use: core.echo
        with:
-         text: "{{greet.text}}"
+         text: "{{.outputs.greet.text}}"
    ```
 3. **Run & Visualize**:
    ```bash
