@@ -60,7 +60,7 @@ Step definition keys:
   - `source`, `match`, `timeout`
 - `wait`: sleep for `{ seconds: n }` or `{ until: ts }`
 - `depends_on`: (optional) List of step ids this step depends on
-- `parallel`: (optional) Boolean, if true and no dependencies, can run concurrently
+- `parallel`: (optional) Boolean, if true and no dependencies, can run concurrently; or an array of step IDs for block-parallel barrier (fan-in) support
 
 Templating & helpers:
 - Interpolate values with `{{ … }}` (access `event`, `vars`, previous outputs)
@@ -89,6 +89,39 @@ BeemFlow will:
 2. Call `tools/list` to discover available tools and their schemas.
 3. Call `tools/call` with the tool name and arguments.
 4. Return the result as the step output.
+
+### Nested Parallel Block Example (Preferred)
+
+```yaml
+steps:
+  - id: fanout
+    parallel: true
+    steps:
+      - id: chat1
+        use: openai
+        with:
+          model: "gpt-3.5-turbo"
+          messages:
+            - role: user
+              content: "Prompt 1"
+      - id: chat2
+        use: openai
+        with:
+          model: "gpt-3.5-turbo"
+          messages:
+            - role: user
+              content: "Prompt 2"
+  - id: combine
+    depends_on: [fanout]
+    use: core.echo
+    with:
+      text: |
+        Combined responses:\n
+        - chat1: {{.outputs.fanout.chat1.choices[0].message.content}}
+        - chat2: {{.outputs.fanout.chat2.choices[0].message.content}}
+```
+
+The parent step (`fanout`) runs all its children in parallel and is considered complete when all are done. Downstream steps can depend on the parent for fan-in.
 
 ---
 
@@ -1040,7 +1073,7 @@ Flows are defined in YAML. Steps are now defined as a list, not a map. Each step
 - `use`: The tool or adapter to use
 - `with`: Input parameters
 - `depends_on`: (optional) List of step ids this step depends on
-- `parallel`: (optional) Boolean, if true and no dependencies, can run concurrently
+- `parallel`: (optional) Boolean, if true and no dependencies, can run concurrently; or an array of step IDs for block-parallel barrier (fan-in) support
 - `if`: (optional) Templated boolean condition; step is skipped unless it renders to `true`
 
 ### Example

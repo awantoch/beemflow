@@ -58,6 +58,25 @@ label:                                  # e.g., fetch_tweet:
     match:  object
     timeout: 7d|5h|60s
   wait: { seconds: 30 } | { until: ts } # sleep
+  steps:
+    - id: a
+      use: ...
+    - id: b
+      use: ...
+  parallel: true                        # run all children in parallel (fan-out), parent is join (fan-in)
+  fanout:
+    parallel: true
+    steps:
+      - id: chat1
+        use: openai.chat
+        with: { text: "Prompt 1" }
+      - id: chat2
+        use: openai.chat
+        with: { text: "Prompt 2" }
+  combine:
+    depends_on: [fanout]
+    use: core.echo
+    with: { text: "Combined: ..." }
 ```
 
 **Templating** `{{ … }}`  
@@ -673,3 +692,5 @@ This ensures maximum flexibility and minimal boilerplate for most integrations.
 ──────────────────────────────────────────────
 END OF SPEC
 ──────────────────────────────────────────────
+
+Note: The parent step (e.g. 'fanout') will not complete until all its children are done. Downstream steps can depend on the parent for fan-in.

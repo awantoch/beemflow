@@ -763,3 +763,90 @@ func TestValidateFlow_SchemaValidationError(t *testing.T) {
 		t.Error("expected schema validation error, got nil")
 	}
 }
+
+// Add a test for block-parallel barrier syntax
+func TestParseFlow_BlockParallelBarrier(t *testing.T) {
+	yamlData := `
+name: block_parallel
+on: cli.manual
+steps:
+  - id: a
+    use: core.echo
+    with:
+      text: "A"
+  - id: b
+    use: core.echo
+    with:
+      text: "B"
+  - id: barrier
+    parallel: [a, b]
+  - id: after
+    depends_on: [barrier]
+    use: core.echo
+    with:
+      text: "After barrier"
+`
+	f, err := ParseFlowFromString(yamlData)
+	if err != nil {
+		t.Fatalf("ParseFlowFromString failed: %v", err)
+	}
+	var foundBarrier bool
+	for _, s := range f.Steps {
+		if s.ID == "barrier" {
+			foundBarrier = true
+			if len(s.ParallelSteps) != 2 || s.ParallelSteps[0] != "a" || s.ParallelSteps[1] != "b" {
+				t.Errorf("expected ParallelSteps [a b], got %#v", s.ParallelSteps)
+			}
+			if s.ParallelBool {
+				t.Errorf("expected ParallelBool false for barrier")
+			}
+		}
+	}
+	if !foundBarrier {
+		t.Errorf("expected barrier step in steps")
+	}
+}
+
+// Add a test for nested parallel block syntax
+func TestParseFlow_NestedParallelBlock(t *testing.T) {
+	yamlData := `
+name: nested_parallel
+on: cli.manual
+steps:
+  - id: fanout
+    parallel: true
+    steps:
+      - id: a
+        use: core.echo
+        with:
+          text: "A"
+      - id: b
+        use: core.echo
+        with:
+          text: "B"
+  - id: after
+    depends_on: [fanout]
+    use: core.echo
+    with:
+      text: "After fanout"
+`
+	f, err := ParseFlowFromString(yamlData)
+	if err != nil {
+		t.Fatalf("ParseFlowFromString failed: %v", err)
+	}
+	var foundFanout bool
+	for _, s := range f.Steps {
+		if s.ID == "fanout" {
+			foundFanout = true
+			if !s.Parallel {
+				t.Errorf("expected Parallel true for fanout")
+			}
+			if len(s.Steps) != 2 || s.Steps[0].ID != "a" || s.Steps[1].ID != "b" {
+				t.Errorf("expected Steps [a b], got %#v", s.Steps)
+			}
+		}
+	}
+	if !foundFanout {
+		t.Errorf("expected fanout step in steps")
+	}
+}

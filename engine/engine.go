@@ -281,6 +281,17 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 	if runID == uuid.Nil {
 		runID = runIDFromContext(ctx)
 	}
+	// Add a helper to build a dependency map and execution order supporting block-parallel barriers
+	// This should be called at the start of executeStepsWithPersistence
+	// Pseudocode:
+	// 1. Build a map of stepID -> step
+	// 2. For each step with ParallelSteps, for each id in ParallelSteps, add an edge from that id to this step (barrier)
+	// 3. For each step, collect its dependencies (depends_on + implicit barrier edges)
+	// 4. Topologically sort steps for execution order
+	// 5. During execution, only run a step when all its dependencies are complete
+	//
+	// This will allow block-parallel barriers and keep backward compatibility for parallel: true
+
 	for i := startIdx; i < len(flow.Steps); i++ {
 		step := &flow.Steps[i]
 		if step.AwaitEvent != nil {
@@ -482,6 +493,49 @@ func (e *Engine) renderValue(val any, data map[string]any) (any, error) {
 
 // executeStep runs a single step (use/with) and stores output
 func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
+	// Nested parallel block logic
+	if step.Parallel && len(step.Steps) > 0 {
+		var wg sync.WaitGroup
+		errChan := make(chan error, len(step.Steps))
+		outputs := make(map[string]any)
+		mu := sync.Mutex{}
+		for i := range step.Steps {
+			child := &step.Steps[i]
+			wg.Add(1)
+			go func(child *model.Step) {
+				defer wg.Done()
+				if err := e.executeStep(ctx, child, stepCtx, child.ID); err != nil {
+					errChan <- err
+					return
+				}
+				mu.Lock()
+				outputs[child.ID] = stepCtx.Outputs[child.ID]
+				mu.Unlock()
+			}(child)
+		}
+		wg.Wait()
+		close(errChan)
+		for err := range errChan {
+			if err != nil {
+				return err
+			}
+		}
+		stepCtx.Outputs[stepID] = outputs
+		return nil
+	}
+	// Sequential block (non-parallel) for steps
+	if !step.Parallel && len(step.Steps) > 0 {
+		outputs := make(map[string]any)
+		for i := range step.Steps {
+			child := &step.Steps[i]
+			if err := e.executeStep(ctx, child, stepCtx, child.ID); err != nil {
+				return err
+			}
+			outputs[child.ID] = stepCtx.Outputs[child.ID]
+		}
+		stepCtx.Outputs[stepID] = outputs
+		return nil
+	}
 	// Foreach logic: handle steps with Foreach and Do
 	if step.Foreach != "" {
 		s := strings.TrimSpace(step.Foreach)

@@ -10,27 +10,7 @@
     "vars": { "type": "object" },
     "steps": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id", "use"],
-        "properties": {
-          "id": {"type": "string"},
-          "use": {"type": "string"},
-          "with": {"type": "object"},
-          "depends_on": {
-            "type": "array",
-            "items": {"type": "string"}
-          },
-          "parallel": {"type": "boolean"},
-          "if": {"type": "string"},
-          "foreach": {"type": "string"},
-          "as": {"type": "string"},
-          "do": {"type": "array", "items": {"$ref": "#/definitions/step"}},
-          "retry": {"$ref": "#/definitions/retry"},
-          "await_event": {"$ref": "#/definitions/await_event"},
-          "wait": {"$ref": "#/definitions/wait"}
-        }
-      }
+      "items": { "$ref": "#/definitions/step" }
     },
     "catch": {
       "type": "object",
@@ -57,14 +37,23 @@
         "use": {"type": "string"},
         "with": {"type": "object"},
         "depends_on": {"type": "array", "items": {"type": "string"}},
-        "parallel": {"type": "boolean"},
+        "parallel": {
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
+        },
         "if": {"type": "string"},
         "foreach": {"type": "string"},
         "as": {"type": "string"},
         "do": {"type": "array", "items": {"$ref": "#/definitions/step"}},
         "retry": {"$ref": "#/definitions/retry"},
         "await_event": {"$ref": "#/definitions/await_event"},
-        "wait": {"$ref": "#/definitions/wait"}
+        "wait": {"$ref": "#/definitions/wait"},
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/step" }
+        }
       }
     },
     "retry": {

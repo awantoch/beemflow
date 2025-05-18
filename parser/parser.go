@@ -44,3 +44,12 @@ func validateFlow(flow *model.Flow, schemaPath string) error {
 	// Validate the flow
 	return schema.Validate(doc)
 }
+
+// Add a helper for tests to parse from a YAML string
+func ParseFlowFromString(yamlStr string) (*model.Flow, error) {
+	var flow model.Flow
+	if err := yaml.Unmarshal([]byte(yamlStr), &flow); err != nil {
+		return nil, err
+	}
+	return &flow, nil
+}

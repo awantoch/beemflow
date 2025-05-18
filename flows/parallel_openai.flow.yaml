@@ -1,0 +1,31 @@
+name: parallel_openai_nested
+on: cli.manual
+vars:
+  prompt1: "Generate a fun fact about space"
+  prompt2: "Generate a fun fact about oceans"
+steps:
+  - id: fanout
+    parallel: true
+    steps:
+      - id: chat1
+        use: openai
+        with:
+          model: "gpt-3.5-turbo"
+          messages:
+            - role: user
+              content: "{{.vars.prompt1}}"
+      - id: chat2
+        use: openai
+        with:
+          model: "gpt-3.5-turbo"
+          messages:
+            - role: user
+              content: "{{.vars.prompt2}}"
+  - id: combine
+    depends_on: [fanout]
+    use: core.echo
+    with:
+      text: |
+        Combined responses:
+        - chat1: {{ (index .outputs.fanout.chat1.choices 0).message.content }}
+        - chat2: {{ (index .outputs.fanout.chat2.choices 0).message.content }} 
