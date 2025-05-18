@@ -14,6 +14,7 @@ import (
 
 	"github.com/awantoch/beemflow/pkg/logger"
 
+	"github.com/awantoch/beemflow/api"
 	mcpserver "github.com/awantoch/beemflow/mcp"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
@@ -691,6 +692,59 @@ steps:
 	}
 	if !strings.Contains(contentStr, rid.RunID) {
 		t.Fatalf("getRun response missing runID: %v", contentStr)
+	}
+}
+
+// TestMCPServer_ListFlows_CustomDir ensures the MCP server honors api.SetFlowsDir override.
+func TestMCPServer_ListFlows_CustomDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	custom := tmpDir + "/altflows"
+	if err := os.MkdirAll(custom, 0755); err != nil {
+		t.Fatalf("failed to create custom flows dir: %v", err)
+	}
+	// Write a sample flow file
+	yaml := `name: altflow
+on: cli.manual
+steps: []`
+	if err := os.WriteFile(custom+"/altflow.flow.yaml", []byte(yaml), 0644); err != nil {
+		t.Fatalf("failed to write flow YAML: %v", err)
+	}
+	// Override the API flowsDir
+	api.SetFlowsDir(custom)
+	defer api.SetFlowsDir("flows")
+
+	// Start an in-memory MCP server and call listFlows
+	client, cancel := startMCPServer(t)
+	defer cancel()
+	ctx := context.Background()
+	resp, err := client.CallTool(ctx, "listFlows", struct{}{})
+	if err != nil {
+		t.Fatalf("listFlows failed: %v", err)
+	}
+	if resp == nil || len(resp.Content) == 0 {
+		t.Fatalf("expected non-empty response, got: %v", resp)
+	}
+
+	// Extract the 'text' field from the first content element
+	var contentMap map[string]interface{}
+	b, _ := json.Marshal(resp.Content[0])
+	if err := json.Unmarshal(b, &contentMap); err != nil {
+		t.Fatalf("failed to marshal content: %v", err)
+	}
+	textVal, ok := contentMap["text"].(string)
+	if !ok {
+		t.Fatalf("expected 'text' field in content map, got: %v", contentMap)
+	}
+
+	// Parse the JSON payload inside the text
+	var out struct {
+		Flows []string `json:"flows"`
+	}
+	if err := json.Unmarshal([]byte(textVal), &out); err != nil {
+		t.Fatalf("failed to unmarshal flows JSON: %v", err)
+	}
+	if len(out.Flows) != 1 || out.Flows[0] != "altflow" {
+		t.Errorf("expected [altflow], got %v", out.Flows)
 	}
 }
 
