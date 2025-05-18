@@ -277,7 +277,7 @@ func TestMCPAdapter_SupabaseQuery(t *testing.T) {
 }
 
 func TestMCPAdapter_AirtableCreateRecord(t *testing.T) {
-	t.Skip("Skipping Airtable HTTP fallback test; HTTP transport not supported in this adapter version")
+	// t.Skip("Skipping Airtable HTTP fallback test; HTTP transport not supported in this adapter version")
 	// Simulate an Airtable MCP server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req map[string]any

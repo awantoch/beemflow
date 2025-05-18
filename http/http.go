@@ -1,20 +1,18 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/model"
-	"github.com/awantoch/beemflow/parser"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/google/uuid"
 )
@@ -91,44 +89,24 @@ func StartServer(addr string) error {
 
 // GET /runs (list all runs)
 func runsListHandler(w http.ResponseWriter, r *http.Request) {
-	if eng == nil {
-		w.WriteHeader(http.StatusNotImplemented)
-		return
-	}
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	allRuns := make([]map[string]interface{}, 0)
-	runs, err := eng.ListRuns(r.Context())
-	if err == nil {
-		for _, run := range runs {
-			allRuns = append(allRuns, map[string]interface{}{
-				"id":         run.ID.String(),
-				"status":     run.Status,
-				"flow":       run.FlowName,
-				"started_at": run.StartedAt,
-				"ended_at":   run.EndedAt,
-			})
-		}
+	flows, err := api.ListFlows(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(allRuns)
+	json.NewEncoder(w).Encode(flows)
 }
 
 // POST /runs { flow: <filename>, event: <object> }
 func runsHandler(w http.ResponseWriter, r *http.Request) {
-	if eng == nil {
-		w.WriteHeader(http.StatusNotImplemented)
-		return
-	}
 	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusNotImplemented)
-		return
-	}
-	// If no body, treat as not implemented (for test)
-	if r.Body == nil {
-		w.WriteHeader(http.StatusNotImplemented)
+		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	var req struct {
@@ -136,67 +114,18 @@ func runsHandler(w http.ResponseWriter, r *http.Request) {
 		Event map[string]any `json:"event"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusNotImplemented)
-		return
-	}
-	if req.Flow == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("missing flow filename"))
+		w.Write([]byte("invalid request body"))
 		return
 	}
-	// Load and parse the flow file
-	flowPath := req.Flow
-	if !filepath.IsAbs(flowPath) {
-		flowPath = filepath.Join("flows", flowPath)
-		if _, err := os.Stat(flowPath); os.IsNotExist(err) {
-			flowPath = req.Flow // try as given
-		}
-	}
-	flow, err := parser.ParseFlow(flowPath)
+	id, err := api.StartRun(r.Context(), req.Flow, req.Event)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("failed to parse flow: %v", err)))
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
 		return
 	}
-	runID := uuid.New()
-	go func() {
-		outputs, err := eng.Execute(context.Background(), flow, req.Event)
-		runsMu.Lock()
-		run := &model.Run{
-			ID:        runID,
-			FlowName:  flow.Name,
-			Event:     req.Event,
-			Vars:      flow.Vars,
-			Status:    model.RunSucceeded,
-			StartedAt: time.Now(),
-			EndedAt:   nil,
-			Steps:     nil, // Not tracking step runs in this minimal version
-		}
-		if err != nil {
-			if err.Error() == "step wait_for_resume is waiting for event (await_event pause)" {
-				run.Status = model.RunWaiting
-				// Find the token from event or vars
-				token := ""
-				if v, ok := req.Event["token"].(string); ok {
-					token = v
-				} else if v, ok := flow.Vars["token"].(string); ok {
-					token = v
-				}
-				if token != "" {
-					runTokens[token] = runID
-				}
-			}
-			run.Status = model.RunWaiting
-		}
-		if outputs != nil {
-			// Store outputs in Event for now
-			run.Event["outputs"] = outputs
-		}
-		runs[runID] = run
-		runsMu.Unlock()
-	}()
 	resp := map[string]any{
-		"run_id": runID.String(),
+		"run_id": id.String(),
 		"status": "STARTED",
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -205,10 +134,6 @@ func runsHandler(w http.ResponseWriter, r *http.Request) {
 
 // GET /runs/{id}
 func runStatusHandler(w http.ResponseWriter, r *http.Request) {
-	if eng == nil {
-		w.WriteHeader(http.StatusNotImplemented)
-		return
-	}
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -220,7 +145,7 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("invalid run ID"))
 		return
 	}
-	run, err := eng.GetRunByID(r.Context(), id)
+	run, err := api.GetRun(r.Context(), id)
 	if err != nil || run == nil {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("run not found"))
@@ -300,11 +225,47 @@ func resumeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func graphHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	flowName := r.URL.Query().Get("flow")
+	if flowName == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("missing flow name"))
+		return
+	}
+	graph, err := api.GraphFlow(r.Context(), flowName)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	w.Header().Set("Content-Type", "text/vnd.graphviz")
+	w.Write([]byte(graph))
 }
 
 func validateHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Flow string `json:"flow"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid request body"))
+		return
+	}
+	err := api.ValidateFlow(r.Context(), req.Flow)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ok"))
 }
 
 func testHandler(w http.ResponseWriter, r *http.Request) {

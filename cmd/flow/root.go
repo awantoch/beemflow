@@ -34,6 +34,7 @@ func NewRootCmd() *cobra.Command {
 		newGraphCmd(),
 		newTestCmd(),
 		newToolCmd(),
+		newMCPServeCmd(),
 	)
 	return rootCmd
 }

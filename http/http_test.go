@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/awantoch/beemflow/model"
 	"github.com/google/uuid"
@@ -138,5 +139,23 @@ func TestResumeHandler_UpdatesEvent(t *testing.T) {
 	resumeHandler(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for invalid JSON, got %d", w.Code)
+	}
+}
+
+func TestHTTPServer_ListRuns(t *testing.T) {
+	go func() {
+		_ = StartServer(":18080")
+	}()
+	time.Sleep(500 * time.Millisecond) // Give server time to start
+	resp, err := http.Get("http://localhost:18080/runs")
+	if err != nil {
+		t.Fatalf("Failed to GET /runs: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("Expected 200 OK, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("Expected application/json, got %s", ct)
 	}
 }
