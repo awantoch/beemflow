@@ -254,3 +254,53 @@ func ResumeRun(ctx context.Context, token string, event map[string]any) (map[str
 	outputs := eng.GetCompletedOutputs(token)
 	return outputs, nil
 }
+
+// ParseFlowFromString parses a flow YAML string into a Flow struct.
+func ParseFlowFromString(yamlStr string) (*model.Flow, error) {
+	return parser.ParseFlowFromString(yamlStr)
+}
+
+// RunSpec validates and runs a flow spec inline, returning run ID and outputs.
+func RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.UUID, map[string]any, error) {
+	cfg, err := config.LoadConfig("flow.config.json")
+	if err != nil && !os.IsNotExist(err) {
+		return uuid.Nil, nil, err
+	}
+	var store storage.Storage
+	if cfg != nil && cfg.Storage.Driver != "" {
+		switch strings.ToLower(cfg.Storage.Driver) {
+		case "sqlite":
+			store, err = storage.NewSqliteStorage(cfg.Storage.DSN)
+		case "postgres":
+			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
+		default:
+			return uuid.Nil, nil, fmt.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
+		}
+		if err != nil {
+			return uuid.Nil, nil, err
+		}
+	}
+	if store == nil {
+		store = storage.NewMemoryStorage()
+	}
+	eng := engine.NewEngineWithStorage(store)
+	outputs, err := eng.Execute(ctx, flow, event)
+	if err != nil {
+		return uuid.Nil, outputs, err
+	}
+	// Retrieve the latest run for this flow
+	runs, err := store.ListRuns(ctx)
+	if err != nil || len(runs) == 0 {
+		return uuid.Nil, outputs, err
+	}
+	var latest *model.Run
+	for _, r := range runs {
+		if r.FlowName == flow.Name && (latest == nil || r.StartedAt.After(latest.StartedAt)) {
+			latest = r
+		}
+	}
+	if latest == nil {
+		return uuid.Nil, outputs, err
+	}
+	return latest.ID, outputs, nil
+}

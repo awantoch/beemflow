@@ -1,6 +1,8 @@
 package http
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -140,5 +142,54 @@ func TestHTTPServer_ListRuns(t *testing.T) {
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
 		t.Fatalf("Expected application/json, got %s", ct)
+	}
+}
+
+func TestAssistantChatHandler(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(assistantChatHandler))
+	defer ts.Close()
+
+	body := map[string]any{"messages": []string{"Draft a flow that echoes hello"}}
+	b, _ := json.Marshal(body)
+	resp, err := http.Post(ts.URL, "application/json", bytes.NewReader(b))
+	if err != nil {
+		t.Fatalf("post failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 && resp.StatusCode != 500 {
+		t.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+}
+
+func TestRunsInlineHandler(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(runsInlineHandler))
+	defer ts.Close()
+
+	valid := map[string]any{
+		"spec":  "name: test\non: cli.manual\nsteps:\n  - id: s1\n    use: core.echo\n    with:\n      text: hello\n",
+		"event": map[string]any{"foo": "bar"},
+	}
+	b, _ := json.Marshal(valid)
+	resp, err := http.Post(ts.URL, "application/json", bytes.NewReader(b))
+	if err != nil {
+		t.Fatalf("post failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	invalid := map[string]any{
+		"spec":  "name: test\nsteps: [bad yaml",
+		"event": map[string]any{},
+	}
+	b2, _ := json.Marshal(invalid)
+	resp2, err := http.Post(ts.URL, "application/json", bytes.NewReader(b2))
+	if err != nil {
+		t.Fatalf("post failed: %v", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != 400 && resp2.StatusCode != 500 {
+		t.Errorf("unexpected status: %d", resp2.StatusCode)
 	}
 }

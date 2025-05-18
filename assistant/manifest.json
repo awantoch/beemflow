@@ -1,0 +1,16 @@
+{
+  "id": "beemflow.assistant",
+  "name": "BeemFlow Assistant",
+  "description": "Draft, refine, and validate BeemFlow YAML flows interactively via LLM guidance.",
+  "input": {
+    "messages": [
+      { "role": "system|user|assistant", "content": "string" }
+    ]
+  },
+  "output": {
+    "draft": "string (YAML)",
+    "errors": ["string"]
+  },
+  "examples": "See examples.md for usage patterns.",
+  "docs": "https://github.com/beem-ai/beemflow"
+} 

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/awantoch/beemflow/adapter/assistant"
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/engine"
@@ -85,6 +86,8 @@ func StartServer(addr string) error {
 	mux.HandleFunc("/graph", graphHandler)
 	mux.HandleFunc("/validate", validateHandler)
 	mux.HandleFunc("/test", testHandler)
+	mux.HandleFunc("/assistant/chat", assistantChatHandler)
+	mux.HandleFunc("/runs/inline", runsInlineHandler)
 	return http.ListenAndServe(addr, mux)
 }
 
@@ -283,4 +286,66 @@ func UpdateRunEvent(id uuid.UUID, newEvent map[string]any) error {
 	}
 	run.Event = newEvent
 	return nil
+}
+
+func assistantChatHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Messages []string `json:"messages"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid request body"))
+		return
+	}
+	draft, errors, err := assistant.Execute(r.Context(), req.Messages)
+	resp := map[string]any{
+		"draft":  draft,
+		"errors": errors,
+	}
+	if err != nil {
+		resp["error"] = err.Error()
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Spec  string         `json:"spec"`
+		Event map[string]any `json:"event"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid request body"))
+		return
+	}
+	// Parse and validate the flow spec
+	flow, err := api.ParseFlowFromString(req.Spec)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid flow spec: " + err.Error()))
+		return
+	}
+	// Start the run inline
+	id, outputs, err := api.RunSpec(r.Context(), flow, req.Event)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("run error: " + err.Error()))
+		return
+	}
+	resp := map[string]any{
+		"run_id":  id.String(),
+		"outputs": outputs,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }

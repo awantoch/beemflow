@@ -8,6 +8,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 
+	_ "github.com/awantoch/beemflow/adapter/assistant"
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
 )
@@ -51,6 +52,7 @@ func NewRootCmd() *cobra.Command {
 		newTestCmd(),
 		newToolCmd(),
 		newMCPServeCmd(),
+		newAssistCmd(),
 	)
 	return rootCmd
 }
