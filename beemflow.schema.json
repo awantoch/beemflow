@@ -13,15 +13,8 @@
       "items": { "$ref": "#/definitions/step" }
     },
     "catch": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "use": { "type": "string" },
-          "with": { "type": "object" }
-        },
-        "required": ["use"]
-      }
+      "type": "array",
+      "items": { "$ref": "#/definitions/step" }
     },
     "mcpServers": {
       "type": "object",

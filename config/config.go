@@ -81,7 +81,6 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 	logger.Debug("Raw loaded config after decode: %+v", cfg)
-	// No legacy merging needed
 	return &cfg, nil
 }
 

@@ -1,4 +1,3 @@
-
 AGENTFLOW — ULTRA‑COMPREHENSIVE SPECIFICATION
 ==============================================
 
@@ -28,7 +27,7 @@ version:    string                       # optional semver
 on:         list|object                  # triggers
 vars:       map[string]                  # optional constants / secret refs
 steps:      array of step objects         # required
-catch:      map[label] → step            # optional global error flow (implemented as a map, not a list)
+catch:      array of step objects        # optional global error flow (ordered list)
 ```
 
 **Trigger kinds**

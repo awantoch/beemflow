@@ -150,21 +150,24 @@ func TestAwaitEventResume_RoundTrip(t *testing.T) {
 }
 
 func TestExecute_CatchBlock(t *testing.T) {
-	e := NewEngine()
-	f := &model.Flow{
+	flow := &model.Flow{
 		Name:  "catch_test",
-		Steps: []model.Step{{ID: "s1", Use: "nonexistent.adapter"}},
-		Catch: map[string]model.Step{
-			"catch1": {ID: "catch1", Use: "core.echo", With: map[string]interface{}{"text": "caught!"}},
+		Steps: []model.Step{{ID: "fail", Use: "nonexistent.adapter"}},
+		Catch: []model.Step{
+			{ID: "catch1", Use: "core.echo", With: map[string]interface{}{"text": "caught!"}},
+			{ID: "catch2", Use: "core.echo", With: map[string]interface{}{"text": "second!"}},
 		},
 	}
-	outputs, err := e.Execute(context.Background(), f, map[string]any{})
-	if err == nil || !strings.Contains(err.Error(), "adapter not found") {
-		t.Errorf("expected adapter not found error, got %v", err)
+	eng := NewEngine()
+	outputs, err := eng.Execute(context.Background(), flow, nil)
+	if err == nil {
+		t.Errorf("expected error from fail step")
 	}
-	// Expect the output to be a map from core.echo
 	if out, ok := outputs["catch1"].(map[string]any); !ok || out["text"] != "caught!" {
-		t.Errorf("expected catch block to run and output map with text, got outputs: %v", outputs)
+		t.Errorf("expected catch1 to run and output map with text, got outputs: %v", outputs)
+	}
+	if out, ok := outputs["catch2"].(map[string]any); !ok || out["text"] != "second!" {
+		t.Errorf("expected catch2 to run and output map with text, got outputs: %v", outputs)
 	}
 }
 

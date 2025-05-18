@@ -63,7 +63,7 @@ Top-level keys:
 - **on** (trigger list or object): supports `event`, `cron`, `eventbus`, `cli`
 - **vars** (map): static constants or secret references
 - **steps** (ordered list): each step is an object with an `id`
-- **catch** (list): global error handlers
+- **catch** (ordered list): global error handlers (runs in defined sequence)
 
 Step definition keys:
 - `id`: Unique identifier for the step (required)
@@ -80,7 +80,7 @@ Step definition keys:
 - `wait`: sleep for `{ seconds: n }` or `{ until: ts }`
 - `depends_on`: (optional) List of step ids this step depends on
 
-> **Note:** Only `parallel: true` with nested `steps:` is supported for parallel execution. This is to keep the flow simple and easy to interpret.
+> **Note:** Only `parallel: true` with nested `steps:` is supported for parallel execution. This is to keep the flow simple and easy to interpret while supporting arbitrary fanout/fanin flows.
 
 Templating & helpers:
 - Interpolate values with `{{ … }}` (access `event`, `vars`, previous outputs)
@@ -227,6 +227,32 @@ The parent step (`fanout`) runs all its children in parallel and is considered c
    flow run --config flow.config.json hello --event event.json
    flow graph flows/hello.flow.yaml -o hello.svg
    ```
+
+### Catch Example (Ordered)
+
+```yaml
+# flows/catch_ordered_example.flow.yaml
+name: error_pipeline
+on: cli.manual
+
+steps:
+  - id: step1
+    use: openai
+    with:
+      model: "gpt-4o"
+      messages:
+        - role: user
+          content: "This will error"
+
+catch:
+  - id: rollback_db
+    use: db.rollback
+  - id: notify_ops
+    use: slack.chat.postMessage
+    with:
+      channel: "#ops"
+      text: "Rollback complete"
+```
 
 ## 🔐 Authentication & Secrets
 

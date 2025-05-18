@@ -40,7 +40,7 @@ steps:
       seconds: 5
       until: "2025-01-01"
 catch:
-  e1:
+  - id: e1
     use: core.echo
     with:
       text: "err"
@@ -110,10 +110,8 @@ catch:
 	if step.Wait == nil || step.Wait.Seconds != 5 || step.Wait.Until != "2025-01-01" {
 		t.Errorf("expected Wait{5,'2025-01-01'}, got %#v", step.Wait)
 	}
-	if catchStep, ok := f.Catch["e1"]; !ok {
-		t.Errorf("expected Catch['e1'] in Catch map")
-	} else if catchStep.Use != "core.echo" {
-		t.Errorf("expected Catch['e1'].Use 'core.echo', got '%s'", catchStep.Use)
+	if len(f.Catch) != 1 || f.Catch[0].Use != "core.echo" {
+		t.Errorf("expected one catch step with Use 'core.echo', got: %+v", f.Catch)
 	}
 }
 
@@ -164,7 +162,7 @@ func TestStep_UnknownFieldsIgnored(t *testing.T) {
 }
 
 func TestFlow_EmptyStepsCatch(t *testing.T) {
-	f := model.Flow{Name: "empty", Steps: []model.Step{}, Catch: map[string]model.Step{}}
+	f := model.Flow{Name: "empty", Steps: []model.Step{}, Catch: []model.Step{}}
 	if len(f.Steps) != 0 {
 		t.Errorf("expected 0 steps, got %d", len(f.Steps))
 	}

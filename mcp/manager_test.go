@@ -25,8 +25,8 @@ func TestFindMCPServersInFlow(t *testing.T) {
 				},
 			},
 		},
-		Catch: map[string]model.Step{
-			"onError": {Use: "mcp://baz/tool3"},
+		Catch: []model.Step{
+			{Use: "mcp://baz/tool3"},
 		},
 	}
 	servers := FindMCPServersInFlow(flow)

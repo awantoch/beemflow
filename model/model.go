@@ -12,7 +12,7 @@ type Flow struct {
 	On      interface{}            `yaml:"on" json:"on"`
 	Vars    map[string]interface{} `yaml:"vars,omitempty" json:"vars,omitempty"`
 	Steps   []Step                 `yaml:"steps" json:"steps"`
-	Catch   map[string]Step        `yaml:"catch,omitempty" json:"catch,omitempty"`
+	Catch   []Step                 `yaml:"catch,omitempty" json:"catch,omitempty"`
 }
 
 type Step struct {

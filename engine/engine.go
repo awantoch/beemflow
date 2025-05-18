@@ -257,13 +257,13 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	}
 	e.Storage.SaveRun(ctx, run)
 
-	if err != nil && flow.Catch != nil && len(flow.Catch) > 0 {
-		// Run catch steps if error and catch block exists
+	if err != nil && len(flow.Catch) > 0 {
+		// Run catch steps in defined order if error
 		catchOutputs := map[string]any{}
-		for id, step := range flow.Catch {
-			err2 := e.executeStep(ctx, &step, stepCtx, id)
+		for _, step := range flow.Catch {
+			err2 := e.executeStep(ctx, &step, stepCtx, step.ID)
 			if err2 == nil {
-				catchOutputs[id] = stepCtx.Outputs[id]
+				catchOutputs[step.ID] = stepCtx.Outputs[step.ID]
 			}
 		}
 		return catchOutputs, err

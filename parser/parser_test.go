@@ -227,7 +227,7 @@ const emptyYAML = `
 name: empty
 on: cli.manual
 steps: []
-catch: {}
+catch: []
 `
 
 const allYAML = `
@@ -263,7 +263,7 @@ steps:
     with:
       text: hi
 catch:
-  e1:
+  - id: e1
     use: core.echo
     with:
       text: err
