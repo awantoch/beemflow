@@ -38,7 +38,16 @@ type Step struct {
 func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 	type stepAlias Step // prevent recursion
 	var raw stepAlias
-	if err := value.Decode(&raw); err != nil {
+	// Remove 'parallel' from the node before decoding to raw
+	var filtered yaml.Node = *value
+	filtered.Content = make([]*yaml.Node, 0, len(value.Content))
+	for i := 0; i < len(value.Content); i += 2 {
+		k := value.Content[i]
+		if k.Value != "parallel" {
+			filtered.Content = append(filtered.Content, value.Content[i], value.Content[i+1])
+		}
+	}
+	if err := filtered.Decode(&raw); err != nil {
 		return err
 	}
 	// Now handle 'parallel' manually
@@ -51,12 +60,18 @@ func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 				var b bool
 				if err := v.Decode(&b); err == nil {
 					raw.ParallelBool = b
+					raw.Parallel = b // ensure Parallel is set for compatibility
 				}
 			case yaml.SequenceNode:
 				var arr []string
 				if err := v.Decode(&arr); err == nil {
 					raw.ParallelSteps = arr
+					raw.Parallel = false // ensure Parallel is false for barrier syntax
+				} else {
+					return err // propagate the error for better diagnostics
 				}
+			default:
+				return &yaml.TypeError{Errors: []string{"invalid type for 'parallel' field"}}
 			}
 		}
 	}
