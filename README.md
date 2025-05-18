@@ -7,6 +7,25 @@
 
 ---
 
+## 🚀 Try It Now
+
+1. **Clone the repo:**
+   ```bash
+   git clone https://github.com/awantoch/beemflow.git
+   cd beemflow
+   ```
+2. **Run an example flow:**
+   ```bash
+   flow run hello
+   # or add your OPENAI_API_KEY to .env and try another example:
+   flow run fetch_and_summarize
+   flow run parallel_openai
+   ```
+
+> **Note:** You only need to provide `--event` if your flow references fields from the event (e.g. `{{event.something}}`). For most CLI/manual flows, you can omit it.
+
+---
+
 ## 🌟 Why Now?
 
 AI is everywhere. APIs are everywhere. Yet automation is still stuck in siloed, proprietary platforms. It's time for a revolution.
@@ -54,13 +73,14 @@ Step definition keys:
 - `foreach`: loop over an array
   - `as`: loop variable
   - `do`: nested sequence of steps
-- `parallel`: fan-out / fan-in list of step paths
+- `parallel`: (optional) Boolean, if true, runs all nested `steps:` in parallel (nested/block parallel only)
 - `retry`: `{ attempts: n, delay_sec: m }`
 - `await_event`: durable wait on external callback
   - `source`, `match`, `timeout`
 - `wait`: sleep for `{ seconds: n }` or `{ until: ts }`
 - `depends_on`: (optional) List of step ids this step depends on
-- `parallel`: (optional) Boolean, if true and no dependencies, can run concurrently; or an array of step IDs for block-parallel barrier (fan-in) support
+
+> **Note:** Only `parallel: true` with nested `steps:` is supported for parallel execution. The old barrier/array syntax (`parallel: [a, b]`) is no longer supported.
 
 Templating & helpers:
 - Interpolate values with `{{ … }}` (access `event`, `vars`, previous outputs)
@@ -1151,3 +1171,128 @@ This project supports the community/Claude-style MCP server config format. Use t
 BeemFlow is designed for extensibility and practical iteration. Some features are intentionally stubbed or in-memory only, with clear extension points:
 
 - **Adapters:** Easy to add new tool adapters. See `
+
+## 🏃‍♂️ Running Example Flows
+
+BeemFlow comes with a set of example flows you can run out of the box. Below are some of the most useful to get started:
+
+### Hello World
+
+`flows/hello.flow.yaml`:
+```yaml
+name: hello
+on: cli.manual
+steps:
+  - id: greet
+    use: core.echo
+    with:
+      text: "Hello, BeemFlow!"
+  - id: print
+    use: core.echo
+    with:
+      text: "{{.outputs.greet.text}}"
+```
+Run it:
+```bash
+flow run hello --event event.json
+```
+
+### Fetch and Summarize
+
+`flows/fetch_and_summarize.flow.yaml`:
+```yaml
+name: fetch_and_summarize
+on: cli.manual
+steps:
+  - id: fetch
+    use: http.fetch
+    with:
+      url: "https://en.wikipedia.org/api/rest_v1/page/summary/Artificial_intelligence"
+  - id: summarize
+    use: openai
+    with:
+      model: "gpt-4o"
+      messages:
+        - role: system
+          content: "Summarize the following text in 3 bullet points."
+        - role: user
+          content: "{{.outputs.fetch.body}}"
+  - id: print
+    use: core.echo
+    with:
+      text: "{{.outputs.summarize.choices[0].message.content}}"
+```
+Run it:
+```bash
+flow run fetch_and_summarize --event event.json
+```
+
+### Parallel OpenAI (Fanout/Fanin)
+
+`flows/parallel_openai.flow.yaml`:
+```yaml
+name: parallel_openai
+on: cli.manual
+steps:
+  - id: fanout
+    parallel: true
+    steps:
+      - id: chat1
+        use: openai
+        with:
+          model: "gpt-3.5-turbo"
+          messages:
+            - role: user
+              content: "Prompt 1"
+      - id: chat2
+        use: openai
+        with:
+          model: "gpt-3.5-turbo"
+          messages:
+            - role: user
+              content: "Prompt 2"
+  - id: combine
+    depends_on: [fanout]
+    use: core.echo
+    with:
+      text: |
+        Combined responses:\n
+        - chat1: {{.outputs.fanout.chat1.choices[0].message.content}}
+        - chat2: {{.outputs.fanout.chat2.choices[0].message.content}}
+```
+Run it:
+```bash
+flow run parallel_openai --event event.json
+```
+
+---
+
+## ⏸️ Durable Waits, Pause & Resume
+
+BeemFlow supports **durable waits** using the `await_event` step. This allows a flow to pause execution and wait for an external event or callback (such as a webhook or approval) before resuming.
+
+- When a step with `await_event` is reached, the flow is paused and its state is saved.
+- The system waits for a matching external event (e.g., an HTTP callback, webhook, or manual approval) that satisfies the `match` criteria.
+- Once the event is received, the flow resumes from where it left off.
+- This enables long-running, event-driven workflows that can span minutes, hours, or even days.
+
+**Example:**
+```yaml
+steps:
+  - id: await_approval
+    await_event:
+      source: airtable
+      match:
+        record_id: "{{airtable_row.id}}"
+        field: Status
+        equals: Approved
+      timeout: 24h
+  - id: notify
+    use: core.echo
+    with:
+      text: "Approval received!"
+```
+
+You can resume a paused flow by sending the appropriate event (e.g., via webhook or CLI/API call) that matches the `await_event` criteria.
+
+---
