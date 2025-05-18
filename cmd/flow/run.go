@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 
 	"github.com/awantoch/beemflow/config"
@@ -23,7 +22,7 @@ func newRunCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			// Stub behavior when no file argument is provided
 			if len(args) == 0 {
-				fmt.Println("flow run (stub)")
+				logger.User("flow run (stub)")
 				return
 			}
 			// Real execution when a file is provided
@@ -67,7 +66,7 @@ func newRunCmd() *cobra.Command {
 			if debug {
 				// Print all outputs as JSON for debugging
 				outJSONBytes, _ := json.MarshalIndent(outputs, "", "  ")
-				fmt.Println(string(outJSONBytes))
+				logger.User("%s", string(outJSONBytes))
 				logger.Info("Flow executed successfully.")
 				logger.Info("Step outputs:\n%s\n", string(outJSONBytes))
 			} else {
@@ -75,7 +74,7 @@ func newRunCmd() *cobra.Command {
 				for _, stepOutput := range outputs {
 					if outMap, ok := stepOutput.(map[string]any); ok {
 						if text, ok := outMap["text"]; ok {
-							fmt.Println(text)
+							logger.Info("%s", text)
 						}
 					}
 				}

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/awantoch/beemflow/parser"
 	"github.com/awantoch/beemflow/pkg/logger"
 	"github.com/spf13/cobra"
@@ -26,7 +24,7 @@ func newLintCmd() *cobra.Command {
 				logger.Error("Schema validation error: %v\n", err)
 				exit(2)
 			}
-			fmt.Println("Lint OK: flow is valid!")
+			logger.User("Lint OK: flow is valid!")
 		},
 	}
 }

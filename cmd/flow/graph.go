@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/awantoch/beemflow/graphviz"
@@ -35,7 +34,7 @@ func newGraphCmd() *cobra.Command {
 					os.Exit(3)
 				}
 			} else {
-				fmt.Println(diagram)
+				logger.Info("%s", diagram)
 			}
 		},
 	}

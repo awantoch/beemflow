@@ -11,45 +11,28 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestHandlers_NotImplemented(t *testing.T) {
+func TestHandlers_MethodsAndCodes(t *testing.T) {
 	tests := []struct {
 		name    string
 		handler http.HandlerFunc
+		method  string
+		want    int
+		body    string
 	}{
-		{"runs", runsHandler},
-		{"graph", graphHandler},
-		{"validate", validateHandler},
-		{"test", testHandler},
+		{"runs GET", runsHandler, http.MethodGet, http.StatusMethodNotAllowed, ""},
+		{"runs POST", runsHandler, http.MethodPost, http.StatusBadRequest, ""}, // missing body
+		{"graph GET missing param", graphHandler, http.MethodGet, http.StatusBadRequest, ""},
+		{"graph POST", graphHandler, http.MethodPost, http.StatusMethodNotAllowed, ""},
+		{"validate GET", validateHandler, http.MethodGet, http.StatusMethodNotAllowed, ""},
+		{"validate POST bad body", validateHandler, http.MethodPost, http.StatusBadRequest, "not-json"},
+		{"test GET", testHandler, http.MethodGet, http.StatusNotImplemented, ""},
 	}
 	for _, tt := range tests {
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 		w := httptest.NewRecorder()
 		tt.handler(w, req)
-		if w.Code != http.StatusNotImplemented {
-			t.Errorf("%s: expected status %d, got %d", tt.name, http.StatusNotImplemented, w.Code)
-		}
-	}
-}
-
-func TestHandlers_NotImplemented_Methods(t *testing.T) {
-	handlers := []struct {
-		name    string
-		handler http.HandlerFunc
-	}{
-		{"runs", runsHandler},
-		{"graph", graphHandler},
-		{"validate", validateHandler},
-		{"test", testHandler},
-	}
-	methods := []string{"POST", "PUT", "DELETE"}
-	for _, tt := range handlers {
-		for _, method := range methods {
-			req := httptest.NewRequest(method, "/", nil)
-			w := httptest.NewRecorder()
-			tt.handler(w, req)
-			if w.Code != http.StatusNotImplemented {
-				t.Errorf("%s %s: expected status %d, got %d", tt.name, method, http.StatusNotImplemented, w.Code)
-			}
+		if w.Code != tt.want {
+			t.Errorf("%s: expected status %d, got %d", tt.name, tt.want, w.Code)
 		}
 	}
 }

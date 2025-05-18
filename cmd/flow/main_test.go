@@ -17,11 +17,13 @@ func captureOutput(f func()) string {
 	orig := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
+	logger.SetUserOutput(w)
 	f()
 	w.Close()
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
 	os.Stdout = orig
+	logger.SetUserOutput(orig)
 	return buf.String()
 }
 
@@ -30,7 +32,7 @@ func captureStderrExit(f func()) (string, int) {
 	origExit := exit
 	r, w, _ := os.Pipe()
 	os.Stderr = w
-	logger.SetOutput(w)
+	logger.SetInternalOutput(w)
 	var buf bytes.Buffer
 	var out string
 	exitCode := 0
@@ -48,7 +50,7 @@ func captureStderrExit(f func()) (string, int) {
 	w.Close()
 	io.Copy(&buf, r)
 	os.Stderr = origStderr
-	logger.SetOutput(origStderr)
+	logger.SetInternalOutput(origStderr)
 	exit = origExit
 	out = buf.String()
 	return out, exitCode

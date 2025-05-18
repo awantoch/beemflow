@@ -67,7 +67,7 @@ func ValidateFlow(ctx context.Context, name string) error {
 
 // GraphFlow returns the DOT graph for the given flow.
 func GraphFlow(ctx context.Context, name string) (string, error) {
-	// TODO: Implement using engine/graphviz
+	// TODO: Implement using engine/graphviz. Far future feature though.
 	return "", nil
 }
 

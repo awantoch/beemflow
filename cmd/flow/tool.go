@@ -1,8 +1,7 @@
 package main
 
 import (
-	"fmt"
-
+	"github.com/awantoch/beemflow/pkg/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -12,14 +11,18 @@ func newToolCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tool",
 		Short: "Tooling commands",
-		Run:   func(cmd *cobra.Command, args []string) { fmt.Println("flow tool (stub)") },
+		Run: func(cmd *cobra.Command, args []string) {
+			logger.User("flow tool (stub)")
+		},
 	}
 	cmd.AddCommand(
 		&cobra.Command{
 			Use:   "scaffold",
 			Short: "Scaffold a tool manifest",
 			// Not implemented yet. Planned for a future release.
-			Run: func(cmd *cobra.Command, args []string) { fmt.Println("flow tool scaffold (stub)") },
+			Run: func(cmd *cobra.Command, args []string) {
+				logger.User("flow tool scaffold (stub)")
+			},
 		},
 	)
 	return cmd

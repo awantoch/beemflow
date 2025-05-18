@@ -56,7 +56,8 @@ func StartServer(addr string) error {
 	} else {
 		eng = engine.NewEngineWithStorage(storage.NewMemoryStorage())
 	}
-	http.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
 		if eng == nil {
 			w.WriteHeader(http.StatusNotImplemented)
 			return
@@ -67,24 +68,24 @@ func StartServer(addr string) error {
 			runsHandler(w, r)
 		}
 	})
-	http.HandleFunc("/runs/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/runs/", func(w http.ResponseWriter, r *http.Request) {
 		if eng == nil {
 			w.WriteHeader(http.StatusNotImplemented)
 			return
 		}
 		runStatusHandler(w, r)
 	})
-	http.HandleFunc("/resume/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/resume/", func(w http.ResponseWriter, r *http.Request) {
 		if eng == nil {
 			w.WriteHeader(http.StatusNotImplemented)
 			return
 		}
 		resumeHandler(w, r)
 	})
-	http.HandleFunc("/graph", graphHandler)
-	http.HandleFunc("/validate", validateHandler)
-	http.HandleFunc("/test", testHandler)
-	return http.ListenAndServe(addr, nil)
+	mux.HandleFunc("/graph", graphHandler)
+	mux.HandleFunc("/validate", validateHandler)
+	mux.HandleFunc("/test", testHandler)
+	return http.ListenAndServe(addr, mux)
 }
 
 // GET /runs (list all runs)

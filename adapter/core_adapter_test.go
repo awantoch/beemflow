@@ -19,12 +19,12 @@ func TestCoreAdapter(t *testing.T) {
 	// capture logger output
 	r, w, _ := os.Pipe()
 	orig := os.Stderr
-	logger.SetOutput(w)
+	logger.SetInternalOutput(w)
 
 	in := map[string]any{"text": "echoed"}
 	out, err := a.Execute(context.Background(), in)
 	w.Close()
-	logger.SetOutput(orig)
+	logger.SetInternalOutput(orig)
 
 	buf, _ := ioutil.ReadAll(r)
 	if string(buf) == "" || string(buf) == "\n" {

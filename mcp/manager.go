@@ -92,6 +92,12 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 			return fmt.Errorf("failed to start MCP server %s: %v", server, err)
 		}
 		logger.Debug("MCP server '%s' (stdio) started", server)
+		// Wait for MCP server to be ready (HTTP only for now)
+		if info.Endpoint != "" {
+			if err := waitForMCP(info.Endpoint, timeout); err != nil {
+				return fmt.Errorf("MCP server '%s' did not become ready: %v", server, err)
+			}
+		}
 	}
 	return nil
 }

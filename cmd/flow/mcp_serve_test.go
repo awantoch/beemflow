@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -13,7 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awantoch/beemflow/engine"
+	"github.com/awantoch/beemflow/pkg/logger"
+
+	mcpserver "github.com/awantoch/beemflow/mcp"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
@@ -29,8 +30,7 @@ func startMCPServer(t *testing.T) (*mcp.Client, context.CancelFunc) {
 	clientTransport := mcpstdio.NewStdioServerTransportWithIO(clientReader, clientWriter)
 	// Create and register server
 	server := mcp.NewServer(serverTransport)
-	eng := engine.NewEngine()
-	registerAllMCPTools(server, eng)
+	mcpserver.RegisterAllTools(server, buildMCPToolRegistrations())
 	// Start server in background
 	go func() {
 		if err := server.Serve(); err != nil {
@@ -269,7 +269,7 @@ steps:
 		return
 	}
 	b, _ := json.Marshal(resp.Content[0])
-	fmt.Printf("DEBUG: getRun resp.Content[0] marshaled: %q\n", string(b))
+	logger.Debug("getRun resp.Content[0] marshaled: %q", string(b))
 	if contentStr == "null" {
 		// Allow run to be nil if completed
 		return
@@ -305,10 +305,10 @@ steps:
 	defer os.Chdir(origDir)
 	// Debug: print working dir and files
 	wd, _ := os.Getwd()
-	fmt.Printf("DEBUG: working dir: %s\n", wd)
+	logger.Debug("working dir: %s", wd)
 	files, _ := os.ReadDir("flows")
 	for _, f := range files {
-		fmt.Printf("DEBUG: flows/ contains: %s\n", f.Name())
+		logger.Debug("flows/ contains: %s", f.Name())
 	}
 
 	// Pick a random available port
@@ -322,8 +322,7 @@ steps:
 	// Start MCP HTTP server in background
 	serverTransport := mcphttp.NewHTTPTransport("/mcp").WithAddr(addr)
 	server := mcp.NewServer(serverTransport)
-	eng := engine.NewEngine()
-	registerAllMCPTools(server, eng)
+	mcpserver.RegisterAllTools(server, buildMCPToolRegistrations())
 	serverDone := make(chan struct{})
 	go func() {
 		_ = server.Serve()
@@ -463,8 +462,7 @@ steps:
 	ln.Close()
 	serverTransport := mcphttp.NewHTTPTransport("/mcp").WithAddr(addr)
 	server := mcp.NewServer(serverTransport)
-	eng := engine.NewEngine()
-	registerAllMCPTools(server, eng)
+	mcpserver.RegisterAllTools(server, buildMCPToolRegistrations())
 	go server.Serve()
 	time.Sleep(200 * time.Millisecond)
 	clientTransport := mcphttp.NewHTTPClientTransport("/mcp").WithBaseURL("http://" + addr)
@@ -507,10 +505,10 @@ steps:
 
 	// (3) malformed tool call (missing params)
 	resp, err = client.CallTool(ctx, "getFlow", struct{}{})
-	fmt.Printf("DEBUG: malformed tool call resp: %+v, err: %v\n", resp, err)
+	logger.Debug("malformed tool call resp: %+v, err: %v", resp, err)
 	if resp != nil && len(resp.Content) > 0 {
 		b, _ := json.Marshal(resp.Content[0])
-		fmt.Printf("DEBUG: malformed tool call resp.Content[0] JSON: %s\n", string(b))
+		logger.Debug("malformed tool call resp.Content[0] JSON: %s", string(b))
 		var m map[string]interface{}
 		if err := json.Unmarshal(b, &m); err == nil {
 			if txt, ok := m["text"].(string); ok {
@@ -615,8 +613,7 @@ steps:
 	ln.Close()
 	serverTransport := mcphttp.NewHTTPTransport("/mcp").WithAddr(addr)
 	server := mcp.NewServer(serverTransport)
-	eng := engine.NewEngine()
-	registerAllMCPTools(server, eng)
+	mcpserver.RegisterAllTools(server, buildMCPToolRegistrations())
 	go server.Serve()
 	time.Sleep(200 * time.Millisecond)
 
