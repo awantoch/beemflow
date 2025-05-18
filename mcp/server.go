@@ -3,7 +3,10 @@ package mcp
 import (
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/pkg/logger"
@@ -21,9 +24,8 @@ type ToolRegistration struct {
 
 // Serve starts the BeemFlow MCP server with the given configuration and tool registrations.
 func Serve(configPath string, debug bool, stdio bool, addr string, tools []ToolRegistration) error {
-	// If using stdio transport and debug is disabled, silence all non-JSON output
+	// If using stdio transport and debug is disabled, silence user-facing logs on stdout; keep internal logs on stderr
 	if stdio && !debug {
-		logger.SetInternalOutput(io.Discard)
 		logger.SetUserOutput(io.Discard)
 	}
 
@@ -48,6 +50,13 @@ func Serve(configPath string, debug bool, stdio bool, addr string, tools []ToolR
 	// Start serving
 	if err := server.Serve(); err != nil {
 		return err
+	}
+	// For stdio transport, wait for termination signals and exit gracefully
+	if stdio {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		sig := <-sigCh
+		logger.Info("Received signal %v, shutting down MCP stdio server", sig)
 	}
 	return nil
 }
