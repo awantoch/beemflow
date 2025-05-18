@@ -1,0 +1,32 @@
+name: parallel_openai_example
+on: cli.manual
+vars:
+  prompt1: "You're AI 1, generate a random number between 1 and 100"
+  prompt2: "You're AI 2, generate a random number between 1 and 100"
+steps:
+  - id: chat1
+    use: openai
+    with:
+      model: "gpt-3.5-turbo"
+      messages:
+        - role: user
+          content: "{{.vars.prompt1}}"
+    parallel: true
+
+  - id: chat2
+    use: openai
+    with:
+      model: "gpt-3.5-turbo"
+      messages:
+        - role: user
+          content: "{{.vars.prompt2}}"
+    parallel: true
+
+  - id: combine
+    depends_on: [chat1, chat2]
+    use: core.echo
+    with:
+      text: |
+        Combined responses:
+        - chat1: {{ (index .outputs.chat1.choices 0).message.content }}
+        - chat2: {{ (index .outputs.chat2.choices 0).message.content }} 
