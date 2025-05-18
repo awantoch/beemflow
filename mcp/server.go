@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/awantoch/beemflow/config"
@@ -20,6 +21,12 @@ type ToolRegistration struct {
 
 // Serve starts the BeemFlow MCP server with the given configuration and tool registrations.
 func Serve(configPath string, debug bool, stdio bool, addr string, tools []ToolRegistration) error {
+	// If using stdio transport and debug is disabled, silence all non-JSON output
+	if stdio && !debug {
+		logger.SetInternalOutput(io.Discard)
+		logger.SetUserOutput(io.Discard)
+	}
+
 	// Load runtime config
 	_, err := config.LoadConfig(configPath)
 	if err != nil && !strings.Contains(err.Error(), "no such file") {
