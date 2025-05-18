@@ -1,8 +1,8 @@
 name: parallel_openai_example
 on: cli.manual
 vars:
-  prompt1: "You're AI 1, generate a random number between 1 and 100"
-  prompt2: "You're AI 2, generate a random number between 1 and 100"
+  prompt1: "Generate a fun fact about space"
+  prompt2: "Generate a fun fact about oceans"
 steps:
   - id: chat1
     use: openai
