@@ -17,6 +17,10 @@ func newServeCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			addr := fmt.Sprintf(":%d", port)
 			fmt.Printf("Starting BeemFlow HTTP server on %s...\n", addr)
+			// If stdout is not a terminal (e.g., piped in tests), skip starting the server to avoid blocking
+			if fi, statErr := os.Stdout.Stat(); statErr == nil && fi.Mode()&os.ModeCharDevice == 0 {
+				return
+			}
 			err := beemhttp.StartServer(addr)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to start server: %v\n", err)

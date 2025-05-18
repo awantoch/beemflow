@@ -83,6 +83,7 @@ func NewEngineWithBlobStore(blobStore blob.BlobStore) *Engine {
 		BlobStore:        blobStore,
 		waiting:          make(map[string]*PausedRun),
 		completedOutputs: make(map[string]map[string]any),
+		Storage:          storage.NewMemoryStorage(),
 	}
 }
 
@@ -127,6 +128,9 @@ func NewEngineWithStorage(store storage.Storage) *Engine {
 		}
 	}
 
+	if store == nil {
+		store = storage.NewMemoryStorage()
+	}
 	eng := &Engine{
 		Adapters:         reg,
 		Templater:        templater.NewTemplater(),
@@ -136,36 +140,43 @@ func NewEngineWithStorage(store storage.Storage) *Engine {
 		waiting:          make(map[string]*PausedRun),
 		completedOutputs: make(map[string]map[string]any),
 	}
-	// Load paused runs from storage
+	// Load paused runs from storage (generic)
 	if store != nil {
-		if sqlite, ok := store.(*storage.SqliteStorage); ok {
-			paused, err := sqlite.LoadPausedRuns()
-			if err == nil {
-				for token, persist := range paused {
-					// Convert PausedRunPersist to PausedRun
-					pr := &PausedRun{
-						Flow:    persist.Flow,
-						StepIdx: persist.StepIdx,
-						StepCtx: &StepContext{},
-						Outputs: persist.Outputs,
-						Token:   token,
-					}
-					// Convert map[string]any to StepContext
-					b, _ := json.Marshal(persist.StepCtx)
-					_ = json.Unmarshal(b, pr.StepCtx)
-					if persist.RunID != "" {
-						pr.RunID, _ = uuid.Parse(persist.RunID)
-					}
-					eng.waiting[token] = pr
-					// Re-subscribe to event bus
-					eng.EventBus.Subscribe("resume:"+token, func(payload any) {
-						resumeEvent, ok := payload.(map[string]any)
-						if !ok {
-							return
-						}
-						eng.Resume(token, resumeEvent)
-					})
+		paused, err := store.LoadPausedRuns()
+		if err == nil {
+			for token, v := range paused {
+				// Try to coerce to the expected struct (PausedRunPersist)
+				var persist struct {
+					Flow    *model.Flow    `json:"flow"`
+					StepIdx int            `json:"step_idx"`
+					StepCtx map[string]any `json:"step_ctx"`
+					Outputs map[string]any `json:"outputs"`
+					Token   string         `json:"token"`
+					RunID   string         `json:"run_id"`
 				}
+				b, _ := json.Marshal(v)
+				_ = json.Unmarshal(b, &persist)
+				pr := &PausedRun{
+					Flow:    persist.Flow,
+					StepIdx: persist.StepIdx,
+					StepCtx: &StepContext{},
+					Outputs: persist.Outputs,
+					Token:   token,
+				}
+				b2, _ := json.Marshal(persist.StepCtx)
+				_ = json.Unmarshal(b2, pr.StepCtx)
+				if persist.RunID != "" {
+					pr.RunID, _ = uuid.Parse(persist.RunID)
+				}
+				eng.waiting[token] = pr
+				// Re-subscribe to event bus
+				eng.EventBus.Subscribe("resume:"+token, func(payload any) {
+					resumeEvent, ok := payload.(map[string]any)
+					if !ok {
+						return
+					}
+					eng.Resume(token, resumeEvent)
+				})
 			}
 		}
 	}
@@ -214,37 +225,37 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 
 	// Create and persist the run
 	var runID uuid.UUID = uuid.New()
-	if e.Storage != nil {
-		run := &model.Run{
-			ID:        runID,
-			FlowName:  flow.Name,
-			Event:     event,
-			Vars:      flow.Vars,
-			Status:    model.RunRunning,
-			StartedAt: time.Now(),
-		}
-		e.Storage.SaveRun(ctx, run)
+	run := &model.Run{
+		ID:        runID,
+		FlowName:  flow.Name,
+		Event:     event,
+		Vars:      flow.Vars,
+		Status:    model.RunRunning,
+		StartedAt: time.Now(),
 	}
+	e.Storage.SaveRun(ctx, run)
 
 	outputs, err := e.executeStepsWithPersistence(ctx, flow, stepCtx, 0, runID)
 
-	// On completion, update run status
-	if e.Storage != nil {
-		status := model.RunSucceeded
-		if err != nil {
+	// On completion, update run status (treat pause as waiting)
+	status := model.RunSucceeded
+	if err != nil {
+		if strings.Contains(err.Error(), "await_event pause") {
+			status = model.RunWaiting
+		} else {
 			status = model.RunFailed
 		}
-		run := &model.Run{
-			ID:        runID,
-			FlowName:  flow.Name,
-			Event:     event,
-			Vars:      flow.Vars,
-			Status:    status,
-			StartedAt: time.Now(),
-			EndedAt:   ptrTime(time.Now()),
-		}
-		e.Storage.SaveRun(ctx, run)
 	}
+	run = &model.Run{
+		ID:        runID,
+		FlowName:  flow.Name,
+		Event:     event,
+		Vars:      flow.Vars,
+		Status:    status,
+		StartedAt: time.Now(),
+		EndedAt:   ptrTime(time.Now()),
+	}
+	e.Storage.SaveRun(ctx, run)
 
 	if err != nil && flow.Catch != nil && len(flow.Catch) > 0 {
 		// Run catch steps if error and catch block exists
@@ -303,9 +314,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 			}
 			// Persist paused run if storage is available
 			if e.Storage != nil {
-				if sqlite, ok := e.Storage.(*storage.SqliteStorage); ok {
-					_ = sqlite.SavePausedRun(token, pausedRunToMap(e.waiting[token]))
-				}
+				_ = e.Storage.SavePausedRun(token, pausedRunToMap(e.waiting[token]))
 			}
 			e.mu.Unlock()
 			e.EventBus.Subscribe("resume:"+token, func(payload any) {
@@ -359,9 +368,7 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 	}
 	delete(e.waiting, token)
 	if e.Storage != nil {
-		if sqlite, ok := e.Storage.(*storage.SqliteStorage); ok {
-			_ = sqlite.DeletePausedRun(token)
-		}
+		_ = e.Storage.DeletePausedRun(token)
 	}
 	e.mu.Unlock()
 	// Update event context
@@ -632,4 +639,26 @@ func runIDFromContext(ctx context.Context) uuid.UUID {
 		}
 	}
 	return uuid.Nil
+}
+
+// ListRuns returns all runs, using storage if available, otherwise in-memory
+func (e *Engine) ListRuns(ctx context.Context) ([]*model.Run, error) {
+	return e.Storage.ListRuns(ctx)
+}
+
+// GetRunByID returns a run by ID, using storage if available
+func (e *Engine) GetRunByID(ctx context.Context, id uuid.UUID) (*model.Run, error) {
+	run, err := e.Storage.GetRun(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	steps, err := e.Storage.GetSteps(ctx, id)
+	if err == nil {
+		var persisted []model.StepRun
+		for _, s := range steps {
+			persisted = append(persisted, *s)
+		}
+		run.Steps = persisted
+	}
+	return run, nil
 }

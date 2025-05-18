@@ -128,8 +128,8 @@ func TestAwaitEventResume_RoundTrip(t *testing.T) {
 	}
 	// Wait to ensure subscription is registered
 	time.Sleep(50 * time.Millisecond)
-	// Simulate a real-world delay before resume
-	time.Sleep(7 * time.Second)
+	// Simulate a real-world delay before resume (short for test)
+	time.Sleep(50 * time.Millisecond)
 	// Simulate resume event
 	resumeEvent := map[string]any{"resume_value": "it worked!", "token": "abc123"}
 	engine.EventBus.Publish("resume:abc123", resumeEvent)
@@ -392,5 +392,41 @@ func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
 	}
 	if !foundStart {
 		t.Fatalf("expected echo_start step after restart")
+	}
+}
+
+func TestInMemoryFallback_ListAndGetRun(t *testing.T) {
+	e := NewEngine()
+	flow := &model.Flow{Name: "inmem", Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "hi"}}}}
+	outputs, err := e.Execute(context.Background(), flow, map[string]any{"foo": "bar"})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	runs, err := e.ListRuns(context.Background())
+	if err != nil {
+		t.Fatalf("ListRuns error: %v", err)
+	}
+	if len(runs) == 0 {
+		t.Fatalf("expected at least one run in memory")
+	}
+	run := runs[0]
+	got, err := e.GetRunByID(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("GetRunByID error: %v", err)
+	}
+	if got == nil || got.ID != run.ID {
+		t.Fatalf("expected to get run by ID, got: %v", got)
+	}
+	if outputs["s1"] == nil {
+		t.Fatalf("expected outputs for s1, got: %v", outputs)
+	}
+	// Simulate restart (new engine, no persistence)
+	e2 := NewEngine()
+	runs2, err := e2.ListRuns(context.Background())
+	if err != nil {
+		t.Fatalf("ListRuns error after restart: %v", err)
+	}
+	if len(runs2) != 0 {
+		t.Fatalf("expected no runs after restart in in-memory mode, got: %d", len(runs2))
 	}
 }

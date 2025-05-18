@@ -26,6 +26,7 @@ vendor/
 
 # BeemFlow runtime
 .env
+beemflow.db
 
 # Build artifacts
 *.log
