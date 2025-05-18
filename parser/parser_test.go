@@ -764,49 +764,6 @@ func TestValidateFlow_SchemaValidationError(t *testing.T) {
 	}
 }
 
-// Add a test for block-parallel barrier syntax
-func TestParseFlow_BlockParallelBarrier(t *testing.T) {
-	yamlData := `
-name: block_parallel
-on: cli.manual
-steps:
-  - id: a
-    use: core.echo
-    with:
-      text: "A"
-  - id: b
-    use: core.echo
-    with:
-      text: "B"
-  - id: barrier
-    parallel: [a, b]
-  - id: after
-    depends_on: [barrier]
-    use: core.echo
-    with:
-      text: "After barrier"
-`
-	f, err := ParseFlowFromString(yamlData)
-	if err != nil {
-		t.Fatalf("ParseFlowFromString failed: %v", err)
-	}
-	var foundBarrier bool
-	for _, s := range f.Steps {
-		if s.ID == "barrier" {
-			foundBarrier = true
-			if len(s.ParallelSteps) != 2 || s.ParallelSteps[0] != "a" || s.ParallelSteps[1] != "b" {
-				t.Errorf("expected ParallelSteps [a b], got %#v", s.ParallelSteps)
-			}
-			if s.ParallelBool {
-				t.Errorf("expected ParallelBool false for barrier")
-			}
-		}
-	}
-	if !foundBarrier {
-		t.Errorf("expected barrier step in steps")
-	}
-}
-
 // Add a test for nested parallel block syntax
 func TestParseFlow_NestedParallelBlock(t *testing.T) {
 	yamlData := `

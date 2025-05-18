@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"gopkg.in/yaml.v3"
 )
 
 type Flow struct {
@@ -17,66 +16,19 @@ type Flow struct {
 }
 
 type Step struct {
-	ID        string                 `yaml:"id" json:"id"`
-	Use       string                 `yaml:"use,omitempty" json:"use,omitempty"`
-	With      map[string]interface{} `yaml:"with,omitempty" json:"with,omitempty"`
-	DependsOn []string               `yaml:"depends_on,omitempty" json:"depends_on,omitempty"`
-	// Deprecated: use ParallelBool and ParallelSteps
-	Parallel      bool            `yaml:"parallel,omitempty" json:"parallel,omitempty"`
-	ParallelBool  bool            `yaml:"-" json:"-"` // true if parallel: true
-	ParallelSteps []string        `yaml:"-" json:"-"` // set if parallel: [id,...]
-	If            string          `yaml:"if,omitempty" json:"if,omitempty"`
-	Foreach       string          `yaml:"foreach,omitempty" json:"foreach,omitempty"`
-	As            string          `yaml:"as,omitempty" json:"as,omitempty"`
-	Do            []Step          `yaml:"do,omitempty" json:"do,omitempty"`
-	Steps         []Step          `yaml:"steps,omitempty" json:"steps,omitempty"`
-	Retry         *RetrySpec      `yaml:"retry,omitempty" json:"retry,omitempty"`
-	AwaitEvent    *AwaitEventSpec `yaml:"await_event,omitempty" json:"await_event,omitempty"`
-	Wait          *WaitSpec       `yaml:"wait,omitempty" json:"wait,omitempty"`
-}
-
-func (s *Step) UnmarshalYAML(value *yaml.Node) error {
-	type stepAlias Step // prevent recursion
-	var raw stepAlias
-	// Remove 'parallel' from the node before decoding to raw
-	var filtered yaml.Node = *value
-	filtered.Content = make([]*yaml.Node, 0, len(value.Content))
-	for i := 0; i < len(value.Content); i += 2 {
-		k := value.Content[i]
-		if k.Value != "parallel" {
-			filtered.Content = append(filtered.Content, value.Content[i], value.Content[i+1])
-		}
-	}
-	if err := filtered.Decode(&raw); err != nil {
-		return err
-	}
-	// Now handle 'parallel' manually
-	for i := 0; i < len(value.Content); i += 2 {
-		k := value.Content[i]
-		if k.Value == "parallel" {
-			v := value.Content[i+1]
-			switch v.Kind {
-			case yaml.ScalarNode:
-				var b bool
-				if err := v.Decode(&b); err == nil {
-					raw.ParallelBool = b
-					raw.Parallel = b // ensure Parallel is set for compatibility
-				}
-			case yaml.SequenceNode:
-				var arr []string
-				if err := v.Decode(&arr); err == nil {
-					raw.ParallelSteps = arr
-					raw.Parallel = false // ensure Parallel is false for barrier syntax
-				} else {
-					return err // propagate the error for better diagnostics
-				}
-			default:
-				return &yaml.TypeError{Errors: []string{"invalid type for 'parallel' field"}}
-			}
-		}
-	}
-	*(*Step)(s) = Step(raw)
-	return nil
+	ID         string                 `yaml:"id" json:"id"`
+	Use        string                 `yaml:"use,omitempty" json:"use,omitempty"`
+	With       map[string]interface{} `yaml:"with,omitempty" json:"with,omitempty"`
+	DependsOn  []string               `yaml:"depends_on,omitempty" json:"depends_on,omitempty"`
+	Parallel   bool                   `yaml:"parallel,omitempty" json:"parallel,omitempty"`
+	If         string                 `yaml:"if,omitempty" json:"if,omitempty"`
+	Foreach    string                 `yaml:"foreach,omitempty" json:"foreach,omitempty"`
+	As         string                 `yaml:"as,omitempty" json:"as,omitempty"`
+	Do         []Step                 `yaml:"do,omitempty" json:"do,omitempty"`
+	Steps      []Step                 `yaml:"steps,omitempty" json:"steps,omitempty"`
+	Retry      *RetrySpec             `yaml:"retry,omitempty" json:"retry,omitempty"`
+	AwaitEvent *AwaitEventSpec        `yaml:"await_event,omitempty" json:"await_event,omitempty"`
+	Wait       *WaitSpec              `yaml:"wait,omitempty" json:"wait,omitempty"`
 }
 
 type RetrySpec struct {
@@ -96,25 +48,25 @@ type WaitSpec struct {
 }
 
 type Run struct {
-	ID        uuid.UUID      `json:"id"`
-	FlowName  string         `json:"flow_name"`
-	Event     map[string]any `json:"event"`
-	Vars      map[string]any `json:"vars"`
-	Status    RunStatus      `json:"status"`
-	StartedAt time.Time      `json:"started_at"`
-	EndedAt   *time.Time     `json:"ended_at,omitempty"`
-	Steps     []StepRun      `json:"steps"`
+	ID        uuid.UUID              `json:"id"`
+	FlowName  string                 `json:"flow_name"`
+	Event     map[string]interface{} `json:"event"`
+	Vars      map[string]interface{} `json:"vars"`
+	Status    RunStatus              `json:"status"`
+	StartedAt time.Time              `json:"started_at"`
+	EndedAt   *time.Time             `json:"ended_at,omitempty"`
+	Steps     []StepRun              `json:"steps"`
 }
 
 type StepRun struct {
-	ID        uuid.UUID      `json:"id"`
-	RunID     uuid.UUID      `json:"run_id"`
-	StepName  string         `json:"step_name"`
-	Status    StepStatus     `json:"status"`
-	StartedAt time.Time      `json:"started_at"`
-	EndedAt   *time.Time     `json:"ended_at,omitempty"`
-	Outputs   map[string]any `json:"outputs,omitempty"`
-	Error     string         `json:"error,omitempty"`
+	ID        uuid.UUID              `json:"id"`
+	RunID     uuid.UUID              `json:"run_id"`
+	StepName  string                 `json:"step_name"`
+	Status    StepStatus             `json:"status"`
+	StartedAt time.Time              `json:"started_at"`
+	EndedAt   *time.Time             `json:"ended_at,omitempty"`
+	Outputs   map[string]interface{} `json:"outputs,omitempty"`
+	Error     string                 `json:"error,omitempty"`
 }
 
 type RunStatus string
