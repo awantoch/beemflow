@@ -25,7 +25,7 @@ type LLMMessage struct {
 var CallLLM = callLLMImpl
 
 func callLLMImpl(ctx context.Context, systemPrompt string, userMessages []string) (string, error) {
-	// TODO: Implement actual LLM call (OpenAI, etc.)
+	// TODO: Implement actual LLM call via tool registry (Anthropic, OpenAI, etc.)
 	return "", fmt.Errorf("LLM call not implemented")
 }
 
@@ -33,7 +33,7 @@ func callLLMImpl(ctx context.Context, systemPrompt string, userMessages []string
 func Execute(ctx context.Context, userMessages []string) (draftYAML string, validationErrors []string, err error) {
 	// 1. Build messages: system ← embedded prompt, user ← passed-in messages
 
-	// 2. Call LLM (OpenAI or other)
+	// 2. Call LLM (via tool registry)
 	draftYAML, err = CallLLM(ctx, SystemPrompt, userMessages)
 	if err != nil {
 		return "", nil, logger.Errorf("LLM error: %w", err)

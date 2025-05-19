@@ -611,11 +611,9 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			}
 		}
 	}
-	// Debug: log fully rendered payload for openai.chat
-	if step.Use == "openai" {
-		payload, _ := json.Marshal(inputs)
-		logger.Debug("openai.chat payload: %s", payload)
-	}
+	// Optionally, add a generic debug log for all tool payloads if desired:
+	payload, _ := json.Marshal(inputs)
+	logger.Debug("tool %s payload: %s", step.Use, payload)
 	if strings.HasPrefix(step.Use, "mcp://") {
 		inputs["__use"] = step.Use
 	}
