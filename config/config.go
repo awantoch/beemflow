@@ -2,9 +2,14 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strings"
 
 	"github.com/awantoch/beemflow/logger"
 )
@@ -220,4 +225,55 @@ func GetMergedMCPServerConfig(cfg *Config, host string) (MCPServerConfig, error)
 		}
 	}
 	return merged, nil
+}
+
+// Regex to match GitHub shorthand owner/repo/path[@ref]
+var githubShorthandRe = regexp.MustCompile(`^([^/]+)/([^/]+)/(.+?)(?:@([^/]+))?$`)
+
+// UnmarshalJSON allows MCPServerConfig to be specified as either a JSON object, full URL string,
+// or GitHub shorthand (owner/repo/path[@ref]).
+func (m *MCPServerConfig) UnmarshalJSON(data []byte) error {
+	// Try string first.
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		// Full URL?
+		if strings.Contains(s, "://") {
+			*m = MCPServerConfig{Transport: "http", Endpoint: s}
+			return nil
+		}
+		// GitHub shorthand: owner/repo/path[@ref]
+		if parts := githubShorthandRe.FindStringSubmatch(s); parts != nil {
+			owner, repo, path, ref := parts[1], parts[2], parts[3], parts[4]
+			if ref == "" {
+				ref = "main"
+			}
+			rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", owner, repo, ref, path)
+			resp, err := http.Get(rawURL)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			body, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
+			var cfg MCPServerConfig
+			if err := json.Unmarshal(body, &cfg); err != nil {
+				return err
+			}
+			*m = cfg
+			return nil
+		}
+		// Fallback: treat as HTTP endpoint.
+		*m = MCPServerConfig{Transport: "http", Endpoint: s}
+		return nil
+	}
+	// Unmarshal into struct normally.
+	type alias MCPServerConfig
+	var aux alias
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*m = MCPServerConfig(aux)
+	return nil
 }

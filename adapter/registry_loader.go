@@ -3,6 +3,7 @@ package adapter
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -50,21 +51,22 @@ type RegistryEntry struct {
 	Endpoint2 string            `json:"endpoint2,omitempty"`
 }
 
-// LoadUnifiedRegistry loads registry/index.json and returns all ToolManifests and MCPServerConfigs.
-func LoadUnifiedRegistry(path string) ([]*ToolManifest, []*MCPServerConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, nil, logger.Errorf("failed to read registry: %w", err)
-	}
-	var entries []RegistryEntry
-	if err := json.Unmarshal(data, &entries); err != nil {
-		return nil, nil, logger.Errorf("failed to parse registry: %w", err)
-	}
+// IsTool returns true if the entry is a tool (by type or by presence of Kind).
+func (e RegistryEntry) IsTool() bool {
+	return e.Type == "tool" || (e.Type == "" && e.Kind != "")
+}
+
+// IsMCPServer returns true if the entry is an MCP server (by type or by presence of Command).
+func (e RegistryEntry) IsMCPServer() bool {
+	return e.Type == "mcp_server" || (e.Type == "" && e.Command != "")
+}
+
+// LoadUnifiedRegistryFromEntries loads registry entries and returns all ToolManifests and MCPServerConfigs.
+func LoadUnifiedRegistryFromEntries(entries []RegistryEntry) ([]*ToolManifest, []*MCPServerConfig, error) {
 	var tools []*ToolManifest
 	var mcps []*MCPServerConfig
 	for _, entry := range entries {
-		switch entry.Type {
-		case "tool":
+		if entry.IsTool() {
 			tools = append(tools, &ToolManifest{
 				Name:        entry.Name,
 				Description: entry.Description,
@@ -73,7 +75,8 @@ func LoadUnifiedRegistry(path string) ([]*ToolManifest, []*MCPServerConfig, erro
 				Endpoint:    entry.Endpoint,
 				Headers:     entry.Headers,
 			})
-		case "mcp_server":
+		}
+		if entry.IsMCPServer() {
 			mcps = append(mcps, &MCPServerConfig{
 				Name:      entry.Name,
 				Command:   entry.Command,
@@ -86,6 +89,19 @@ func LoadUnifiedRegistry(path string) ([]*ToolManifest, []*MCPServerConfig, erro
 		}
 	}
 	return tools, mcps, nil
+}
+
+// LoadUnifiedRegistry loads registry/index.json and returns all ToolManifests and MCPServerConfigs.
+func LoadUnifiedRegistry(path string) ([]*ToolManifest, []*MCPServerConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, logger.Errorf("failed to read registry: %w", err)
+	}
+	var entries []RegistryEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil, nil, logger.Errorf("failed to parse registry: %w", err)
+	}
+	return LoadUnifiedRegistryFromEntries(entries)
 }
 
 // ManifestLoader loads tool manifests from various sources.
@@ -262,4 +278,56 @@ func GetRegistryIndexURL() string {
 	}
 	// Fallback to remote hub
 	return "https://hub.beemflow.com/index.json"
+}
+
+// LoadUnifiedRegistryFromConfig loads registry entries from a mix of sources:
+// - registries: array of strings (file/url) or inline RegistryEntry objects
+// - mcpServers: map[string]MCPServerConfig overrides
+func LoadUnifiedRegistryFromConfig(registries []any, mcpServers map[string]MCPServerConfig) ([]*ToolManifest, []*MCPServerConfig, error) {
+	var entries []RegistryEntry
+	for _, reg := range registries {
+		switch v := reg.(type) {
+		case string:
+			// Load from file or URL
+			data, err := os.ReadFile(v)
+			if err != nil {
+				// Try as URL
+				resp, err2 := http.Get(v)
+				if err2 != nil {
+					return nil, nil, logger.Errorf("failed to read registry %s: %v, %v", v, err, err2)
+				}
+				defer resp.Body.Close()
+				data, err = io.ReadAll(resp.Body)
+				if err != nil {
+					return nil, nil, logger.Errorf("failed to read registry body %s: %v", v, err)
+				}
+			}
+			var fileEntries []RegistryEntry
+			if err := json.Unmarshal(data, &fileEntries); err != nil {
+				return nil, nil, logger.Errorf("failed to parse registry %s: %v", v, err)
+			}
+			entries = append(entries, fileEntries...)
+		case map[string]any:
+			// Inline object
+			b, _ := json.Marshal(v)
+			var e RegistryEntry
+			if err := json.Unmarshal(b, &e); err == nil {
+				entries = append(entries, e)
+			}
+		}
+	}
+	// Merge mcpServers map as RegistryEntry objects
+	for name, cfg := range mcpServers {
+		entries = append(entries, RegistryEntry{
+			Type:      "mcp_server",
+			Name:      name,
+			Command:   cfg.Command,
+			Args:      cfg.Args,
+			Env:       cfg.Env,
+			Port:      cfg.Port,
+			Transport: cfg.Transport,
+			Endpoint2: cfg.Endpoint,
+		})
+	}
+	return LoadUnifiedRegistryFromEntries(entries)
 }
