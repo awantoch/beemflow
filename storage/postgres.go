@@ -12,6 +12,8 @@ type PostgresStorage struct {
 	db *sql.DB
 }
 
+var _ Storage = (*PostgresStorage)(nil)
+
 func (s *PostgresStorage) SavePausedRun(token string, paused any) error {
 	// TODO: implement paused run persistence for Postgres
 	return nil

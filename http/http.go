@@ -2,14 +2,12 @@ package http
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/engine"
@@ -24,6 +22,7 @@ var (
 	runs      = make(map[uuid.UUID]*model.Run)
 	runTokens = make(map[string]uuid.UUID) // token -> runID
 	eng       *engine.Engine
+	svc       = api.NewFlowService()
 )
 
 func StartServer(addr string) error {
@@ -103,7 +102,7 @@ func runsListHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	runs, err := api.ListRuns(r.Context())
+	runs, err := svc.ListRuns(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -128,7 +127,7 @@ func runsHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("invalid request body"))
 		return
 	}
-	id, err := api.StartRun(r.Context(), req.Flow, req.Event)
+	id, err := svc.StartRun(r.Context(), req.Flow, req.Event)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -152,7 +151,7 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("invalid run ID"))
 			return
 		}
-		run, err := api.GetRun(r.Context(), id)
+		run, err := svc.GetRun(r.Context(), id)
 		if err != nil || run == nil {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("run not found"))
@@ -174,7 +173,7 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("engine/storage not initialized"))
 			return
 		}
-		err = eng.Storage.DeleteRun(r.Context(), id)
+		err = svc.DeleteRun(r.Context(), id)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
@@ -267,7 +266,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("missing flow name"))
 		return
 	}
-	graph, err := api.GraphFlow(r.Context(), flowName)
+	graph, err := svc.GraphFlow(r.Context(), flowName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -290,7 +289,7 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("invalid request body"))
 		return
 	}
-	err := api.ValidateFlow(r.Context(), req.Flow)
+	err := svc.ValidateFlow(r.Context(), req.Flow)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
@@ -329,7 +328,7 @@ func assistantChatHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("invalid request body"))
 		return
 	}
-	draft, errors, err := adapter.Execute(r.Context(), req.Messages)
+	draft, errors, err := svc.AssistantChat(r.Context(), "", req.Messages)
 	resp := map[string]any{
 		"draft":  draft,
 		"errors": errors,
@@ -364,7 +363,7 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Start the run inline
-	id, outputs, err := api.RunSpec(r.Context(), flow, req.Event)
+	id, outputs, err := svc.RunSpec(r.Context(), flow, req.Event)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("run error: " + err.Error()))
@@ -384,14 +383,14 @@ func toolsIndexHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	data, err := ioutil.ReadFile("registry/index.json")
+	tools, err := svc.ListTools(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("failed to read registry index"))
+		w.Write([]byte("failed to list tools"))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	json.NewEncoder(w).Encode(tools)
 }
 
 // toolsManifestHandler returns the manifest for a single tool by name from the registry index.json.
@@ -402,33 +401,21 @@ func toolsManifestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	nameWithExt := strings.TrimPrefix(r.URL.Path, "/tools/")
 	name := strings.TrimSuffix(nameWithExt, ".json")
-	data, err := ioutil.ReadFile("registry/index.json")
+	manifest, err := svc.GetToolManifest(r.Context(), name)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("failed to read registry index"))
+		w.Write([]byte("failed to get tool manifest"))
 		return
 	}
-	var entries []adapter.ToolManifest
-	if err := json.Unmarshal(data, &entries); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("failed to parse registry index"))
-		return
-	}
-	for _, entry := range entries {
-		if entry.Name == name {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(entry)
-			return
-		}
-	}
-	w.WriteHeader(http.StatusNotFound)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(manifest)
 }
 
 // Handler: GET /flows (list all flow specs), POST /flows (upload/update flow)
 func flowsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		// List all flow specs
-		flows, err := api.ListFlows(r.Context())
+		flows, err := svc.ListFlows(r.Context())
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
@@ -436,7 +423,7 @@ func flowsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		var specs []any
 		for _, name := range flows {
-			flow, err := api.GetFlow(r.Context(), name)
+			flow, err := svc.GetFlow(r.Context(), name)
 			if err != nil {
 				continue
 			}
@@ -463,7 +450,7 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		flow, err := api.GetFlow(r.Context(), name)
+		flow, err := svc.GetFlow(r.Context(), name)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
@@ -508,7 +495,7 @@ func eventsHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("invalid request body"))
 		return
 	}
-	err := api.PublishEvent(r.Context(), req.Topic, req.Payload)
+	err := svc.PublishEvent(r.Context(), req.Topic, req.Payload)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))

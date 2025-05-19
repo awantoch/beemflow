@@ -17,6 +17,8 @@ type MemoryStorage struct {
 	paused map[string]any // token -> paused run
 }
 
+var _ Storage = (*MemoryStorage)(nil)
+
 func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{
 		runs:   make(map[uuid.UUID]*model.Run),

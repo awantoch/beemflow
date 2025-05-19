@@ -18,6 +18,8 @@ type SqliteStorage struct {
 	db *sql.DB
 }
 
+var _ Storage = (*SqliteStorage)(nil)
+
 type PausedRunPersist struct {
 	Flow    *model.Flow    `json:"flow"`
 	StepIdx int            `json:"step_idx"`
