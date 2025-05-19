@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BeemFlow Config Schema",
+  "type": "object",
+  "properties": {
+    "storage": {
+      "type": "object",
+      "properties": {
+        "driver": { "type": "string" },
+        "dsn": { "type": "string" }
+      },
+      "required": ["driver"]
+    },
+    "event": {
+      "type": "object",
+      "properties": {
+        "driver": { "type": "string", "enum": ["memory", "nats"] },
+        "url": { "type": "string" }
+      },
+      "required": ["driver"],
+      "additionalProperties": false
+    },
+    "blob": {
+      "type": "object",
+      "properties": {
+        "driver": { "type": "string" },
+        "bucket": { "type": "string" }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "properties": {
+        "driver": { "type": "string" },
+        "region": { "type": "string" },
+        "prefix": { "type": "string" }
+      }
+    },
+    "registries": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "http": {
+      "type": "object",
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer" }
+      }
+    },
+    "log": {
+      "type": "object",
+      "properties": {
+        "level": { "type": "string" }
+      }
+    },
+    "flowsDir": { "type": "string" },
+    "mcpServers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "command": { "type": "string" },
+          "args": { "type": "array", "items": { "type": "string" } },
+          "env": { "type": "object", "additionalProperties": { "type": "string" } },
+          "port": { "type": "integer" },
+          "transport": { "type": "string" },
+          "endpoint": { "type": "string" }
+        },
+        "required": ["command"]
+      }
+    }
+  },
+  "additionalProperties": false
+} 

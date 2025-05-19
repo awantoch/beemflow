@@ -163,6 +163,19 @@ GET /tools
 ]
 ```
 
+### Example: Graph Flow (HTTP)
+
+**Request:**
+```http
+GET /graph?flow=hello
+```
+**Response:**
+```mermaid
+%% Mermaid graph
+flowchart TD
+  greet --> print
+```
+
 ---
 
 ## 6. Tool Manifest Schema (JSON-Schema)
@@ -192,31 +205,32 @@ BeemFlow automatically injects any `default` values from the manifest's paramete
 
 ## 7. Configuration (flow.config.json)
 
-The runtime is configured via a JSON file. All fields in `config.Config` are supported.
+The runtime is configured via a JSON file. All fields in `config.Config` are supported. See [flow_config.schema.json](flow_config.schema.json) for the full schema.
 
 ### Example Configuration
 
-```json
+#### Memory (default)
+```jsonc
 {
-  "storage":    { "driver": "sqlite", "dsn": "beemflow.db" },
-  "blob":       { "driver": "filesystem", "bucket": "./beemflow-files" },
-  "event":      { "driver": "redis", "url": "redis://localhost:6379" },
-  "secrets":    { "driver": "env" },
-  "registries": [ "https://hub.beemflow.com/index.json" ],
-  "http":       { "host": "0.0.0.0", "port": 8080 },
-  "log":        { "level": "info" },
-  "flowsDir":   "flows/",
-  "mcpServers": {
-    "supabase-mcp": {
-      "command": "npx",
-      "args": ["-y", "@supabase/mcp-server-postgrest@latest"],
-      "env": { "SUPABASE_URL": "...", "SUPABASE_ANON_KEY": "..." },
-      "port": 3030,
-      "transport": "http"
-    }
+  "storage": { "driver": "sqlite", "dsn": "beemflow.db" }
+  // no "event" block → in-mem bus
+}
+```
+
+#### NATS
+```jsonc
+{
+  "event": {
+    "driver": "nats",
+    "url": "nats://user:pass@your-nats-host:4222"
   }
 }
 ```
+
+> **Event Bus**
+> • driver=`memory` (default, in-process)
+> • driver=`nats` (requires `url`)
+> • unknown drivers error out
 
 BeemFlow always loads the built-in curated registry and Smithery (if SMITHERY_API_KEY is set); you don't need to specify these in your config.
 
@@ -332,6 +346,8 @@ steps:
 - **Add an MCP server:** Add config in `mcp_servers/` and reference in config.
 - **Add a remote tool:** Reference a remote registry or GitHub manifest.
 - **Write a custom adapter:** Implement the Adapter interface in Go.
+- **Extend Event Bus:** Add fields to `event` config (e.g. `clusterID`, `clientID`, TLS options) and wire them into `NewEventBusFromConfig`.
+- **Environment Overrides:** Future: support env vars like `BEEMFLOW_EVENT_DRIVER` to override config at runtime.
 
 ---
 
@@ -363,7 +379,3 @@ MIT. Use it, remix it, ship it.
 ## 16. Integration Patterns
 
 - MCP, HTTP, and custom adapters are all supported and interoperable.
-
----
-
-END OF SPEC

@@ -10,6 +10,7 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
+	"github.com/awantoch/beemflow/graphviz"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/parser"
@@ -111,7 +112,15 @@ func ValidateFlow(ctx context.Context, name string) error {
 
 // GraphFlow returns the DOT graph for the given flow.
 func GraphFlow(ctx context.Context, name string) (string, error) {
-	return "", fmt.Errorf("GraphFlow is not yet implemented")
+	path := filepath.Join(flowsDir, name+".flow.yaml")
+	flow, err := parser.ParseFlow(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return graphviz.ExportMermaid(flow)
 }
 
 // StartRun starts a new run for the given flow and event.
@@ -218,7 +227,14 @@ func ListRuns(ctx context.Context) ([]*model.Run, error) {
 
 // PublishEvent publishes an event to a topic.
 func PublishEvent(ctx context.Context, topic string, payload map[string]any) error {
-	bus := event.NewInProcEventBus()
+	cfg, _ := config.LoadConfig(config.DefaultConfigPath)
+	if cfg == nil || cfg.Event == nil {
+		return fmt.Errorf("event bus not configured: missing config or event section")
+	}
+	bus, err := event.NewEventBusFromConfig(cfg.Event)
+	if bus == nil || err != nil {
+		return fmt.Errorf("event bus not configured: %w", err)
+	}
 	return bus.Publish(topic, payload)
 }
 

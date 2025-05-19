@@ -317,7 +317,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	w.Header().Set("Content-Type", "text/vnd.graphviz")
+	w.Header().Set("Content-Type", "text/vnd.mermaid")
 	if _, err := w.Write([]byte(graph)); err != nil {
 		logger.Error("w.Write failed: %v", err)
 	}

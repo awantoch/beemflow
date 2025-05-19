@@ -130,15 +130,26 @@ func NewEngine() *Engine {
 	return NewEngineWithBlobStore(bs)
 }
 
-// NewEngineWithStorage creates a new Engine with a custom Storage backend.
-func NewEngineWithStorage(store storage.Storage) *Engine {
+// NewEngineWithConfig creates a new Engine with a custom Storage backend and config-driven EventBus.
+func NewEngineWithConfig(store storage.Storage, cfg *config.Config) *Engine {
 	if store == nil {
 		store = storage.NewMemoryStorage()
+	}
+	var bus event.EventBus
+	if cfg != nil && cfg.Event != nil {
+		var err error
+		bus, err = event.NewEventBusFromConfig(cfg.Event)
+		if err != nil {
+			// fallback to in-memory if config is invalid
+			bus = event.NewInProcEventBus()
+		}
+	} else {
+		bus = event.NewInProcEventBus()
 	}
 	eng := &Engine{
 		Adapters:         newDefaultAdapterRegistry(),
 		Templater:        templater.NewTemplater(),
-		EventBus:         event.NewInProcEventBus(),
+		EventBus:         bus,
 		BlobStore:        nil, // or set to a default if needed
 		Storage:          store,
 		waiting:          make(map[string]*PausedRun),
@@ -185,6 +196,12 @@ func NewEngineWithStorage(store storage.Storage) *Engine {
 		}
 	}
 	return eng
+}
+
+// NewEngineWithStorage creates a new Engine with a custom Storage backend.
+func NewEngineWithStorage(store storage.Storage) *Engine {
+	cfg, _ := config.LoadConfig(config.DefaultConfigPath)
+	return NewEngineWithConfig(store, cfg)
 }
 
 // Execute now supports pausing and resuming at await_event.

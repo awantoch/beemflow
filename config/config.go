@@ -90,6 +90,15 @@ type BlobConfig struct {
 	Bucket string `json:"bucket,omitempty"`
 }
 
+// EventConfig configures the event bus.
+//
+// Supported drivers:
+//   - "memory" (default, in-process event bus)
+//   - "nats" (requires URL)
+//
+// Unknown drivers will error out at startup.
+//
+// Future: Extend with fields like ClusterID, ClientID, TLS options as needed.
 type EventConfig struct {
 	Driver string `json:"driver,omitempty"`
 	URL    string `json:"url,omitempty"`

@@ -17,7 +17,7 @@ func newToolCmd() *cobra.Command {
 		Use:   "tool",
 		Short: "Tooling commands",
 		Run: func(cmd *cobra.Command, args []string) {
-			logger.User("flow tool (not yet implemented)")
+			logger.User("flow tool (stub)")
 		},
 	}
 	cmd.AddCommand(
@@ -26,7 +26,7 @@ func newToolCmd() *cobra.Command {
 			Short: "Scaffold a tool manifest",
 			// Not implemented yet. Planned for a future release.
 			Run: func(cmd *cobra.Command, args []string) {
-				logger.User("flow tool scaffold (stub)")
+				logger.User("flow tool (stub)")
 			},
 		},
 		&cobra.Command{

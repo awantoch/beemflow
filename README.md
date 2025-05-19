@@ -56,6 +56,13 @@ BeemFlow is an open protocol and runtime for AI-powered, event-driven automation
    flow run fetch_and_summarize
    flow run parallel_openai
    ```
+3. **Switch to NATS event bus:**
+   ```bash
+   cat <<EOF > flow.config.json
+   { "event": { "driver":"nats", "url":"nats://..." } }
+   EOF
+   flow run yourflow  # now uses your NATS server
+   ```
 
 ---
 
@@ -78,7 +85,7 @@ BeemFlow exposes a **consistent, protocol-agnostic interface** for running, mana
 - Discover and call tools (from any source)
 - Interact with the assistant for LLM-driven flow authoring
 
-**See the [Full Protocol & Spec](docs/spec.md) for canonical details, endpoints, and request/response formats.**
+**See the [Full Protocol & Spec](docs/beemflow_spec.md) for canonical details, endpoints, and request/response formats.**
 
 ---
 
@@ -205,6 +212,17 @@ A: Add a local manifest or MCP server config. You can shadow, extend, or remix t
 **Q: Can I host my own registry?**
 A: Yes! Anyone can host a registry (even on a static website). BeemFlow comes with a default open registry out of the box, but you can add or override as needed.
 
+**Q: How do I swap from memory to NATS for the event bus?**
+A: Just add an `event` block to your `flow.config.json`:
+```jsonc
+{
+  "event": {
+    "driver": "nats",
+    "url": "nats://user:pass@your-nats-host:4222"
+  }
+}
+```
+
 ---
 
 ## Contributing & Community
@@ -225,7 +243,7 @@ BeemFlow is 100% open. We need YOU:
 
 For the canonical, LLM-ingestible protocol, YAML grammar, API endpoints, and advanced examples, see:
 
-👉 [docs/spec.md](docs/spec.md)
+👉 [docs/beemflow_spec.md](docs/beemflow_spec.md)
 
 # Beemflow MCP Registry Integration
 
@@ -270,18 +288,29 @@ flow mcp install mytool
 
 ## Configuration
 
-### Smithery Registry
-- Set your Smithery API key:
-  ```sh
-  export SMITHERY_API_KEY=your-smithery-api-key
-  ```
+BeemFlow is configured via `flow.config.json`. See [docs/flow_config.schema.json](docs/flow_config.schema.json) for the full schema.
 
-### Local/Unified Registry
-- By default, Beemflow will look for `registry/index.json`.
-- To override, set:
-  ```sh
-  export BEEMFLOW_REGISTRY=/path/to/your/registry.json
-  ```
+### Memory (default)
+```jsonc
+{
+  // no "event" block → in-mem bus
+}
+```
+
+### NATS
+```jsonc
+{
+  "event": {
+    "driver": "nats",
+    "url": "nats://user:pass@your-nats-host:4222"
+  }
+}
+```
+
+> **Event Bus**
+> • driver=`memory` (default, in-process)
+> • driver=`nats` (requires `url`)
+> • unknown drivers error out
 
 ## CLI Usage
 
