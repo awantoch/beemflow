@@ -66,3 +66,12 @@ func (r *Registry) CloseAll() error {
 	}
 	return firstErr
 }
+
+// All returns every registered adapter.
+func (r *Registry) All() []Adapter {
+	out := make([]Adapter, 0, len(r.adapters))
+	for _, a := range r.adapters {
+		out = append(out, a)
+	}
+	return out
+}

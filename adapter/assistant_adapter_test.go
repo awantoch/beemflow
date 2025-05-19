@@ -1,7 +1,8 @@
-package assistant
+package adapter
 
 import (
 	"context"
+	"os"
 	"testing"
 )
 
@@ -55,4 +56,9 @@ func TestExecute_Validation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMain(m *testing.M) {
+	os.Setenv("BEEMFLOW_SCHEMA", "../beemflow.schema.json")
+	os.Exit(m.Run())
 }

@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/awantoch/beemflow/adapter/assistant"
+	"github.com/awantoch/beemflow/adapter"
 	"github.com/spf13/cobra"
 )
 
@@ -40,7 +40,7 @@ func newAssistCmd() *cobra.Command {
 					}
 					messages = append(messages, line)
 					// Call assistant after each message
-					draft, errors, err := assistant.Execute(ctx, messages)
+					draft, errors, err := adapter.Execute(ctx, messages)
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "Assistant error: %v\n", err)
 						continue
@@ -56,7 +56,7 @@ func newAssistCmd() *cobra.Command {
 				return nil
 			}
 
-			draft, errors, err := assistant.Execute(ctx, messages)
+			draft, errors, err := adapter.Execute(ctx, messages)
 			if err != nil {
 				return err
 			}

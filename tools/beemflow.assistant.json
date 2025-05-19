@@ -11,6 +11,5 @@
     "draft": "string (YAML)",
     "errors": ["string"]
   },
-  "examples": "See examples.md for usage patterns.",
-  "docs": "https://github.com/beem-ai/beemflow"
+  "docs": "https://github.com/awantoch/beemflow"
 } 

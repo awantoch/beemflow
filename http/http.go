@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awantoch/beemflow/adapter/assistant"
+	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/engine"
@@ -88,6 +88,8 @@ func StartServer(addr string) error {
 	mux.HandleFunc("/test", testHandler)
 	mux.HandleFunc("/assistant/chat", assistantChatHandler)
 	mux.HandleFunc("/runs/inline", runsInlineHandler)
+	mux.HandleFunc("/tools", toolsIndexHandler)
+	mux.HandleFunc("/tools/", toolsManifestHandler)
 	return http.ListenAndServe(addr, mux)
 }
 
@@ -301,7 +303,7 @@ func assistantChatHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("invalid request body"))
 		return
 	}
-	draft, errors, err := assistant.Execute(r.Context(), req.Messages)
+	draft, errors, err := adapter.Execute(r.Context(), req.Messages)
 	resp := map[string]any{
 		"draft":  draft,
 		"errors": errors,
@@ -348,4 +350,37 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// toolsIndexHandler returns a JSON list of all registered tool manifests.
+func toolsIndexHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var list []adapter.ToolManifest
+	for _, a := range eng.Adapters.All() {
+		if m := a.Manifest(); m != nil {
+			list = append(list, *m)
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
+// toolsManifestHandler returns the manifest for a single tool by name.
+func toolsManifestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	nameWithExt := strings.TrimPrefix(r.URL.Path, "/tools/")
+	name := strings.TrimSuffix(nameWithExt, ".json")
+	a, ok := eng.Adapters.Get(name)
+	if !ok || a.Manifest() == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(a.Manifest())
 }

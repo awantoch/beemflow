@@ -1,4 +1,4 @@
-package assistant
+package adapter
 
 import (
 	"context"
@@ -7,8 +7,13 @@ import (
 	"os"
 
 	"github.com/awantoch/beemflow/parser"
+	"github.com/awantoch/beemflow/pkg/logger"
 )
 
+// NOTE: To update the system prompt, copy docs/system_prompt.md to adapter/assistant/system_prompt.md
+// TODO clean this up to use the symlink to docs so we can keep using go:embed
+//
+//go:generate cp ../docs/system_prompt.md system_prompt.md
 //go:embed system_prompt.md
 var SystemPrompt string
 
@@ -45,9 +50,14 @@ func Execute(ctx context.Context, userMessages []string) (draftYAML string, vali
 		return draftYAML, validationErrors, nil
 	}
 
-	schema := schemaPath
+	schema := os.Getenv("BEEMFLOW_SCHEMA")
+	if schema != "" {
+		logger.Info("Using schema from BEEMFLOW_SCHEMA: %s", schema)
+	} else {
+		schema = schemaPath
+	}
 	if _, err := os.Stat(schema); os.IsNotExist(err) {
-		schema = "../../beemflow.schema.json" // fallback for dev/test
+		logger.Warn("Schema file not found: %s", schema)
 	}
 
 	if valErr := parser.ValidateFlow(flow, schema); valErr != nil {
