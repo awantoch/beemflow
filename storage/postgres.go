@@ -42,6 +42,10 @@ func (s *PostgresStorage) ResolveWait(ctx context.Context, token uuid.UUID) (*mo
 	return nil, nil
 }
 func (s *PostgresStorage) ListRuns(ctx context.Context) ([]*model.Run, error) { return nil, nil }
+func (s *PostgresStorage) DeleteRun(ctx context.Context, id uuid.UUID) error {
+	// TODO: implement real deletion logic
+	return nil
+}
 
 func NewPostgresStorage(dsn string) (*PostgresStorage, error) {
 	// TODO: implement real Postgres connection

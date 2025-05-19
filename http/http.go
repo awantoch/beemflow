@@ -91,6 +91,9 @@ func StartServer(addr string) error {
 	mux.HandleFunc("/runs/inline", runsInlineHandler)
 	mux.HandleFunc("/tools", toolsIndexHandler)
 	mux.HandleFunc("/tools/", toolsManifestHandler)
+	mux.HandleFunc("/flows", flowsHandler)
+	mux.HandleFunc("/flows/", flowSpecHandler)
+	mux.HandleFunc("/events", eventsHandler)
 	return http.ListenAndServe(addr, mux)
 }
 
@@ -100,14 +103,14 @@ func runsListHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	flows, err := api.ListFlows(r.Context())
+	runs, err := api.ListRuns(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(flows)
+	json.NewEncoder(w).Encode(runs)
 }
 
 // POST /runs { flow: <filename>, event: <object> }
@@ -141,25 +144,47 @@ func runsHandler(w http.ResponseWriter, r *http.Request) {
 
 // GET /runs/{id}
 func runStatusHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if r.Method == http.MethodGet {
+		idStr := r.URL.Path[len("/runs/"):]
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("invalid run ID"))
+			return
+		}
+		run, err := api.GetRun(r.Context(), id)
+		if err != nil || run == nil {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("run not found"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(run)
+		return
+	} else if r.Method == http.MethodDelete {
+		idStr := r.URL.Path[len("/runs/"):]
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("invalid run ID"))
+			return
+		}
+		if eng == nil || eng.Storage == nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("engine/storage not initialized"))
+			return
+		}
+		err = eng.Storage.DeleteRun(r.Context(), id)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("deleted"))
 		return
 	}
-	idStr := r.URL.Path[len("/runs/"):]
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid run ID"))
-		return
-	}
-	run, err := api.GetRun(r.Context(), id)
-	if err != nil || run == nil {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("run not found"))
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(run)
+	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
 // POST /resume/{token}
@@ -397,4 +422,98 @@ func toolsManifestHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusNotFound)
+}
+
+// Handler: GET /flows (list all flow specs), POST /flows (upload/update flow)
+func flowsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		// List all flow specs
+		flows, err := api.ListFlows(r.Context())
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		var specs []any
+		for _, name := range flows {
+			flow, err := api.GetFlow(r.Context(), name)
+			if err != nil {
+				continue
+			}
+			specs = append(specs, flow)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(specs)
+		return
+	} else if r.Method == http.MethodPost {
+		// Upload or update a flow (stub)
+		w.WriteHeader(http.StatusNotImplemented)
+		w.Write([]byte("upload/update flow not implemented yet"))
+		return
+	}
+	w.WriteHeader(http.StatusMethodNotAllowed)
+}
+
+// Handler: GET /flows/{name} (get flow spec), DELETE /flows/{name} (delete flow)
+func flowSpecHandler(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/flows/")
+	if name == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("missing flow name"))
+		return
+	}
+	if r.Method == http.MethodGet {
+		flow, err := api.GetFlow(r.Context(), name)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(flow)
+		return
+	} else if r.Method == http.MethodDelete {
+		// Delete flow (remove YAML file)
+		path := "flows/" + name + ".flow.yaml"
+		err := os.Remove(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("flow not found"))
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("deleted"))
+		return
+	}
+	w.WriteHeader(http.StatusMethodNotAllowed)
+}
+
+// Handler: POST /events (publish event)
+func eventsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Topic   string         `json:"topic"`
+		Payload map[string]any `json:"payload"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid request body"))
+		return
+	}
+	err := api.PublishEvent(r.Context(), req.Topic, req.Payload)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ok"))
 }

@@ -96,3 +96,11 @@ func (m *MemoryStorage) DeletePausedRun(token string) error {
 	delete(m.paused, token)
 	return nil
 }
+
+func (m *MemoryStorage) DeleteRun(ctx context.Context, id uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.runs, id)
+	delete(m.steps, id)
+	return nil
+}

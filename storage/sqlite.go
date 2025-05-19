@@ -313,3 +313,12 @@ func (s *SqliteStorage) ListRuns(ctx context.Context) ([]*model.Run, error) {
 	}
 	return runs, nil
 }
+
+func (s *SqliteStorage) DeleteRun(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM steps WHERE run_id=?`, id.String())
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM runs WHERE id=?`, id.String())
+	return err
+}

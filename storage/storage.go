@@ -19,4 +19,5 @@ type Storage interface {
 	SavePausedRun(token string, paused any) error
 	LoadPausedRuns() (map[string]any, error)
 	DeletePausedRun(token string) error
+	DeleteRun(ctx context.Context, id uuid.UUID) error
 }
