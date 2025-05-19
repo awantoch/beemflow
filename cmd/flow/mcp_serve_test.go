@@ -35,7 +35,7 @@ func startMCPServer(t *testing.T) (*mcp.Client, context.CancelFunc) {
 	// Start server in background
 	go func() {
 		if err := server.Serve(); err != nil {
-			t.Fatalf("MCP server Serve failed: %v", err)
+			t.Error("MCP server Serve failed:", err)
 		}
 	}()
 	// Initialize client
@@ -168,7 +168,9 @@ func TestMCPServer_PublishEvent(t *testing.T) {
 
 func TestMCPServer_HappyPath_EndToEnd(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(tmpDir+"/flows", 0755)
+	if err := os.MkdirAll(tmpDir+"/flows", 0755); err != nil {
+		t.Fatalf("os.MkdirAll failed: %v", err)
+	}
 	flowYAML := `name: testflow
 on: cli.manual
 steps:
@@ -179,17 +181,19 @@ steps:
 `
 	flowPath := tmpDir + "/flows/testflow.flow.yaml"
 	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
-		t.Fatalf("failed to write flow YAML: %v", err)
+		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 	schema := `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`
 	schemaPath := tmpDir + "/beemflow.schema.json"
 	if err := os.WriteFile(schemaPath, []byte(schema), 0644); err != nil {
-		t.Fatalf("failed to write schema: %v", err)
+		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 	// Set working dir to tmpDir for this test
 	origDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origDir)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("os.Chdir failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
 
 	client, cancel := startMCPServer(t)
 	defer cancel()
@@ -282,7 +286,9 @@ steps:
 
 func TestMCPServer_HappyPath_HTTP(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(tmpDir+"/flows", 0755)
+	if err := os.MkdirAll(tmpDir+"/flows", 0755); err != nil {
+		t.Fatalf("os.MkdirAll failed: %v", err)
+	}
 	flowYAML := `name: testflow
 on: cli.manual
 steps:
@@ -293,17 +299,19 @@ steps:
 `
 	flowPath := tmpDir + "/flows/testflow.flow.yaml"
 	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
-		t.Fatalf("failed to write flow YAML: %v", err)
+		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 	schema := `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`
 	schemaPath := tmpDir + "/beemflow.schema.json"
 	if err := os.WriteFile(schemaPath, []byte(schema), 0644); err != nil {
-		t.Fatalf("failed to write schema: %v", err)
+		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 	// Set working dir to tmpDir for this test
 	origDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origDir)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("os.Chdir failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
 	// Debug: print working dir and files
 	wd, _ := os.Getwd()
 	logger.Debug("working dir: %s", wd)
@@ -326,7 +334,10 @@ steps:
 	mcpserver.RegisterAllTools(server, buildMCPToolRegistrations())
 	serverDone := make(chan struct{})
 	go func() {
-		_ = server.Serve()
+		err := server.Serve()
+		if err != nil {
+			t.Errorf("server.Serve failed: %v", err)
+		}
 		close(serverDone)
 	}()
 	// Wait for server to be ready
@@ -438,7 +449,9 @@ steps:
 
 func TestMCPServer_HTTP_ErrorCases(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(tmpDir+"/flows", 0755)
+	if err := os.MkdirAll(tmpDir+"/flows", 0755); err != nil {
+		t.Fatalf("os.MkdirAll failed: %v", err)
+	}
 	// Write a valid flow for later
 	flowYAML := `name: testflow
 on: cli.manual
@@ -449,12 +462,18 @@ steps:
       text: "hello"
 `
 	flowPath := tmpDir + "/flows/testflow.flow.yaml"
-	os.WriteFile(flowPath, []byte(flowYAML), 0644)
+	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
+		t.Fatalf("os.WriteFile failed: %v", err)
+	}
 	schema := `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`
-	os.WriteFile(tmpDir+"/beemflow.schema.json", []byte(schema), 0644)
+	if err := os.WriteFile(tmpDir+"/beemflow.schema.json", []byte(schema), 0644); err != nil {
+		t.Fatalf("os.WriteFile failed: %v", err)
+	}
 	origDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origDir)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("os.Chdir failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
 	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatalf("failed to listen on random port: %v", err)
@@ -464,7 +483,12 @@ steps:
 	serverTransport := mcphttp.NewHTTPTransport("/mcp").WithAddr(addr)
 	server := mcp.NewServer(serverTransport)
 	mcpserver.RegisterAllTools(server, buildMCPToolRegistrations())
-	go server.Serve()
+	go func() {
+		err := server.Serve()
+		if err != nil {
+			t.Errorf("server.Serve failed: %v", err)
+		}
+	}()
 	time.Sleep(200 * time.Millisecond)
 	clientTransport := mcphttp.NewHTTPClientTransport("/mcp").WithBaseURL("http://" + addr)
 	client := mcp.NewClient(clientTransport)
@@ -493,7 +517,9 @@ steps:
 
 	// (2) startRun with invalid YAML flow
 	badYAML := "not: [valid: yaml"
-	os.WriteFile("flows/bad.flow.yaml", []byte(badYAML), 0644)
+	if err := os.WriteFile("flows/bad.flow.yaml", []byte(badYAML), 0644); err != nil {
+		t.Fatalf("os.WriteFile failed: %v", err)
+	}
 	defer os.Remove("flows/bad.flow.yaml")
 	srParams = struct {
 		FlowName string
@@ -542,10 +568,14 @@ func TestMCPServer_HappyPath_AirtableE2E(t *testing.T) {
 	// 1. Spin up a mock Airtable MCP server
 	airtableServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req map[string]any
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("json.Decode failed: %v", err)
+		}
 		if req["method"] == "tools/list" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"tools":[{"name":"create_record","description":"Create Airtable record","input_schema":{"type":"object","properties":{"baseId":{"type":"string"},"tableId":{"type":"string"},"fields":{"type":"object"}}}}]}`))
+			if _, err := w.Write([]byte(`{"tools":[{"name":"create_record","description":"Create Airtable record","input_schema":{"type":"object","properties":{"baseId":{"type":"string"},"tableId":{"type":"string"},"fields":{"type":"object"}}}}]}`)); err != nil {
+				t.Fatalf("w.Write failed: %v", err)
+			}
 			return
 		}
 		if req["method"] == "tools/call" {
@@ -554,7 +584,9 @@ func TestMCPServer_HappyPath_AirtableE2E(t *testing.T) {
 				args := params["arguments"].(map[string]any)
 				if args["baseId"] == "test_base" && args["tableId"] == "test_table" {
 					w.Header().Set("Content-Type", "application/json")
-					w.Write([]byte(`{"result":{"id":"rec123","fields":{"Copy":"Hello!","Status":"Pending"}}}`))
+					if _, err := w.Write([]byte(`{"result":{"id":"rec123","fields":{"Copy":"Hello!","Status":"Pending"}}}`)); err != nil {
+						t.Fatalf("w.Write failed: %v", err)
+					}
 					return
 				}
 			}
@@ -567,7 +599,9 @@ func TestMCPServer_HappyPath_AirtableE2E(t *testing.T) {
 
 	// 2. Write a minimal flow YAML that uses mcp://airtable/create_record
 	tmpDir := t.TempDir()
-	os.MkdirAll(tmpDir+"/flows", 0755)
+	if err := os.MkdirAll(tmpDir+"/flows", 0755); err != nil {
+		t.Fatalf("os.MkdirAll failed: %v", err)
+	}
 	flowYAML := `name: airtable_e2e
 on: cli.manual
 steps:
@@ -582,10 +616,12 @@ steps:
 `
 	flowPath := tmpDir + "/flows/airtable_e2e.flow.yaml"
 	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
-		t.Fatalf("failed to write flow YAML: %v", err)
+		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 	schema := `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`
-	os.WriteFile(tmpDir+"/beemflow.schema.json", []byte(schema), 0644)
+	if err := os.WriteFile(tmpDir+"/beemflow.schema.json", []byte(schema), 0644); err != nil {
+		t.Fatalf("os.WriteFile failed: %v", err)
+	}
 
 	// 3. Write a config that points to the mock Airtable MCP server
 	cfg := map[string]any{
@@ -598,12 +634,16 @@ steps:
 		},
 	}
 	cfgBytes, _ := json.Marshal(cfg)
-	os.WriteFile(tmpDir+"/flow.config.json", cfgBytes, 0644)
+	if err := os.WriteFile(tmpDir+"/flow.config.json", cfgBytes, 0644); err != nil {
+		t.Fatalf("os.WriteFile failed: %v", err)
+	}
 
 	// 4. Set working dir to tmpDir for this test
 	origDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origDir)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("os.Chdir failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// 5. Start MCP HTTP server in background
 	ln, err := net.Listen("tcp", ":0")
@@ -615,7 +655,12 @@ steps:
 	serverTransport := mcphttp.NewHTTPTransport("/mcp").WithAddr(addr)
 	server := mcp.NewServer(serverTransport)
 	mcpserver.RegisterAllTools(server, buildMCPToolRegistrations())
-	go server.Serve()
+	go func() {
+		err := server.Serve()
+		if err != nil {
+			t.Errorf("server.Serve failed: %v", err)
+		}
+	}()
 	time.Sleep(200 * time.Millisecond)
 
 	// 6. Create MCP HTTP client

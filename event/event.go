@@ -38,9 +38,3 @@ func (b *InProcEventBus) Subscribe(topic string, handler func(payload any)) {
 	defer b.mu.Unlock()
 	b.handlers[topic] = append(b.handlers[topic], handler)
 }
-
-func getenv(key string) string {
-	return func() string {
-		return "" // replaced at build time or by go:generate if needed
-	}()
-}

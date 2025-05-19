@@ -114,8 +114,12 @@ func (s *SqliteStorage) GetRun(ctx context.Context, id uuid.UUID) (*model.Run, e
 	if err := row.Scan(&run.ID, &run.FlowName, &event, &vars, &run.Status, &startedAt, &endedAt); err != nil {
 		return nil, err
 	}
-	json.Unmarshal(event, &run.Event)
-	json.Unmarshal(vars, &run.Vars)
+	if err := json.Unmarshal(event, &run.Event); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(vars, &run.Vars); err != nil {
+		return nil, err
+	}
 	run.StartedAt = time.Unix(startedAt, 0)
 	if endedAt.Valid {
 		endedAtInt = endedAt.Int64
@@ -162,7 +166,9 @@ func (s *SqliteStorage) GetSteps(ctx context.Context, runID uuid.UUID) ([]*model
 		if parsedID, err := uuid.Parse(runIDStr); err == nil {
 			srun.RunID = parsedID
 		}
-		json.Unmarshal(outputs, &srun.Outputs)
+		if err := json.Unmarshal(outputs, &srun.Outputs); err != nil {
+			return nil, err
+		}
 		srun.StartedAt = time.Unix(startedAt, 0)
 		if endedAt.Valid {
 			endedAtInt = endedAt.Int64
@@ -274,8 +280,12 @@ func (s *SqliteStorage) GetLatestRunByFlowName(ctx context.Context, flowName str
 	if err := row.Scan(&run.ID, &run.FlowName, &event, &vars, &run.Status, &startedAt, &endedAt); err != nil {
 		return nil, err
 	}
-	json.Unmarshal(event, &run.Event)
-	json.Unmarshal(vars, &run.Vars)
+	if err := json.Unmarshal(event, &run.Event); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(vars, &run.Vars); err != nil {
+		return nil, err
+	}
 	run.StartedAt = time.Unix(startedAt, 0)
 	if endedAt.Valid {
 		endedAtInt = endedAt.Int64
@@ -302,8 +312,12 @@ func (s *SqliteStorage) ListRuns(ctx context.Context) ([]*model.Run, error) {
 		if err := rows.Scan(&run.ID, &run.FlowName, &event, &vars, &run.Status, &startedAt, &endedAt); err != nil {
 			continue
 		}
-		json.Unmarshal(event, &run.Event)
-		json.Unmarshal(vars, &run.Vars)
+		if err := json.Unmarshal(event, &run.Event); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(vars, &run.Vars); err != nil {
+			return nil, err
+		}
 		run.StartedAt = time.Unix(startedAt, 0)
 		if endedAt.Valid {
 			endedAtInt = endedAt.Int64

@@ -21,11 +21,15 @@ func TestSmitheryRegistry_ListServersAndGetServer(t *testing.T) {
 	h := http.NewServeMux()
 	h.HandleFunc("/servers", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"servers":[{"qualifiedName":"foo","displayName":"Foo","description":"desc","homepage":"http://foo","isDeployed":true}]}`))
+		if _, err := w.Write([]byte(`{"servers":[{"qualifiedName":"foo","displayName":"Foo","description":"desc","homepage":"http://foo","isDeployed":true}]}`)); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	})
 	h.HandleFunc("/servers/foo", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"qualifiedName":"foo","displayName":"Foo","description":"desc","homepage":"http://foo","connections":[{"type":"http","url":"http://foo","configSchema":{},"published":true} ]}`))
+		if _, err := w.Write([]byte(`{"qualifiedName":"foo","displayName":"Foo","description":"desc","homepage":"http://foo","connections":[{"type":"http","url":"http://foo","configSchema":{},"published":true} ]}`)); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	})
 	ts := httptest.NewServer(h)
 	defer ts.Close()
@@ -45,7 +49,9 @@ func TestSmitheryRegistry_ListServersAndGetServer(t *testing.T) {
 	// Error: no suitable connection
 	h.HandleFunc("/servers/bar", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"qualifiedName":"bar","displayName":"Bar","description":"desc","homepage":"http://bar","connections":[]}`))
+		if _, err := w.Write([]byte(`{"qualifiedName":"bar","displayName":"Bar","description":"desc","homepage":"http://bar","connections":[]}`)); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	})
 	entry, err = reg.GetServer(context.Background(), "bar")
 	if err == nil || entry != nil {
@@ -62,7 +68,9 @@ func TestSmitheryRegistry_ListServersAndGetServer(t *testing.T) {
 	// Error: bad JSON
 	h.HandleFunc("/servers/badjson", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("not json"))
+		if _, err := w.Write([]byte("not json")); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	})
 	entry, err = reg.GetServer(context.Background(), "badjson")
 	if err == nil || entry != nil {
@@ -70,7 +78,9 @@ func TestSmitheryRegistry_ListServersAndGetServer(t *testing.T) {
 	}
 	// ListServers: bad JSON
 	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+		if _, err := w.Write([]byte("not json")); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	}))
 	reg2 := NewSmitheryRegistry("testkey", ts2.URL)
 	_, err = reg2.ListServers(context.Background(), ListOptions{Query: "", Page: 0, PageSize: 0})
@@ -91,7 +101,7 @@ func TestSmitheryRegistry_ListServersAndGetServer(t *testing.T) {
 // TestGetServerSpec parses a stdioFunction into command and args.
 func TestGetServerSpec(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"connections": []map[string]any{
 				{
 					"type":          "stdio",
@@ -99,7 +109,9 @@ func TestGetServerSpec(t *testing.T) {
 					"stdioFunction": "({command:'./foo',args:['-a','-b']})",
 				},
 			},
-		})
+		}); err != nil {
+			t.Fatalf("json.Encode failed: %v", err)
+		}
 	}))
 	defer ts.Close()
 	reg := NewSmitheryRegistry("key", ts.URL)

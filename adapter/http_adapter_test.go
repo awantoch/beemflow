@@ -16,14 +16,17 @@ func TestHTTPPostJSONAndGetRaw(t *testing.T) {
 	// POST success
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("json.Decode failed: %v", err)
+		}
 		r.Body.Close()
 		if body["x"] != float64(1) {
 			w.WriteHeader(400)
 			return
 		}
-		w.WriteHeader(201)
-		w.Write([]byte(`{"ok":true}`))
+		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -36,7 +39,9 @@ func TestHTTPPostJSONAndGetRaw(t *testing.T) {
 	// POST status error
 	statusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
-		w.Write([]byte(`error`))
+		if _, err := w.Write([]byte(`error`)); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	}))
 	defer statusServer.Close()
 
@@ -48,7 +53,9 @@ func TestHTTPPostJSONAndGetRaw(t *testing.T) {
 	// GET success
 	getServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
-		w.Write([]byte("hello"))
+		if _, err := w.Write([]byte("hello")); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	}))
 	defer getServer.Close()
 
@@ -60,7 +67,9 @@ func TestHTTPPostJSONAndGetRaw(t *testing.T) {
 	// GET status error
 	getErrorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
-		w.Write([]byte("not found"))
+		if _, err := w.Write([]byte("not found")); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	}))
 	defer getErrorServer.Close()
 
@@ -80,7 +89,9 @@ func TestHTTPFetchAdapter(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("data"))
+		if _, err := w.Write([]byte("data")); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -96,12 +107,16 @@ func TestHTTPFetchAdapter(t *testing.T) {
 func TestHTTPAdapter_DefaultInjection(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("json.Decode failed: %v", err)
+		}
 		if body["foo"] != "bar" {
 			t.Errorf("expected foo=bar in request body, got %v", body["foo"])
 		}
 		w.WriteHeader(200)
-		w.Write([]byte(`{"ok":true}`))
+		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 

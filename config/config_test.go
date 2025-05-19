@@ -2,7 +2,6 @@ package config
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -109,7 +108,7 @@ func TestLoadConfig_MCPAutoInclude(t *testing.T) {
 	curatedPath := "mcp_servers/airtable.json"
 	_ = os.MkdirAll("mcp_servers", 0755)
 	defer os.Remove(curatedPath)
-	err := ioutil.WriteFile(curatedPath, []byte(curated), 0644)
+	err := os.WriteFile(curatedPath, []byte(curated), 0644)
 	if err != nil {
 		t.Fatalf("failed to write curated: %v", err)
 	}
@@ -172,7 +171,10 @@ func TestGetMergedMCPServerConfig_CuratedMissingCommand(t *testing.T) {
 	data, _ := json.Marshal(curated)
 	path := "mcp_servers/foo.json"
 	_ = os.MkdirAll("mcp_servers", 0755)
-	os.WriteFile(path, data, 0644)
+	osErr := os.WriteFile(path, data, 0644)
+	if osErr != nil {
+		t.Fatalf("os.WriteFile failed: %v", osErr)
+	}
 	defer os.Remove(path)
 
 	cfg := &Config{MCPServers: map[string]MCPServerConfig{"foo": {}}}
@@ -198,7 +200,10 @@ func TestGetMergedMCPServerConfig_CuratedMergeOriginal(t *testing.T) {
 	data, _ := json.Marshal(curated)
 	path := "mcp_servers/foo.json"
 	_ = os.MkdirAll("mcp_servers", 0755)
-	os.WriteFile(path, data, 0644)
+	osErr := os.WriteFile(path, data, 0644)
+	if osErr != nil {
+		t.Fatalf("os.WriteFile failed: %v", osErr)
+	}
 	defer os.Remove(path)
 
 	orig := MCPServerConfig{
@@ -232,7 +237,10 @@ func TestGetMergedMCPServerConfig_CuratedMergeOriginal(t *testing.T) {
 func TestGetMergedMCPServerConfig_MalformedCuratedIgnored(t *testing.T) {
 	path := "mcp_servers/foo.json"
 	_ = os.MkdirAll("mcp_servers", 0755)
-	os.WriteFile(path, []byte("not json"), 0644)
+	osErr := os.WriteFile(path, []byte("not json"), 0644)
+	if osErr != nil {
+		t.Fatalf("os.WriteFile failed: %v", osErr)
+	}
 	defer os.Remove(path)
 
 	orig := MCPServerConfig{Command: "co", Args: []string{"x"}, Env: map[string]string{"A": "orig"}}

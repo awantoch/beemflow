@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"os"
 
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/model"
@@ -81,7 +81,7 @@ func (s *defaultService) AssistantChat(ctx context.Context, systemPrompt string,
 	return draft, errs, err
 }
 func (s *defaultService) ListTools(ctx context.Context) ([]registry.ToolManifest, error) {
-	data, err := ioutil.ReadFile("registry/index.json")
+	data, err := os.ReadFile("registry/index.json")
 	if err != nil {
 		return nil, err
 	}

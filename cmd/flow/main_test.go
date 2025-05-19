@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"testing"
@@ -21,7 +22,9 @@ func captureOutput(f func()) string {
 	f()
 	w.Close()
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		log.Printf("buf.ReadFrom failed: %v", err)
+	}
 	os.Stdout = orig
 	logger.SetUserOutput(orig)
 	return buf.String()
@@ -43,12 +46,16 @@ func captureStderrExit(f func()) (string, int) {
 	}
 	func() {
 		defer func() {
-			recover()
+			if err := recover(); err != nil {
+				log.Printf("panic occurred: %v", err)
+			}
 		}()
 		f()
 	}()
 	w.Close()
-	io.Copy(&buf, r)
+	if _, err := io.Copy(&buf, r); err != nil {
+		log.Printf("io.Copy failed: %v", err)
+	}
 	os.Stderr = origStderr
 	logger.SetInternalOutput(origStderr)
 	exit = origExit
@@ -68,7 +75,11 @@ func TestMainCommands(t *testing.T) {
 	}
 	for _, c := range cases {
 		os.Args = c.args
-		out := captureOutput(func() { NewRootCmd().Execute() })
+		out := captureOutput(func() {
+			if err := NewRootCmd().Execute(); err != nil {
+				log.Printf("Execute failed: %v", err)
+			}
+		})
 		if c.wantsOutput && out == "" {
 			t.Errorf("expected output for %v, got empty", c.args)
 		}
@@ -94,20 +105,32 @@ steps:
 	tmp.Close()
 
 	os.Args = []string{"flow", "lint", tmp.Name()}
-	out := captureOutput(func() { NewRootCmd().Execute() })
+	out := captureOutput(func() {
+		if err := NewRootCmd().Execute(); err != nil {
+			log.Printf("Execute failed: %v", err)
+		}
+	})
 	if !strings.Contains(out, "Lint OK") {
 		t.Errorf("expected Lint OK, got %q", out)
 	}
 
 	os.Args = []string{"flow", "validate", tmp.Name()}
-	out = captureOutput(func() { NewRootCmd().Execute() })
+	out = captureOutput(func() {
+		if err := NewRootCmd().Execute(); err != nil {
+			log.Printf("Execute failed: %v", err)
+		}
+	})
 	if !strings.Contains(out, "Validation OK") {
 		t.Errorf("expected Validation OK, got %q", out)
 	}
 
 	// Missing file
 	os.Args = []string{"flow", "lint", "/nonexistent/file.yaml"}
-	stderr, code := captureStderrExit(func() { NewRootCmd().Execute() })
+	stderr, code := captureStderrExit(func() {
+		if err := NewRootCmd().Execute(); err != nil {
+			log.Printf("Execute failed: %v", err)
+		}
+	})
 	if code != 1 || !strings.Contains(stderr, "YAML parse error") {
 		t.Errorf("expected exit 1 and YAML parse error, got code=%d, stderr=%q", code, stderr)
 	}
@@ -124,7 +147,11 @@ steps:
 	}
 	tmp2.Close()
 	os.Args = []string{"flow", "lint", tmp2.Name()}
-	stderr, code = captureStderrExit(func() { NewRootCmd().Execute() })
+	stderr, code = captureStderrExit(func() {
+		if err := NewRootCmd().Execute(); err != nil {
+			log.Printf("Execute failed: %v", err)
+		}
+	})
 	if code != 2 || !strings.Contains(stderr, "Schema validation error") {
 		t.Errorf("expected exit 2 and schema error, got code=%d, stderr=%q", code, stderr)
 	}
@@ -141,7 +168,11 @@ steps:
 	}
 	tmp3.Close()
 	os.Args = []string{"flow", "lint", tmp3.Name()}
-	stderr, code = captureStderrExit(func() { NewRootCmd().Execute() })
+	stderr, code = captureStderrExit(func() {
+		if err := NewRootCmd().Execute(); err != nil {
+			log.Printf("Execute failed: %v", err)
+		}
+	})
 	if code != 1 || !strings.Contains(stderr, "YAML parse error") {
 		t.Errorf("expected exit 1 and YAML parse error, got code=%d, stderr=%q", code, stderr)
 	}
@@ -150,7 +181,11 @@ steps:
 	os.Args = []string{"flow", "lint", tmp.Name()}
 	origValidate := parser.ValidateFlow
 	parser.ValidateFlow = func(flow *model.Flow, schemaPath string) error { return fmt.Errorf("schema fail") }
-	stderr, code = captureStderrExit(func() { NewRootCmd().Execute() })
+	stderr, code = captureStderrExit(func() {
+		if err := NewRootCmd().Execute(); err != nil {
+			log.Printf("Execute failed: %v", err)
+		}
+	})
 	parser.ValidateFlow = origValidate
 	if code != 2 || !strings.Contains(stderr, "Schema validation error") {
 		t.Errorf("expected exit 2 and schema error, got code=%d, stderr=%q", code, stderr)
@@ -159,7 +194,11 @@ steps:
 
 func TestMain_ToolStub(t *testing.T) {
 	os.Args = []string{"flow", "tool"}
-	out := captureOutput(func() { NewRootCmd().Execute() })
+	out := captureOutput(func() {
+		if err := NewRootCmd().Execute(); err != nil {
+			log.Printf("Execute failed: %v", err)
+		}
+	})
 	if !strings.Contains(out, "flow tool (stub)") {
 		t.Errorf("expected tool stub output, got %q", out)
 	}

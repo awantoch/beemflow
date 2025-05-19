@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -179,7 +179,7 @@ func readCuratedConfig(host string) (MCPServerConfig, bool) {
 	var newMap map[string]MCPServerConfig
 	if err := json.Unmarshal(data, &newMap); err == nil {
 		if c, ok2 := newMap[host]; ok2 {
-			if c.Command != "" || len(c.Args) > 0 || (c.Env != nil && len(c.Env) > 0) || c.Port != 0 || c.Transport != "" || c.Endpoint != "" {
+			if c.Command != "" || len(c.Args) > 0 || len(c.Env) > 0 || c.Port != 0 || c.Transport != "" || c.Endpoint != "" {
 				return c, true
 			}
 		}
@@ -307,7 +307,7 @@ func (m *MCPServerConfig) UnmarshalJSON(data []byte) error {
 				return err
 			}
 			defer resp.Body.Close()
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				return err
 			}

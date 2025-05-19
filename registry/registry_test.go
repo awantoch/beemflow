@@ -102,7 +102,10 @@ func TestLocalRegistry_ListServers_FileNotFound(t *testing.T) {
 func TestLocalRegistry_ListServers_InvalidJSON(t *testing.T) {
 	path := "bad_registry.json"
 	defer os.Remove(path)
-	os.WriteFile(path, []byte("not json"), 0644)
+	osErr := os.WriteFile(path, []byte("not json"), 0644)
+	if osErr != nil {
+		t.Fatalf("os.WriteFile failed: %v", osErr)
+	}
 	reg := NewLocalRegistry(path)
 	_, err := reg.ListServers(context.Background(), ListOptions{})
 	if err == nil {

@@ -56,13 +56,21 @@ func TestFilesystemBlobStore_Concurrency(t *testing.T) {
 	store := newTestFilesystemBlobStore(t)
 	done := make(chan bool, 2)
 	go func() {
-		store.Put([]byte("a"), "text/plain", "a.txt")
-		store.Get("file://" + store.dir + "/a.txt")
+		if _, err := store.Put([]byte("a"), "text/plain", "a.txt"); err != nil {
+			t.Errorf("Put failed: %v", err)
+		}
+		if _, err := store.Get("file://" + store.dir + "/a.txt"); err != nil {
+			t.Errorf("Get failed: %v", err)
+		}
 		done <- true
 	}()
 	go func() {
-		store.Put([]byte("b"), "text/plain", "b.txt")
-		store.Get("file://" + store.dir + "/b.txt")
+		if _, err := store.Put([]byte("b"), "text/plain", "b.txt"); err != nil {
+			t.Errorf("Put failed: %v", err)
+		}
+		if _, err := store.Get("file://" + store.dir + "/b.txt"); err != nil {
+			t.Errorf("Get failed: %v", err)
+		}
 		done <- true
 	}()
 	<-done

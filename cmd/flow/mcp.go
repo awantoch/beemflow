@@ -106,26 +106,28 @@ func newMCPCmd() *cobra.Command {
 			Use:   "list",
 			Short: "List all MCP servers",
 			RunE: func(cmd *cobra.Command, args []string) error {
-				cfg, err := config.LoadAndInjectRegistries(*configFile)
-				if err != nil {
+				// Load config to get installed MCP servers
+				cfg, err := config.LoadConfig(*configFile)
+				if err != nil && !os.IsNotExist(err) {
 					return err
 				}
-				localPath := ""
-				for _, reg := range cfg.Registries {
-					if reg.Type == "local" && reg.Path != "" {
-						localPath = reg.Path
-					}
-				}
-				localMgr := registry.NewLocalRegistry(localPath)
 				ctx := context.Background()
-				servers, err := localMgr.ListMCPServers(ctx, registry.ListOptions{PageSize: 100})
-				if err != nil {
-					return err
-				}
+				// Initialize tab writer
 				w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
 				fmt.Fprintln(w, "REGISTRY\tNAME\tDESCRIPTION\tKIND\tENDPOINT")
-				for _, s := range servers {
-					fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", s.Registry, s.Name, s.Description, s.Kind, s.Endpoint)
+				// List installed servers from config
+				if cfg != nil && cfg.MCPServers != nil {
+					for name, spec := range cfg.MCPServers {
+						fmt.Fprintf(w, "config\t%s\t%s\t%s\t%s\n", name, "", spec.Transport, spec.Endpoint)
+					}
+				}
+				// List curated servers from local registry
+				localMgr := registry.NewLocalRegistry("")
+				servers, err := localMgr.ListMCPServers(ctx, registry.ListOptions{PageSize: 100})
+				if err == nil {
+					for _, s := range servers {
+						fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", s.Registry, s.Name, s.Description, s.Kind, s.Endpoint)
+					}
 				}
 				w.Flush()
 				return nil

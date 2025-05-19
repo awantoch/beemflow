@@ -62,7 +62,9 @@ func TestHTTPAdapter(t *testing.T) {
 	// Start a mock HTTP server to simulate the endpoint
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"echoed": true}`))
+		if _, err := w.Write([]byte(`{"echoed": true}`)); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -236,7 +238,10 @@ func TestRegistry_MergeAndLocalWrite(t *testing.T) {
 	_ = os.WriteFile(localPath, mustJSON(localEntries), 0644)
 
 	// Simulate config
-	os.WriteFile("flow.config.json", []byte(`{"registries":[{"type":"local","path":"local_registry.json"}]}`), 0644)
+	osErr := os.WriteFile("flow.config.json", []byte(`{"registries":[{"type":"local","path":"local_registry.json"}]}`), 0644)
+	if osErr != nil {
+		t.Fatalf("os.WriteFile failed: %v", osErr)
+	}
 	defer os.Remove("flow.config.json")
 
 	// Load registries

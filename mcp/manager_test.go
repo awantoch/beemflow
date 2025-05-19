@@ -114,7 +114,9 @@ func TestWaitForMCP_Success(t *testing.T) {
 	t.Skip("skipping waitForMCP success path until backoff logic refactored")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[]`))
+		if _, err := w.Write([]byte(`[]`)); err != nil {
+			t.Fatalf("w.Write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 	err := waitForMCP(server.URL, 1*time.Second)

@@ -61,13 +61,21 @@ func TestBlobStore_Concurrency(t *testing.T) {
 	store := newTestS3BlobStore(t)
 	done := make(chan bool, 2)
 	go func() {
-		store.Put([]byte("a"), "text/plain", "a.txt")
-		store.Get("s3://dummy-url/a.txt")
+		if _, err := store.Put([]byte("a"), "text/plain", "a.txt"); err != nil {
+			t.Errorf("Put failed: %v", err)
+		}
+		if _, err := store.Get("s3://dummy-url/a.txt"); err != nil {
+			t.Errorf("Get failed: %v", err)
+		}
 		done <- true
 	}()
 	go func() {
-		store.Put([]byte("b"), "text/plain", "b.txt")
-		store.Get("s3://dummy-url/b.txt")
+		if _, err := store.Put([]byte("b"), "text/plain", "b.txt"); err != nil {
+			t.Errorf("Put failed: %v", err)
+		}
+		if _, err := store.Get("s3://dummy-url/b.txt"); err != nil {
+			t.Errorf("Get failed: %v", err)
+		}
 		done <- true
 	}()
 	<-done

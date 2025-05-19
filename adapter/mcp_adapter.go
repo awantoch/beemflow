@@ -126,9 +126,9 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 		} else if cfg.Command != "" {
 			// stdio transport
 			a.mu.Lock()
-			cmd, ok := a.processes[host]
+			cmd := a.processes[host]
 			a.mu.Unlock()
-			if !ok {
+			if cmd == nil {
 				// use centralized command builder to merge env
 				cmd = mcpmanager.NewMCPCommand(cfg)
 				stdin, err := cmd.StdinPipe()

@@ -2,7 +2,7 @@ package adapter
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"os"
 	"reflect"
 	"testing"
@@ -26,7 +26,7 @@ func TestCoreAdapter(t *testing.T) {
 	w.Close()
 	logger.SetInternalOutput(orig)
 
-	buf, _ := ioutil.ReadAll(r)
+	buf, _ := io.ReadAll(r)
 	if string(buf) == "" || string(buf) == "\n" {
 		t.Errorf("expected echoed in logger output, got %q", buf)
 	}

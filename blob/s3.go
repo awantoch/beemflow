@@ -49,10 +49,13 @@ func (s *S3BlobStore) Put(data []byte, mime, filename string) (string, error) {
 
 func (s *S3BlobStore) Get(url string) ([]byte, error) {
 	// Expect url format: s3://bucket/key
-	var key string
-	_, err := fmt.Sscanf(url, "s3://%s/%s", &s.bucket, &key)
+	var bucket, key string
+	_, err := fmt.Sscanf(url, "s3://%[^/]/%s", &bucket, &key)
 	if err != nil {
 		return nil, err
+	}
+	if bucket != s.bucket {
+		return nil, fmt.Errorf("requested bucket %s does not match configured bucket %s", bucket, s.bucket)
 	}
 	resp, err := s.client.GetObject(context.Background(), &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),

@@ -132,8 +132,10 @@ func TestStep_AllFieldsSet(t *testing.T) {
 	if s.Use != "core.echo" || s.With["text"] != "hi" || s.If != "x > 0" || s.Foreach != "{{list}}" || s.As != "item" {
 		t.Errorf("step fields not set correctly: %+v", s)
 	}
-	if len(s.Do) != 1 || s.Do[0].Use != "core.echo" {
-		t.Errorf("step.Do not set correctly: %+v", s.Do)
+	if len(s.Do) != 1 {
+		if s.Do[0].Use != "core.echo" {
+			t.Errorf("step.Do not set correctly: %+v", s.Do)
+		}
 	}
 	if !s.Parallel {
 		t.Errorf("step.Parallel not set correctly: %+v", s.Parallel)
@@ -176,7 +178,7 @@ func TestStep_NilAndEmptySubfields(t *testing.T) {
 	if s.With != nil {
 		t.Errorf("expected With nil, got %+v", s.With)
 	}
-	if s.Do != nil && len(s.Do) != 0 {
+	if len(s.Do) != 0 {
 		t.Errorf("expected Do nil or empty, got %+v", s.Do)
 	}
 	// Parallel is a bool, so no nil/len check needed

@@ -20,6 +20,11 @@ import (
 	"github.com/google/uuid"
 )
 
+// Define a custom type for context keys
+type runIDKeyType struct{}
+
+var runIDKey = runIDKeyType{}
+
 // Engine is the core runtime for executing BeemFlow flows. It manages adapters, templating, event bus, and in-memory state.
 type Engine struct {
 	Adapters  *adapter.Registry
@@ -186,10 +191,11 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	if flow == nil {
 		return nil, nil
 	}
-	if flow.Steps == nil || len(flow.Steps) == 0 {
-		return nil, nil
-	}
+	// Initialize outputs and handle empty flow as no-op
 	outputs := make(map[string]any)
+	if len(flow.Steps) == 0 {
+		return outputs, nil
+	}
 	secrets := map[string]string{}
 	for _, env := range os.Environ() {
 		if eq := strings.Index(env, "="); eq != -1 {
@@ -231,7 +237,9 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 		Status:    model.RunRunning,
 		StartedAt: time.Now(),
 	}
-	e.Storage.SaveRun(ctx, run)
+	if err := e.Storage.SaveRun(ctx, run); err != nil {
+		logger.Error("SaveRun failed: %v", err)
+	}
 
 	outputs, err := e.executeStepsWithPersistence(ctx, flow, stepCtx, 0, runID)
 
@@ -253,7 +261,9 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 		StartedAt: time.Now(),
 		EndedAt:   ptrTime(time.Now()),
 	}
-	e.Storage.SaveRun(ctx, run)
+	if err := e.Storage.SaveRun(ctx, run); err != nil {
+		logger.Error("SaveRun failed: %v", err)
+	}
 
 	if err != nil && len(flow.Catch) > 0 {
 		// Run catch steps in defined order if error
@@ -369,7 +379,9 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				srun.Status = model.StepFailed
 				srun.Error = err.Error()
 			}
-			e.Storage.SaveStep(ctx, srun)
+			if err := e.Storage.SaveStep(ctx, srun); err != nil {
+				logger.Error("SaveStep failed: %v", err)
+			}
 		}
 		if err != nil {
 			return stepCtx.Outputs, err
@@ -398,7 +410,7 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 	}
 	logger.Debug("Outputs map before resume for token %s: %+v", token, paused.StepCtx.Outputs)
 	// Continue execution from next step
-	ctx := context.WithValue(context.Background(), "run_id", paused.RunID)
+	ctx := context.WithValue(context.Background(), runIDKey, paused.RunID)
 	outputs, err := e.executeStepsWithPersistence(ctx, paused.Flow, paused.StepCtx, paused.StepIdx+1, paused.RunID)
 	// Merge outputs from before and after resume
 	allOutputs := make(map[string]any)
@@ -427,7 +439,9 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 			StartedAt: time.Now(),
 			EndedAt:   ptrTime(time.Now()),
 		}
-		e.Storage.SaveRun(context.Background(), run)
+		if err := e.Storage.SaveRun(context.Background(), run); err != nil {
+			logger.Error("SaveRun failed: %v", err)
+		}
 	}
 }
 
@@ -440,53 +454,6 @@ func (e *Engine) GetCompletedOutputs(token string) map[string]any {
 	logger.Debug("GetCompletedOutputs for token %s returns: %+v", token, outputs)
 	delete(e.completedOutputs, token)
 	return outputs
-}
-
-// executeStepWithWaitAndAwait handles wait and await_event before running the step
-func (e *Engine) executeStepWithWaitAndAwait(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
-	// WAIT logic
-	if step.Wait != nil {
-		if step.Wait.Seconds > 0 {
-			time.Sleep(time.Duration(step.Wait.Seconds) * time.Second)
-		}
-		if step.Wait.Until != "" {
-			// For now, just skip (simulate instant)
-		}
-	}
-	// AWAIT_EVENT logic
-	if step.AwaitEvent != nil {
-		// For now, simulate by returning a special error
-		return logger.Errorf("step %s is waiting for event (await_event stub)", stepID)
-	}
-	return e.executeStep(ctx, step, stepCtx, stepID)
-}
-
-// renderValue recursively renders template strings in nested values.
-func (e *Engine) renderValue(val any, data map[string]any) (any, error) {
-	switch x := val.(type) {
-	case string:
-		return e.Templater.Render(x, data)
-	case []any:
-		for i, elem := range x {
-			rendered, err := e.renderValue(elem, data)
-			if err != nil {
-				return nil, err
-			}
-			x[i] = rendered
-		}
-		return x, nil
-	case map[string]any:
-		for k, elem := range x {
-			rendered, err := e.renderValue(elem, data)
-			if err != nil {
-				return nil, err
-			}
-			x[k] = rendered
-		}
-		return x, nil
-	default:
-		return val, nil
-	}
 }
 
 // executeStep runs a single step (use/with) and stores output
@@ -695,7 +662,7 @@ func pausedRunToMap(pr *PausedRun) map[string]any {
 
 // Add a helper to extract runID from context (or use a global if needed)
 func runIDFromContext(ctx context.Context) uuid.UUID {
-	if v := ctx.Value("run_id"); v != nil {
+	if v := ctx.Value(runIDKey); v != nil {
 		if id, ok := v.(uuid.UUID); ok {
 			return id
 		}
@@ -755,4 +722,32 @@ func (e *Engine) ListMCPServers() ([]*MCPServerWithName, error) {
 		}
 	}
 	return mcps, nil
+}
+
+// renderValue recursively renders template strings in nested values.
+func (e *Engine) renderValue(val any, data map[string]any) (any, error) {
+	switch x := val.(type) {
+	case string:
+		return e.Templater.Render(x, data)
+	case []any:
+		for i, elem := range x {
+			rendered, err := e.renderValue(elem, data)
+			if err != nil {
+				return nil, err
+			}
+			x[i] = rendered
+		}
+		return x, nil
+	case map[string]any:
+		for k, elem := range x {
+			rendered, err := e.renderValue(elem, data)
+			if err != nil {
+				return nil, err
+			}
+			x[k] = rendered
+		}
+		return x, nil
+	default:
+		return val, nil
+	}
 }

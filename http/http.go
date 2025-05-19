@@ -105,11 +105,15 @@ func runsListHandler(w http.ResponseWriter, r *http.Request) {
 	runs, err := svc.ListRuns(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(runs)
+	if err := json.NewEncoder(w).Encode(runs); err != nil {
+		logger.Error("json.Encode failed: %v", err)
+	}
 }
 
 // POST /runs { flow: <filename>, event: <object> }
@@ -124,13 +128,17 @@ func runsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid request body"))
+		if _, err := w.Write([]byte("invalid request body")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	id, err := svc.StartRun(r.Context(), req.Flow, req.Event)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	resp := map[string]any{
@@ -138,7 +146,9 @@ func runsHandler(w http.ResponseWriter, r *http.Request) {
 		"status": "STARTED",
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		logger.Error("json.Encode failed: %v", err)
+	}
 }
 
 // GET /runs/{id}
@@ -148,39 +158,53 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request) {
 		id, err := uuid.Parse(idStr)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid run ID"))
+			if _, err := w.Write([]byte("invalid run ID")); err != nil {
+				logger.Error("w.Write failed: %v", err)
+			}
 			return
 		}
 		run, err := svc.GetRun(r.Context(), id)
 		if err != nil || run == nil {
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("run not found"))
+			if _, err := w.Write([]byte("run not found")); err != nil {
+				logger.Error("w.Write failed: %v", err)
+			}
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(run)
+		if err := json.NewEncoder(w).Encode(run); err != nil {
+			logger.Error("json.Encode failed: %v", err)
+		}
 		return
 	} else if r.Method == http.MethodDelete {
 		idStr := r.URL.Path[len("/runs/"):]
 		id, err := uuid.Parse(idStr)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid run ID"))
+			if _, err := w.Write([]byte("invalid run ID")); err != nil {
+				logger.Error("w.Write failed: %v", err)
+			}
 			return
 		}
 		if eng == nil || eng.Storage == nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("engine/storage not initialized"))
+			if _, err := w.Write([]byte("engine/storage not initialized")); err != nil {
+				logger.Error("w.Write failed: %v", err)
+			}
 			return
 		}
 		err = svc.DeleteRun(r.Context(), id)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
+			if _, err := w.Write([]byte(err.Error())); err != nil {
+				logger.Error("w.Write failed: %v", err)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("deleted"))
+		if _, err := w.Write([]byte("deleted")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	w.WriteHeader(http.StatusMethodNotAllowed)
@@ -195,13 +219,17 @@ func resumeHandler(w http.ResponseWriter, r *http.Request) {
 	tokenOrID := r.URL.Path[len("/resume/"):]
 	if tokenOrID == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("missing token"))
+		if _, err := w.Write([]byte("missing token")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	var resumeEvent map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&resumeEvent); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid JSON body"))
+		if _, err := w.Write([]byte("invalid JSON body")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	// Support both token and runID for test compatibility
@@ -211,7 +239,9 @@ func resumeHandler(w http.ResponseWriter, r *http.Request) {
 		runsMu.Unlock()
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("run not found for token"))
+			if _, err := w.Write([]byte("run not found for token")); err != nil {
+				logger.Error("w.Write failed: %v", err)
+			}
 			return
 		}
 		// Update event directly for test
@@ -221,10 +251,12 @@ func resumeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		runsMu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"status":  run.Status,
 			"outputs": run.Event["outputs"],
-		})
+		}); err != nil {
+			logger.Error("json.Encode failed: %v", err)
+		}
 		return
 	}
 	// Otherwise, treat as token (normal path)
@@ -234,7 +266,9 @@ func resumeHandler(w http.ResponseWriter, r *http.Request) {
 	runsMu.Unlock()
 	if !ok || !ok2 {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid run ID"))
+		if _, err := w.Write([]byte("invalid run ID")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	// Resume the engine
@@ -249,10 +283,12 @@ func resumeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	runsMu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"status":  run.Status,
 		"outputs": outputs,
-	})
+	}); err != nil {
+		logger.Error("json.Encode failed: %v", err)
+	}
 }
 
 func graphHandler(w http.ResponseWriter, r *http.Request) {
@@ -263,17 +299,23 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	flowName := r.URL.Query().Get("flow")
 	if flowName == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("missing flow name"))
+		if _, err := w.Write([]byte("missing flow name")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	graph, err := svc.GraphFlow(r.Context(), flowName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "text/vnd.graphviz")
-	w.Write([]byte(graph))
+	if _, err := w.Write([]byte(graph)); err != nil {
+		logger.Error("w.Write failed: %v", err)
+	}
 }
 
 func validateHandler(w http.ResponseWriter, r *http.Request) {
@@ -286,17 +328,23 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid request body"))
+		if _, err := w.Write([]byte("invalid request body")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	err := svc.ValidateFlow(r.Context(), req.Flow)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+	if _, err := w.Write([]byte("ok")); err != nil {
+		logger.Error("w.Write failed: %v", err)
+	}
 }
 
 func testHandler(w http.ResponseWriter, r *http.Request) {
@@ -325,7 +373,9 @@ func assistantChatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid request body"))
+		if _, err := w.Write([]byte("invalid request body")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	draft, errors, err := svc.AssistantChat(r.Context(), "", req.Messages)
@@ -338,7 +388,9 @@ func assistantChatHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		logger.Error("json.Encode failed: %v", err)
+	}
 }
 
 func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
@@ -352,21 +404,27 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid request body"))
+		if _, err := w.Write([]byte("invalid request body")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	// Parse and validate the flow spec
 	flow, err := api.ParseFlowFromString(req.Spec)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid flow spec: " + err.Error()))
+		if _, err := w.Write([]byte("invalid flow spec: " + err.Error())); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	// Start the run inline
 	id, outputs, err := svc.RunSpec(r.Context(), flow, req.Event)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("run error: " + err.Error()))
+		if _, err := w.Write([]byte("run error: " + err.Error())); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	resp := map[string]any{
@@ -374,7 +432,9 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
 		"outputs": outputs,
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		logger.Error("json.Encode failed: %v", err)
+	}
 }
 
 // toolsIndexHandler returns a JSON list of all registered tool manifests from the registry index.json.
@@ -386,11 +446,15 @@ func toolsIndexHandler(w http.ResponseWriter, r *http.Request) {
 	tools, err := svc.ListTools(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("failed to list tools"))
+		if _, err := w.Write([]byte("failed to list tools")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tools)
+	if err := json.NewEncoder(w).Encode(tools); err != nil {
+		logger.Error("json.Encode failed: %v", err)
+	}
 }
 
 // toolsManifestHandler returns the manifest for a single tool by name from the registry index.json.
@@ -404,11 +468,15 @@ func toolsManifestHandler(w http.ResponseWriter, r *http.Request) {
 	manifest, err := svc.GetToolManifest(r.Context(), name)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("failed to get tool manifest"))
+		if _, err := w.Write([]byte("failed to get tool manifest")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(manifest)
+	if err := json.NewEncoder(w).Encode(manifest); err != nil {
+		logger.Error("json.Encode failed: %v", err)
+	}
 }
 
 // Handler: GET /flows (list all flow specs), POST /flows (upload/update flow)
@@ -418,7 +486,9 @@ func flowsHandler(w http.ResponseWriter, r *http.Request) {
 		flows, err := svc.ListFlows(r.Context())
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
+			if _, err := w.Write([]byte(err.Error())); err != nil {
+				logger.Error("w.Write failed: %v", err)
+			}
 			return
 		}
 		var specs []any
@@ -430,12 +500,16 @@ func flowsHandler(w http.ResponseWriter, r *http.Request) {
 			specs = append(specs, flow)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(specs)
+		if err := json.NewEncoder(w).Encode(specs); err != nil {
+			logger.Error("json.Encode failed: %v", err)
+		}
 		return
 	} else if r.Method == http.MethodPost {
 		// Upload or update a flow (stub)
 		w.WriteHeader(http.StatusNotImplemented)
-		w.Write([]byte("upload/update flow not implemented yet"))
+		if _, err := w.Write([]byte("upload/update flow not implemented yet")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	w.WriteHeader(http.StatusMethodNotAllowed)
@@ -446,18 +520,24 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/flows/")
 	if name == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("missing flow name"))
+		if _, err := w.Write([]byte("missing flow name")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	if r.Method == http.MethodGet {
 		flow, err := svc.GetFlow(r.Context(), name)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
+			if _, err := w.Write([]byte(err.Error())); err != nil {
+				logger.Error("w.Write failed: %v", err)
+			}
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(flow)
+		if err := json.NewEncoder(w).Encode(flow); err != nil {
+			logger.Error("json.Encode failed: %v", err)
+		}
 		return
 	} else if r.Method == http.MethodDelete {
 		// Delete flow (remove YAML file)
@@ -466,15 +546,21 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			if os.IsNotExist(err) {
 				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte("flow not found"))
+				if _, err := w.Write([]byte("flow not found")); err != nil {
+					logger.Error("w.Write failed: %v", err)
+				}
 				return
 			}
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
+			if _, err := w.Write([]byte(err.Error())); err != nil {
+				logger.Error("w.Write failed: %v", err)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("deleted"))
+		if _, err := w.Write([]byte("deleted")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	w.WriteHeader(http.StatusMethodNotAllowed)
@@ -492,15 +578,21 @@ func eventsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid request body"))
+		if _, err := w.Write([]byte("invalid request body")); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	err := svc.PublishEvent(r.Context(), req.Topic, req.Payload)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			logger.Error("w.Write failed: %v", err)
+		}
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+	if _, err := w.Write([]byte("ok")); err != nil {
+		logger.Error("w.Write failed: %v", err)
+	}
 }

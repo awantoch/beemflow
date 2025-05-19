@@ -132,7 +132,9 @@ func TestAwaitEventResume_RoundTrip(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	// Simulate resume event
 	resumeEvent := map[string]any{"resume_value": "it worked!", "token": "abc123"}
-	engine.EventBus.Publish("resume:abc123", resumeEvent)
+	if err := engine.EventBus.Publish("resume:abc123", resumeEvent); err != nil {
+		t.Errorf("Publish failed: %v", err)
+	}
 	// Wait briefly to allow resume goroutine to complete
 	time.Sleep(100 * time.Millisecond)
 	// After resume, the outputs should include both echo steps
@@ -300,7 +302,9 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 
 	// Simulate resume event
 	resumeEvent := map[string]any{"resume_value": "it worked!", "token": "abc123"}
-	engine2.EventBus.Publish("resume:abc123", resumeEvent)
+	if err := engine2.EventBus.Publish("resume:abc123", resumeEvent); err != nil {
+		t.Errorf("Publish failed: %v", err)
+	}
 
 	// Wait for both echo_start and echo_resumed steps to appear (polling, up to 2s)
 	var steps2 []*model.StepRun
