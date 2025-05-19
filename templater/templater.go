@@ -8,6 +8,8 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/awantoch/beemflow/logger"
 )
 
 // Templater provides template rendering with helper functions for BeemFlow flows.
@@ -118,7 +120,7 @@ func (t *Templater) Render(tmpl string, data map[string]any) (string, error) {
 			return "", err
 		}
 		if data == nil {
-			return "", fmt.Errorf("template data is nil")
+			return "", logger.Errorf("template data is nil")
 		}
 		var buf bytes.Buffer
 		if err := tpl.Execute(&buf, data); err != nil {

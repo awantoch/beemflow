@@ -4,8 +4,8 @@ import (
 	"os"
 
 	"github.com/awantoch/beemflow/graphviz"
+	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/parser"
-	"github.com/awantoch/beemflow/pkg/logger"
 	"github.com/spf13/cobra"
 )
 

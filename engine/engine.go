@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -12,8 +11,8 @@ import (
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/event"
+	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
-	"github.com/awantoch/beemflow/pkg/logger"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/templater"
 	"github.com/google/uuid"
@@ -270,7 +269,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 			match := step.AwaitEvent.Match
 			tokenRaw, _ := match["token"].(string)
 			if tokenRaw == "" {
-				return nil, fmt.Errorf("await_event step missing token in match")
+				return nil, logger.Errorf("await_event step missing token in match")
 			}
 			// Render the token template
 			data := map[string]any{
@@ -281,7 +280,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 			}
 			renderedToken, err := e.Templater.Render(tokenRaw, data)
 			if err != nil {
-				return nil, fmt.Errorf("failed to render token template: %w", err)
+				return nil, logger.Errorf("failed to render token template: %w", err)
 			}
 			token := renderedToken
 			// Pause: store state and subscribe for resume
@@ -318,7 +317,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				}
 				e.Resume(token, resumeEvent)
 			})
-			return nil, fmt.Errorf("step %s is waiting for event (await_event pause)", step.ID)
+			return nil, logger.Errorf("step %s is waiting for event (await_event pause)", step.ID)
 		}
 		err := e.executeStep(ctx, step, stepCtx, step.ID)
 		// Persist the step after execution
@@ -429,7 +428,7 @@ func (e *Engine) executeStepWithWaitAndAwait(ctx context.Context, step *model.St
 	// AWAIT_EVENT logic
 	if step.AwaitEvent != nil {
 		// For now, simulate by returning a special error
-		return fmt.Errorf("step %s is waiting for event (await_event stub)", stepID)
+		return logger.Errorf("step %s is waiting for event (await_event stub)", stepID)
 	}
 	return e.executeStep(ctx, step, stepCtx, stepID)
 }
@@ -514,11 +513,11 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			key := strings.TrimSpace(s[2 : len(s)-2])
 			val, ok := stepCtx.Event[key]
 			if !ok {
-				return fmt.Errorf("foreach variable not found: %s", key)
+				return logger.Errorf("foreach variable not found: %s", key)
 			}
 			list, ok := val.([]any)
 			if !ok {
-				return fmt.Errorf("foreach variable %s is not a list", key)
+				return logger.Errorf("foreach variable %s is not a list", key)
 			}
 			if len(list) == 0 {
 				stepCtx.Outputs[stepID] = make(map[string]any)
@@ -558,7 +557,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			stepCtx.Outputs[stepID] = make(map[string]any)
 			return nil
 		}
-		return fmt.Errorf("unsupported foreach expression: %s", step.Foreach)
+		return logger.Errorf("unsupported foreach expression: %s", step.Foreach)
 	}
 	if step.Use == "" {
 		return nil
@@ -569,11 +568,11 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			adapterInst, ok = e.Adapters.Get("mcp")
 			if !ok {
 				stepCtx.Outputs[stepID] = make(map[string]any)
-				return fmt.Errorf("MCPAdapter not registered")
+				return logger.Errorf("MCPAdapter not registered")
 			}
 		} else {
 			stepCtx.Outputs[stepID] = make(map[string]any)
-			return fmt.Errorf("adapter not found: %s", step.Use)
+			return logger.Errorf("adapter not found: %s", step.Use)
 		}
 	}
 	inputs := make(map[string]any)
@@ -589,7 +588,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		}
 		rendered, err := e.renderValue(v, data)
 		if err != nil {
-			return fmt.Errorf("template error in step %s: %w", stepID, err)
+			return logger.Errorf("template error in step %s: %w", stepID, err)
 		}
 		inputs[k] = rendered
 	}
@@ -623,7 +622,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	outputs, err := adapterInst.Execute(ctx, inputs)
 	if err != nil {
 		stepCtx.Outputs[stepID] = outputs
-		return fmt.Errorf("step %s failed: %w", stepID, err)
+		return logger.Errorf("step %s failed: %w", stepID, err)
 	}
 	logger.Debug("Writing outputs for step %s: %+v", stepID, outputs)
 	stepCtx.Outputs[stepID] = outputs

@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/awantoch/beemflow/logger"
 )
 
 // defaultClient is used for HTTP requests with a timeout to avoid hanging.
@@ -41,11 +42,11 @@ func HTTPPostJSON(ctx context.Context, url string, body interface{}, headers map
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("HTTPPostJSON: unexpected status code %d: %s", resp.StatusCode, string(data))
+		return logger.Errorf("HTTPPostJSON: unexpected status code %d: %s", resp.StatusCode, string(data))
 	}
 	if result != nil {
 		if err := json.Unmarshal(data, result); err != nil {
-			return fmt.Errorf("failed to decode JSON from %s: %w", url, err)
+			return logger.Errorf("failed to decode JSON from %s: %w", url, err)
 		}
 	}
 	return nil
@@ -70,7 +71,7 @@ func HTTPGetRaw(ctx context.Context, url string, headers map[string]string) (str
 		return "", err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("HTTPGetRaw: unexpected status code %d: %s", resp.StatusCode, string(data))
+		return "", logger.Errorf("HTTPGetRaw: unexpected status code %d: %s", resp.StatusCode, string(data))
 	}
 	return string(data), nil
 }
@@ -108,7 +109,7 @@ func injectDefaults(params map[string]any, inputs map[string]any) {
 // Execute calls the manifest's endpoint with JSON inputs and returns parsed JSON output.
 func (a *HTTPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
 	if a.ToolManifest == nil || a.ToolManifest.Endpoint == "" {
-		return nil, fmt.Errorf("no endpoint for tool %s", a.AdapterID)
+		return nil, logger.Errorf("no endpoint for tool %s", a.AdapterID)
 	}
 	// Inject manifest defaults for missing fields
 	if a.ToolManifest.Parameters != nil {
@@ -145,7 +146,7 @@ func (a *HTTPFetchAdapter) ID() string {
 func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
 	url, ok := inputs["url"].(string)
 	if !ok || url == "" {
-		return nil, fmt.Errorf("missing url")
+		return nil, logger.Errorf("missing url")
 	}
 	// Determine method
 	method := "GET"
@@ -183,7 +184,7 @@ func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (
 			return nil, err
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, fmt.Errorf("HTTP GET %s: status %d: %s", url, resp.StatusCode, string(data))
+			return nil, logger.Errorf("HTTP GET %s: status %d: %s", url, resp.StatusCode, string(data))
 		}
 		// Try JSON unmarshal
 		var parsed any
@@ -209,7 +210,7 @@ func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (
 		b, _ := json.Marshal(out)
 		return map[string]any{"body": string(b)}, nil
 	default:
-		return nil, fmt.Errorf("unsupported method %s", method)
+		return nil, logger.Errorf("unsupported method %s", method)
 	}
 }
 

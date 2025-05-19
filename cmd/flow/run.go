@@ -6,9 +6,9 @@ import (
 
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/engine"
+	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/parser"
-	"github.com/awantoch/beemflow/pkg/logger"
 	"github.com/spf13/cobra"
 )
 

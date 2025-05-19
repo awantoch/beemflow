@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
+	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/parser"
 	"github.com/awantoch/beemflow/storage"
@@ -97,7 +97,7 @@ func StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.
 		case "postgres":
 			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
 		default:
-			return uuid.Nil, fmt.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
+			return uuid.Nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
 		}
 		if err != nil {
 			return uuid.Nil, err
@@ -176,7 +176,7 @@ func GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
 		case "postgres":
 			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
 		default:
-			return nil, fmt.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
+			return nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
 		}
 		if err != nil {
 			return nil, err
@@ -207,7 +207,7 @@ func ListRuns(ctx context.Context) ([]*model.Run, error) {
 		case "postgres":
 			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
 		default:
-			return nil, fmt.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
+			return nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
 		}
 		if err != nil {
 			return nil, err
@@ -240,7 +240,7 @@ func ResumeRun(ctx context.Context, token string, event map[string]any) (map[str
 		case "postgres":
 			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
 		default:
-			return nil, fmt.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
+			return nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
 		}
 		if err != nil {
 			return nil, err
@@ -274,7 +274,7 @@ func RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.
 		case "postgres":
 			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
 		default:
-			return uuid.Nil, nil, fmt.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
+			return uuid.Nil, nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
 		}
 		if err != nil {
 			return uuid.Nil, nil, err

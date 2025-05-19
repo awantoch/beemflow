@@ -2,10 +2,11 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 
-	"github.com/awantoch/beemflow/pkg/logger"
+	"github.com/awantoch/beemflow/logger"
 )
 
 type Config struct {
@@ -97,12 +98,50 @@ type registryEntry struct {
 	Endpoint  string            `json:"endpoint,omitempty"`
 }
 
-func loadMCPServersFromRegistry(path string) (map[string]MCPServerConfig, error) {
-	// Use BEEMFLOW_REGISTRY env var if set
-	if envPath := os.Getenv("BEEMFLOW_REGISTRY"); envPath != "" {
-		path = envPath
+// readCuratedConfig loads a curated MCPServerConfig from mcp_servers/<host>.json at project root, supporting only the new format.
+func readCuratedConfig(host string) (MCPServerConfig, bool) {
+	// Try mcp_servers folder in current working directory first
+	cwdPath := filepath.Join("mcp_servers", host+".json")
+	data, err := os.ReadFile(cwdPath)
+	if err != nil {
+		// Fallback to project root
+		_, file, _, ok := runtime.Caller(0)
+		if !ok {
+			return MCPServerConfig{}, false
+		}
+		projectRoot := filepath.Dir(filepath.Dir(file))
+		curatedPath := filepath.Join(projectRoot, "mcp_servers", host+".json")
+		data, err = os.ReadFile(curatedPath)
+		if err != nil {
+			return MCPServerConfig{}, false
+		}
 	}
-	data, err := os.ReadFile(path)
+	// Only support new format
+	var newMap map[string]MCPServerConfig
+	if err := json.Unmarshal(data, &newMap); err == nil {
+		if c, ok2 := newMap[host]; ok2 {
+			if c.Command != "" || len(c.Args) > 0 || (c.Env != nil && len(c.Env) > 0) || c.Port != 0 || c.Transport != "" || c.Endpoint != "" {
+				return c, true
+			}
+		}
+	}
+	return MCPServerConfig{}, false
+}
+
+func loadMCPServersFromRegistry(path string) (map[string]MCPServerConfig, error) {
+	// Determine registry file path: override or absolute path from project root
+	regPath := os.Getenv("BEEMFLOW_REGISTRY")
+	if regPath == "" {
+		// locate project root
+		_, file, _, ok := runtime.Caller(0)
+		if ok {
+			projectRoot := filepath.Dir(filepath.Dir(file))
+			regPath = filepath.Join(projectRoot, path)
+		} else {
+			regPath = path
+		}
+	}
+	data, err := os.ReadFile(regPath)
 	if err != nil {
 		return nil, err
 	}
@@ -128,26 +167,37 @@ func loadMCPServersFromRegistry(path string) (map[string]MCPServerConfig, error)
 
 // GetMergedMCPServerConfig returns the merged MCPServerConfig for a given host, merging the registry (registry/index.json) and config file (flow.config.json).
 func GetMergedMCPServerConfig(cfg *Config, host string) (MCPServerConfig, error) {
-	regMap, err := loadMCPServersFromRegistry("registry/index.json")
-	if err != nil {
-		return MCPServerConfig{}, err
-	}
-	// 2. Load override from config file
-	var override MCPServerConfig
-	ok := false
-	if cfg != nil && cfg.MCPServers != nil {
-		override, ok = cfg.MCPServers[host]
-	}
-	// 3. Merge: config wins, then registry
+	// 1. Load registry entries (ignore errors)
+	regMap, _ := loadMCPServersFromRegistry("registry/index.json")
+	// 2. Determine curated template
+	curatedCfg, hasCurated := readCuratedConfig(host)
+	// Start with base from registry or curated
 	base, found := regMap[host]
-	if !found && !ok {
-		return MCPServerConfig{}, fmt.Errorf("MCP server '%s' not found in registry or config", host)
+	if hasCurated {
+		base = curatedCfg
+		found = true
 	}
+	// 3. Load override from config file
+	var override MCPServerConfig
+	overrideExists := false
+	if cfg != nil && cfg.MCPServers != nil {
+		if o, ok := cfg.MCPServers[host]; ok {
+			override = o
+			overrideExists = true
+		}
+	}
+	// 4. Validate presence
+	if !found && !overrideExists {
+		return MCPServerConfig{}, logger.Errorf("MCP server '%s' not found in registry or config", host)
+	}
+	// 5. Merge: start from base, then overlay override fields
 	merged := base
-	if ok {
-		if override.Command != "" {
+	if overrideExists {
+		// Command: only override if no curated template
+		if !hasCurated && override.Command != "" {
 			merged.Command = override.Command
 		}
+		// Other fields override
 		if len(override.Args) > 0 {
 			merged.Args = override.Args
 		}

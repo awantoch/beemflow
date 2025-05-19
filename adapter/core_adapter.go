@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/awantoch/beemflow/pkg/logger"
+	"github.com/awantoch/beemflow/logger"
 )
 
 // CoreAdapter is the built-in echo adapter for debugging (consolidated from core_echo_adapter.go).

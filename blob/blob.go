@@ -1,6 +1,8 @@
 package blob
 
-import "fmt"
+import (
+	"github.com/awantoch/beemflow/logger"
+)
 
 // BlobStore is the interface for pluggable blob storage backends.
 type BlobStore interface {
@@ -29,9 +31,9 @@ func NewDefaultBlobStore(cfg *BlobConfig) (BlobStore, error) {
 	}
 	if cfg.Driver == "s3" {
 		if cfg.Bucket == "" || cfg.Region == "" {
-			return nil, fmt.Errorf("s3 driver requires bucket and region")
+			return nil, logger.Errorf("s3 driver requires bucket and region")
 		}
 		return NewS3BlobStore(cfg.Bucket, cfg.Region)
 	}
-	return nil, fmt.Errorf("unsupported blob driver: %s", cfg.Driver)
+	return nil, logger.Errorf("unsupported blob driver: %s", cfg.Driver)
 }

@@ -3,7 +3,7 @@ package event
 import (
 	"sync"
 
-	"github.com/awantoch/beemflow/pkg/logger"
+	"github.com/awantoch/beemflow/logger"
 )
 
 type EventBus interface {

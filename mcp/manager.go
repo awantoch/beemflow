@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
-	"github.com/awantoch/beemflow/pkg/logger"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 )
@@ -64,7 +64,7 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 	for server := range servers {
 		info, err := config.GetMergedMCPServerConfig(cfg, server)
 		if err != nil {
-			return fmt.Errorf("MCP server '%s' is not configured; please add it to 'mcpServers' in runtime config", server)
+			return logger.Errorf("MCP server '%s' is not configured; please add it to 'mcpServers' in runtime config", server)
 		}
 		// Validate required environment variables (community style: env map)
 		missingVars := []string{}
@@ -76,10 +76,10 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 			}
 		}
 		if len(missingVars) > 0 {
-			return fmt.Errorf("environment variable(s) %v required for MCP server %s but not set. Check your .env or shell environment.", missingVars, server)
+			return logger.Errorf("environment variable(s) %v required for MCP server %s but not set. Check your .env or shell environment.", missingVars, server)
 		}
 		if info.Command == "" {
-			return fmt.Errorf("MCP server '%s' config is missing 'command' (stdio only supported; HTTP fallback is disabled)", server)
+			return logger.Errorf("MCP server '%s' config is missing 'command' (stdio only supported; HTTP fallback is disabled)", server)
 		}
 		logger.Info("Spawning MCP server '%s' (stdio) with command: %s %v", server, info.Command, info.Args)
 		cmd := NewMCPCommand(info)
@@ -89,13 +89,13 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 			logger.Error("Failed to start MCP server %s: %v", server, err)
 			logger.Error("Command: %s %v", info.Command, info.Args)
 			logger.Error("Env: %v", cmd.Env)
-			return fmt.Errorf("failed to start MCP server %s: %v", server, err)
+			return logger.Errorf("failed to start MCP server %s: %v", server, err)
 		}
 		logger.Debug("MCP server '%s' (stdio) started", server)
 		// Wait for MCP server to be ready (HTTP only for now)
 		if info.Endpoint != "" {
 			if err := waitForMCP(info.Endpoint, timeout); err != nil {
-				return fmt.Errorf("MCP server '%s' did not become ready: %v", server, err)
+				return logger.Errorf("MCP server '%s' did not become ready: %v", server, err)
 			}
 		}
 	}
@@ -129,7 +129,7 @@ func waitForMCP(baseURL string, timeout time.Duration) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("timeout after %v waiting for MCP at %s: %w", timeout, baseURL, err)
+			return logger.Errorf("timeout after %v waiting for MCP at %s: %w", timeout, baseURL, err)
 		}
 		time.Sleep(interval)
 		if interval < maxInterval {

@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"os/signal"
@@ -9,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/pkg/logger"
+	"github.com/awantoch/beemflow/logger"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
@@ -32,7 +31,7 @@ func Serve(configPath string, debug bool, stdio bool, addr string, tools []ToolR
 	// Load runtime config
 	_, err := config.LoadConfig(configPath)
 	if err != nil && !strings.Contains(err.Error(), "no such file") {
-		return fmt.Errorf("failed to load config %s: %w", configPath, err)
+		return logger.Errorf("failed to load config %s: %w", configPath, err)
 	}
 	// Create MCP server transport
 	var server *mcp.Server

@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/google/uuid"
 )
@@ -39,7 +39,7 @@ func runIDFromStepCtx(ctx map[string]any) string {
 func NewSqliteStorage(dsn string) (*SqliteStorage, error) {
 	// Ensure parent directory exists (MkdirAll is a no-op for " . ").
 	if err := os.MkdirAll(filepath.Dir(dsn), 0755); err != nil {
-		return nil, fmt.Errorf("failed to create db directory %q: %w", filepath.Dir(dsn), err)
+		return nil, logger.Errorf("failed to create db directory %q: %w", filepath.Dir(dsn), err)
 	}
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awantoch/beemflow/pkg/logger"
+	"github.com/awantoch/beemflow/logger"
 
 	"github.com/awantoch/beemflow/api"
 	mcpserver "github.com/awantoch/beemflow/mcp"

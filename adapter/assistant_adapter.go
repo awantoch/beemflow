@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"github.com/awantoch/beemflow/docs"
+	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/parser"
-	"github.com/awantoch/beemflow/pkg/logger"
 )
 
 // SystemPrompt is loaded from the embedded documentation package.
@@ -36,7 +36,7 @@ func Execute(ctx context.Context, userMessages []string) (draftYAML string, vali
 	// 2. Call LLM (OpenAI or other)
 	draftYAML, err = CallLLM(ctx, SystemPrompt, userMessages)
 	if err != nil {
-		return "", nil, fmt.Errorf("LLM error: %w", err)
+		return "", nil, logger.Errorf("LLM error: %w", err)
 	}
 
 	// 3. Validate returned YAML against your JSON-Schema (flow lint)

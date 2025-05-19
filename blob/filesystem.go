@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/awantoch/beemflow/logger"
 )
 
 // FilesystemBlobStore implements BlobStore using the local filesystem.
@@ -44,7 +46,7 @@ func (f *FilesystemBlobStore) Put(data []byte, mime, filename string) (string, e
 func (f *FilesystemBlobStore) Get(url string) ([]byte, error) {
 	const prefix = "file://"
 	if !strings.HasPrefix(url, prefix) {
-		return nil, fmt.Errorf("invalid file URL: %s", url)
+		return nil, logger.Errorf("invalid file URL: %s", url)
 	}
 	path := url[len(prefix):]
 	return os.ReadFile(path)

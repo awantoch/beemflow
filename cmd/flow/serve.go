@@ -5,7 +5,7 @@ import (
 	"os"
 
 	beemhttp "github.com/awantoch/beemflow/http"
-	"github.com/awantoch/beemflow/pkg/logger"
+	"github.com/awantoch/beemflow/logger"
 	"github.com/spf13/cobra"
 )
 

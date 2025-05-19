@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/awantoch/beemflow/logger"
 )
 
 // ToolManifest represents a tool manifest loaded from JSON.
@@ -52,11 +54,11 @@ type RegistryEntry struct {
 func LoadUnifiedRegistry(path string) ([]*ToolManifest, []*MCPServerConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read registry: %w", err)
+		return nil, nil, logger.Errorf("failed to read registry: %w", err)
 	}
 	var entries []RegistryEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
-		return nil, nil, fmt.Errorf("failed to parse registry: %w", err)
+		return nil, nil, logger.Errorf("failed to parse registry: %w", err)
 	}
 	var tools []*ToolManifest
 	var mcps []*MCPServerConfig
@@ -137,11 +139,11 @@ func (r *RemoteRegistryLoader) LoadManifest(name string) (*ToolManifest, error) 
 	}
 	entry, ok := index[name]
 	if !ok {
-		return nil, fmt.Errorf("tool %s not found in registry", name)
+		return nil, logger.Errorf("tool %s not found in registry", name)
 	}
 	entryMap, ok := entry.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("invalid registry entry for %s", name)
+		return nil, logger.Errorf("invalid registry entry for %s", name)
 	}
 	// Try MCP endpoint first
 	if mcpURL, ok := entryMap["mcp"].(string); ok && mcpURL != "" {
@@ -161,7 +163,7 @@ func (r *RemoteRegistryLoader) LoadManifest(name string) (*ToolManifest, error) 
 		r.cache[name] = manifest
 		return manifest, nil
 	}
-	return nil, fmt.Errorf("no MCP or manifest URL for tool %s", name)
+	return nil, logger.Errorf("no MCP or manifest URL for tool %s", name)
 }
 
 // fetchMCPManifest fetches a tool manifest from the MCP well-known endpoint.
@@ -246,7 +248,7 @@ func (c *CompositeManifestLoader) LoadManifest(name string) (*ToolManifest, erro
 			return &entry, nil
 		}
 	}
-	return nil, fmt.Errorf("tool %s not found in registry", name)
+	return nil, logger.Errorf("tool %s not found in registry", name)
 }
 
 // GetRegistryIndexURL returns the registry index URL from BEEMFLOW_REGISTRY or the default.

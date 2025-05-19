@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/parser"
-	"github.com/awantoch/beemflow/pkg/logger"
 )
 
 func captureOutput(f func()) string {

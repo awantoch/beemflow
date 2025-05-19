@@ -2,7 +2,6 @@ package http
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/engine"
+	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/google/uuid"
@@ -34,7 +34,7 @@ func StartServer(addr string) error {
 			// Use default config if missing
 			cfg = &config.Config{}
 		} else {
-			return fmt.Errorf("failed to load config: %w", err)
+			return logger.Errorf("failed to load config: %w", err)
 		}
 	}
 	// Initialize storage based on config
@@ -46,10 +46,10 @@ func StartServer(addr string) error {
 		case "postgres":
 			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
 		default:
-			return fmt.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
+			return logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
 		}
 		if err != nil {
-			return fmt.Errorf("failed to initialize storage: %w", err)
+			return logger.Errorf("failed to initialize storage: %w", err)
 		}
 	}
 	// Always create engine with storage (in-memory if store is nil)
@@ -285,7 +285,7 @@ func UpdateRunEvent(id uuid.UUID, newEvent map[string]any) error {
 	defer runsMu.Unlock()
 	run, ok := runs[id]
 	if !ok {
-		return fmt.Errorf("run not found")
+		return logger.Errorf("run not found")
 	}
 	run.Event = newEvent
 	return nil

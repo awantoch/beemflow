@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -54,4 +55,11 @@ func getMode() string {
 	loggerModeMutex.RLock()
 	defer loggerModeMutex.RUnlock()
 	return loggerMode
+}
+
+// Errorf logs the error message and returns it as an error value.
+func Errorf(format string, v ...any) error {
+	err := fmt.Errorf(format, v...)
+	internalLogger.Printf("[ERROR] %s", err)
+	return err
 }
