@@ -218,6 +218,8 @@ The runtime is configured via a JSON file. All fields in `config.Config` are sup
 }
 ```
 
+BeemFlow always loads the built-in curated registry and Smithery (if SMITHERY_API_KEY is set); you don't need to specify these in your config.
+
 ---
 
 ## 8. Adapter Interfaces

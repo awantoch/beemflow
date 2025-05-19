@@ -327,14 +327,16 @@ BeemFlow supports two types of registries:
 ```json
 {
   "storage": { "driver": "sqlite", "dsn": ".beemflow/flow.db" },
-  "blob": { "driver": "filesystem", "bucket": "", "directory": ".beemflow/files" },
-  "registries": [
-    { "type": "local", "path": ".beemflow/local_registry.json" }
-  ],
-  "http": { "host": "localhost", "port": 8080 },
-  "log": { "level": "info" }
+  "mcpServers": {
+    "@microsoft/playwright-mcp": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    }
+  }
 }
 ```
+
+BeemFlow always loads the built-in curated registry and Smithery (if SMITHERY_API_KEY is set); you don't need to specify these in your config.
 
 ### Example: Merging
 If you have a tool `foo` in both the curated and local registries, the local version will be used.
