@@ -56,9 +56,14 @@ func newMCPCmd() *cobra.Command {
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				qn := args[0]
-				cfg, err := config.LoadAndInjectRegistries(*configFile)
+				// Load existing config (do not inject defaults) to preserve only user overrides
+				cfg, err := config.LoadConfig(*configFile)
 				if err != nil {
-					return err
+					if os.IsNotExist(err) {
+						cfg = &config.Config{}
+					} else {
+						return err
+					}
 				}
 				ctx := context.Background()
 				apiKey := os.Getenv("SMITHERY_API_KEY")
@@ -71,6 +76,8 @@ func newMCPCmd() *cobra.Command {
 					return err
 				}
 				config.UpsertMCPServer(cfg, qn, spec)
+				// Remove registry overrides so built-in registries are not persisted
+				cfg.Registries = nil
 				if err := config.SaveConfig(*configFile, cfg); err != nil {
 					return err
 				}

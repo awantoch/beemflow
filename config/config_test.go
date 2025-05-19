@@ -71,12 +71,12 @@ func TestLoadConfig_Partial(t *testing.T) {
 	if c.Storage.Driver != "d" || c.Storage.DSN != "u" {
 		t.Errorf("unexpected Storage: %+v", c.Storage)
 	}
-	// Other fields should be zero-valued
-	if c.Blob.Driver != "" || c.Blob.Bucket != "" {
-		t.Errorf("expected zero Blob, got %+v", c.Blob)
+	// Other fields should be omitted (nil)
+	if c.Blob != nil {
+		t.Errorf("expected no Blob config, got %+v", c.Blob)
 	}
-	if c.HTTP.Host != "" || c.HTTP.Port != 0 {
-		t.Errorf("expected zero HTTP, got %+v", c.HTTP)
+	if c.HTTP != nil {
+		t.Errorf("expected no HTTP config, got %+v", c.HTTP)
 	}
 }
 

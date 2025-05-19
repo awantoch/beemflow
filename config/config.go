@@ -70,12 +70,12 @@ func ParseRegistryConfig(reg RegistryConfig) (any, error) {
 
 type Config struct {
 	Storage    StorageConfig              `json:"storage"`
-	Blob       BlobConfig                 `json:"blob"`
-	Event      EventConfig                `json:"event"`
-	Secrets    SecretsConfig              `json:"secrets"`
-	Registries []RegistryConfig           `json:"registries"`
-	HTTP       HTTPConfig                 `json:"http"`
-	Log        LogConfig                  `json:"log"`
+	Blob       *BlobConfig                `json:"blob,omitempty"`
+	Event      *EventConfig               `json:"event,omitempty"`
+	Secrets    *SecretsConfig             `json:"secrets,omitempty"`
+	Registries []RegistryConfig           `json:"registries,omitempty"`
+	HTTP       *HTTPConfig                `json:"http,omitempty"`
+	Log        *LogConfig                 `json:"log,omitempty"`
 	FlowsDir   string                     `json:"flowsDir,omitempty"`
 	MCPServers map[string]MCPServerConfig `json:"mcpServers,omitempty"`
 }
@@ -86,28 +86,28 @@ type StorageConfig struct {
 }
 
 type BlobConfig struct {
-	Driver string `json:"driver"`
-	Bucket string `json:"bucket"`
+	Driver string `json:"driver,omitempty"`
+	Bucket string `json:"bucket,omitempty"`
 }
 
 type EventConfig struct {
-	Driver string `json:"driver"`
-	URL    string `json:"url"`
+	Driver string `json:"driver,omitempty"`
+	URL    string `json:"url,omitempty"`
 }
 
 type SecretsConfig struct {
-	Driver string `json:"driver"`
+	Driver string `json:"driver,omitempty"`
 	Region string `json:"region,omitempty"`
 	Prefix string `json:"prefix,omitempty"`
 }
 
 type HTTPConfig struct {
-	Host string `json:"host"`
-	Port int    `json:"port"`
+	Host string `json:"host,omitempty"`
+	Port int    `json:"port,omitempty"`
 }
 
 type LogConfig struct {
-	Level string `json:"level"`
+	Level string `json:"level,omitempty"`
 }
 
 // MCPServerConfig defines installation details for an MCP server
