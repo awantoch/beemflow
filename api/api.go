@@ -12,6 +12,7 @@ import (
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/parser"
+	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/google/uuid"
 )
@@ -343,18 +344,23 @@ func ListTools(ctx context.Context) ([]map[string]any, error) {
 
 // ListMCPServers returns all MCP servers from the registry (name, description, endpoint, transport).
 func ListMCPServers(ctx context.Context) ([]map[string]any, error) {
-	eng := engine.NewEngine()
-	mcps, err := eng.ListMCPServers()
+	apiKey := os.Getenv("SMITHERY_API_KEY")
+	localPath := os.Getenv("BEEMFLOW_REGISTRY")
+	mgr := registry.NewRegistryManager(
+		registry.NewSmitheryRegistry(apiKey, ""),
+		registry.NewLocalRegistry(localPath),
+	)
+	servers, err := mgr.ListAllServers(ctx, registry.ListOptions{PageSize: 100})
 	if err != nil {
 		return nil, err
 	}
 	var out []map[string]any
-	for _, mcp := range mcps {
+	for _, s := range servers {
 		out = append(out, map[string]any{
-			"name":        mcp.Name,
-			"description": "MCP server",
-			"endpoint":    mcp.Endpoint,
-			"transport":   mcp.Transport,
+			"name":        s.Name,
+			"description": s.Description,
+			"endpoint":    s.Endpoint,
+			"transport":   s.Kind,
 		})
 	}
 	return out, nil

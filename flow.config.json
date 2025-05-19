@@ -7,5 +7,12 @@
     "airtable": {},
     "supabase": {}
   },
-  "registries": ["registry/index.json"]
-} 
+  "registries": [
+    { "type": "local", "path": "registry/index.json" },
+    {
+      "type": "smithery",
+      "url": "https://registry.smithery.ai/servers",
+      "apiKey": "$env:SMITHERY_API_KEY"
+    }
+  ]
+}

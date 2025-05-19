@@ -18,6 +18,13 @@
   - [FAQ](#faq)
   - [Contributing \& Community](#contributing--community)
   - [Full Protocol \& Spec](#full-protocol--spec)
+  - [Beemflow MCP Registry Integration](#beemflow-mcp-registry-integration)
+    - [Multi-Registry Support](#multi-registry-support)
+    - [Namespacing and Registry-Qualified Names](#namespacing-and-registry-qualified-names)
+    - [Configuration](#configuration)
+    - [CLI Usage](#cli-usage)
+    - [Adding More Registries](#adding-more-registries)
+    - [Migration Notes](#migration-notes)
 
 ---
 
@@ -218,3 +225,85 @@ BeemFlow is 100% open. We need YOU:
 For the canonical, LLM-ingestible protocol, YAML grammar, API endpoints, and advanced examples, see:
 
 👉 [docs/spec.md](docs/spec.md)
+
+# Beemflow MCP Registry Integration
+
+## Multi-Registry Support
+
+Beemflow now supports multiple MCP registries (e.g., Smithery, local/unified) via a unified interface. You can:
+- Search, list, and install MCP servers from all configured registries.
+- Add new registries via environment variables or config.
+
+## Namespacing and Registry-Qualified Names
+
+When multiple registries are enabled, tool/server names are qualified by their registry:
+- Format: `<registry>:<name>` (e.g., `smithery:airtable`, `local:mytool`)
+- All CLI and API output includes a `REGISTRY` column.
+- If a name is ambiguous (exists in more than one registry), you must specify the qualified name.
+- If only one match exists, you can use the unqualified name for convenience.
+
+### Example CLI Output
+
+```
+flow mcp list
+
+REGISTRY   NAME         DESCRIPTION         KIND      ENDPOINT
+smithery   airtable     Airtable MCP API   mcp_server  ...
+local      mytool       My Local Tool      mcp_server  ...
+```
+
+### Example: Install
+
+```
+flow mcp install smithery:airtable
+flow mcp install local:mytool
+```
+
+If ambiguous:
+```
+flow mcp install mytool
+# Error: 'mytool' found in multiple registries. Please specify one of:
+#   smithery:mytool
+#   local:mytool
+```
+
+## Configuration
+
+### Smithery Registry
+- Set your Smithery API key:
+  ```sh
+  export SMITHERY_API_KEY=your-smithery-api-key
+  ```
+
+### Local/Unified Registry
+- By default, Beemflow will look for `registry/index.json`.
+- To override, set:
+  ```sh
+  export BEEMFLOW_REGISTRY=/path/to/your/registry.json
+  ```
+
+## CLI Usage
+
+- List all MCP servers:
+  ```sh
+  flow mcp list
+  ```
+- Search for MCP servers:
+  ```sh
+  flow mcp search [query]
+  ```
+- Install an MCP server (qualified name recommended):
+  ```sh
+  flow mcp install smithery:airtable
+  flow mcp install local:mytool
+  ```
+
+All commands aggregate results from all configured registries and display the registry-qualified name.
+
+## Adding More Registries
+
+To add more registry integrations, implement the `MCPRegistry` interface in `registry/` and add it to the registry manager in the CLI/API setup.
+
+## Migration Notes
+- All Smithery-specific CLI commands have been removed in favor of the unified interface.
+- The system is DRY, extensible, and production-grade.

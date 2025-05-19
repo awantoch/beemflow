@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/awantoch/beemflow/logger"
 )
@@ -131,6 +132,8 @@ func (l *LocalManifestLoader) LoadManifest(name string) (*ToolManifest, error) {
 type RemoteRegistryLoader struct {
 	IndexURL string
 	cache    map[string]*ToolManifest
+	Type     string // e.g. "smithery"
+	APIKey   string // for smithery
 }
 
 func NewRemoteRegistryLoader(indexURL string) *RemoteRegistryLoader {
@@ -140,15 +143,200 @@ func NewRemoteRegistryLoader(indexURL string) *RemoteRegistryLoader {
 	return &RemoteRegistryLoader{IndexURL: indexURL, cache: make(map[string]*ToolManifest)}
 }
 
-func (r *RemoteRegistryLoader) LoadManifest(name string) (*ToolManifest, error) {
-	if m, ok := r.cache[name]; ok {
-		return m, nil
+// NewSmitheryRegistryLoader creates a loader for Smithery registry with auth
+func NewSmitheryRegistryLoader(url, apiKey string) *RemoteRegistryLoader {
+	return &RemoteRegistryLoader{IndexURL: url, cache: make(map[string]*ToolManifest), Type: "smithery", APIKey: apiKey}
+}
+
+// Helper to fetch all Smithery MCP servers as RegistryEntry objects
+func fetchSmitheryMCPServers(url, apiKey string) ([]RegistryEntry, error) {
+	var entries []RegistryEntry
+	// Fetch all servers
+	req, err := http.NewRequest("GET", url+"?pageSize=1000", nil)
+	if err != nil {
+		return nil, err
 	}
-	resp, err := http.Get(r.IndexURL)
+	req.Header.Set("Authorization", "Bearer "+resolveEnvVar(apiKey))
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	var data struct {
+		Servers []struct {
+			QualifiedName string `json:"qualifiedName"`
+			DisplayName   string `json:"displayName"`
+			Description   string `json:"description"`
+			Homepage      string `json:"homepage"`
+			IsDeployed    bool   `json:"isDeployed"`
+		} `json:"servers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, err
+	}
+	for _, s := range data.Servers {
+		// Fetch server details
+		detailReq, err := http.NewRequest("GET", strings.TrimSuffix(url, "/servers")+"/servers/"+s.QualifiedName, nil)
+		if err != nil {
+			continue
+		}
+		detailReq.Header.Set("Authorization", "Bearer "+resolveEnvVar(apiKey))
+		detailResp, err := http.DefaultClient.Do(detailReq)
+		if err != nil {
+			continue
+		}
+		var detail struct {
+			QualifiedName string `json:"qualifiedName"`
+			DisplayName   string `json:"displayName"`
+			Description   string `json:"description"`
+			DeploymentUrl string `json:"deploymentUrl"`
+			Connections   []struct {
+				Type         string         `json:"type"`
+				Url          string         `json:"url"`
+				ConfigSchema map[string]any `json:"configSchema"`
+			} `json:"connections"`
+		}
+		if err := json.NewDecoder(detailResp.Body).Decode(&detail); err != nil {
+			detailResp.Body.Close()
+			continue
+		}
+		detailResp.Body.Close()
+		// Find HTTP connection if available
+		var endpoint string
+		var transport string
+		var configSchema map[string]any
+		for _, conn := range detail.Connections {
+			if conn.Type == "http" && conn.Url != "" {
+				endpoint = conn.Url
+				transport = "http"
+				configSchema = conn.ConfigSchema
+				break
+			}
+		}
+		if endpoint == "" {
+			continue // skip if no HTTP endpoint
+		}
+		entries = append(entries, RegistryEntry{
+			Type:        "mcp_server",
+			Name:        detail.QualifiedName,
+			Description: detail.Description,
+			Endpoint2:   endpoint,
+			Transport:   transport,
+			Parameters:  configSchema,
+		})
+	}
+	return entries, nil
+}
+
+func (r *RemoteRegistryLoader) LoadManifest(name string) (*ToolManifest, error) {
+	if m, ok := r.cache[name]; ok {
+		return m, nil
+	}
+	var resp *http.Response
+	var err error
+	if r.Type == "smithery" {
+		entries, err := fetchSmitheryMCPServers(r.IndexURL, r.APIKey)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			manifest := &ToolManifest{
+				Name:        entry.Name,
+				Description: entry.Description,
+				Kind:        entry.Kind,
+				Parameters:  entry.Parameters,
+				Endpoint:    entry.Endpoint2,
+				Headers:     map[string]string{"Authorization": "Bearer " + resolveEnvVar(r.APIKey)},
+			}
+			r.cache[manifest.Name] = manifest
+			if manifest.Name == name {
+				return manifest, nil
+			}
+		}
+		return nil, logger.Errorf("tool %s not found in Smithery registry", name)
+	}
+	if r.Type == "smithery" {
+		// Smithery: fetch server list with auth header
+		req, err := http.NewRequest("GET", r.IndexURL+"?pageSize=1000", nil)
+		if err != nil {
+			return nil, err
+		}
+		apiKey := resolveEnvVar(r.APIKey)
+		if apiKey == "" {
+			return nil, logger.Errorf("Smithery API key not set")
+		}
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		resp, err = http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		resp, err = http.Get(r.IndexURL)
+		if err != nil {
+			return nil, err
+		}
+	}
+	defer resp.Body.Close()
+	if r.Type == "smithery" {
+		// Smithery returns { servers: [...] }
+		var data struct {
+			Servers []struct {
+				QualifiedName string `json:"qualifiedName"`
+				DisplayName   string `json:"displayName"`
+				Description   string `json:"description"`
+				Homepage      string `json:"homepage"`
+				IsDeployed    bool   `json:"isDeployed"`
+			} `json:"servers"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			return nil, err
+		}
+		for _, s := range data.Servers {
+			if s.QualifiedName == name {
+				// Fetch server details
+				detailReq, err := http.NewRequest("GET", strings.TrimSuffix(r.IndexURL, "/servers")+"/servers/"+name, nil)
+				if err != nil {
+					return nil, err
+				}
+				detailReq.Header.Set("Authorization", "Bearer "+resolveEnvVar(r.APIKey))
+				detailResp, err := http.DefaultClient.Do(detailReq)
+				if err != nil {
+					return nil, err
+				}
+				defer detailResp.Body.Close()
+				var detail struct {
+					QualifiedName string `json:"qualifiedName"`
+					DisplayName   string `json:"displayName"`
+					Description   string `json:"description"`
+					DeploymentUrl string `json:"deploymentUrl"`
+					Connections   []struct {
+						Type         string         `json:"type"`
+						Url          string         `json:"url"`
+						ConfigSchema map[string]any `json:"configSchema"`
+					} `json:"connections"`
+				}
+				if err := json.NewDecoder(detailResp.Body).Decode(&detail); err != nil {
+					return nil, err
+				}
+				// For each connection, register as ToolManifest
+				for _, conn := range detail.Connections {
+					manifest := &ToolManifest{
+						Name:        detail.QualifiedName + "." + conn.Type,
+						Description: detail.Description,
+						Kind:        conn.Type,
+						Parameters:  conn.ConfigSchema,
+						Endpoint:    detail.DeploymentUrl,
+						Headers:     map[string]string{"Authorization": "Bearer " + resolveEnvVar(r.APIKey)},
+					}
+					r.cache[manifest.Name] = manifest
+					if manifest.Name == name {
+						return manifest, nil
+					}
+				}
+			}
+		}
+		return nil, logger.Errorf("tool %s not found in Smithery registry", name)
+	}
 	var index map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&index); err != nil {
 		return nil, err
@@ -280,6 +468,14 @@ func GetRegistryIndexURL() string {
 	return "https://hub.beemflow.com/index.json"
 }
 
+// Helper to resolve $env:VARNAME to os.Getenv(VARNAME)
+func resolveEnvVar(val string) string {
+	if strings.HasPrefix(val, "$env:") {
+		return os.Getenv(strings.TrimPrefix(val, "$env:"))
+	}
+	return val
+}
+
 // LoadUnifiedRegistryFromConfig loads registry entries from a mix of sources:
 // - registries: array of strings (file/url) or inline RegistryEntry objects
 // - mcpServers: map[string]MCPServerConfig overrides
@@ -312,7 +508,76 @@ func LoadUnifiedRegistryFromConfig(registries []any, mcpServers map[string]MCPSe
 			b, _ := json.Marshal(v)
 			var e RegistryEntry
 			if err := json.Unmarshal(b, &e); err == nil {
-				entries = append(entries, e)
+				if e.Type == "smithery" {
+					// Instead of RegistryEntry, create a loader and fetch all tools
+					url, _ := v["url"].(string)
+					apiKey, _ := v["apiKey"].(string)
+					// Fetch all tools (pageSize=1000)
+					req, err := http.NewRequest("GET", url+"?pageSize=1000", nil)
+					if err != nil {
+						continue
+					}
+					req.Header.Set("Authorization", "Bearer "+resolveEnvVar(apiKey))
+					resp, err := http.DefaultClient.Do(req)
+					if err != nil {
+						continue
+					}
+					var data struct {
+						Servers []struct {
+							QualifiedName string `json:"qualifiedName"`
+							DisplayName   string `json:"displayName"`
+							Description   string `json:"description"`
+							Homepage      string `json:"homepage"`
+							IsDeployed    bool   `json:"isDeployed"`
+						} `json:"servers"`
+					}
+					if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+						resp.Body.Close()
+						continue
+					}
+					resp.Body.Close()
+					for _, s := range data.Servers {
+						// Fetch server details
+						detailReq, err := http.NewRequest("GET", strings.TrimSuffix(url, "/servers")+"/servers/"+s.QualifiedName, nil)
+						if err != nil {
+							continue
+						}
+						detailReq.Header.Set("Authorization", "Bearer "+resolveEnvVar(apiKey))
+						detailResp, err := http.DefaultClient.Do(detailReq)
+						if err != nil {
+							continue
+						}
+						var detail struct {
+							QualifiedName string `json:"qualifiedName"`
+							DisplayName   string `json:"displayName"`
+							Description   string `json:"description"`
+							DeploymentUrl string `json:"deploymentUrl"`
+							Connections   []struct {
+								Type         string         `json:"type"`
+								Url          string         `json:"url"`
+								ConfigSchema map[string]any `json:"configSchema"`
+							} `json:"connections"`
+						}
+						if err := json.NewDecoder(detailResp.Body).Decode(&detail); err != nil {
+							detailResp.Body.Close()
+							continue
+						}
+						detailResp.Body.Close()
+						for _, conn := range detail.Connections {
+							entries = append(entries, RegistryEntry{
+								Type:        "mcp_server",
+								Name:        detail.QualifiedName + "." + conn.Type,
+								Description: detail.Description,
+								Kind:        conn.Type,
+								Parameters:  conn.ConfigSchema,
+								Endpoint2:   conn.Url,
+								Transport:   conn.Type,
+							})
+						}
+					}
+				} else {
+					entries = append(entries, e)
+				}
 			}
 		}
 	}

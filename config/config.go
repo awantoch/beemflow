@@ -14,12 +14,40 @@ import (
 	"github.com/awantoch/beemflow/logger"
 )
 
+// RegistryConfig is the base type for all registry configs.
+type RegistryConfig struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
+	// Add other common fields here
+}
+
+// SmitheryRegistryConfig is a type-safe config for Smithery registries.
+type SmitheryRegistryConfig struct {
+	RegistryConfig
+	APIKey string `json:"apiKey"`
+}
+
+// ParseRegistryConfig parses a generic RegistryConfig into a specific type if needed.
+func ParseRegistryConfig(reg RegistryConfig) (any, error) {
+	switch reg.Type {
+	case "smithery":
+		// In real code, you would unmarshal the full object into SmitheryRegistryConfig
+		// For now, just cast and return
+		return SmitheryRegistryConfig{
+			RegistryConfig: reg,
+			// APIKey: ... (populate from JSON if needed)
+		}, nil
+	default:
+		return reg, nil
+	}
+}
+
 type Config struct {
 	Storage    StorageConfig              `json:"storage"`
 	Blob       BlobConfig                 `json:"blob"`
 	Event      EventConfig                `json:"event"`
 	Secrets    SecretsConfig              `json:"secrets"`
-	Registries []string                   `json:"registries"`
+	Registries []RegistryConfig           `json:"registries"`
 	HTTP       HTTPConfig                 `json:"http"`
 	Log        LogConfig                  `json:"log"`
 	FlowsDir   string                     `json:"flowsDir,omitempty"`

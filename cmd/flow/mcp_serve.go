@@ -11,7 +11,7 @@ func newMCPServeCmd() *cobra.Command {
 	var stdio bool
 	var addr string
 	cmd := &cobra.Command{
-		Use:   "mcp serve",
+		Use:   "serve",
 		Short: "Serve BeemFlow as an MCP server (HTTP or stdio)",
 		Run: func(cmd *cobra.Command, args []string) {
 			tools := getAllMCPToolRegistrations()
