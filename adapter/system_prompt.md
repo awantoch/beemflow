@@ -1,230 +1,360 @@
-# BeemFlow Assistant: System Prompt
-
-Welcome to BeemFlow—the open protocol for defining, validating, and running AI-powered, event-driven automations.
+# BeemFlow Protocol & Specification
 
 ---
 
-## What is BeemFlow?
-BeemFlow lets anyone—technical or not—build, refine, and validate flows interactively, with LLMs guiding you step-by-step. Flows are defined in YAML, validated by a strict schema, and can be executed via CLI, HTTP, MCP, or GUI. BeemFlow is Git-friendly, composable, and open-source.
+This document is the **canonical, LLM-ingestible specification** for BeemFlow. It is fully self-contained: all YAML grammar, config, API, and extension patterns are included below.
 
 ---
 
-## Flow YAML Structure
+## 1. Purpose & Vision
 
-**Top-level keys:**
-- `name` (string, required): Name of the flow
-- `version` (semver, optional)
-- `on` (trigger list/object): Supports `event`, `cron`, `eventbus`, `cli`
-- `vars` (map): Constants or secret references
-- `steps` (ordered list): Each step is an object with an `id`
-- `catch` (ordered list): Global error handlers (optional)
-
-**Step keys:**
-- `id`: Unique identifier (required)
-- `use`: Tool/adapter identifier (JSON-Schema manifest or MCP)
-- `with`: Input arguments for the tool
-- `if`: Conditional expression (templated, optional)
-- `foreach`: Loop over array, with `as` and `do` (optional)
-- `parallel`: `true` for block-parallel with nested `steps` (optional)
-- `retry`: `{ attempts, delay_sec }` (optional)
-- `await_event`: Durable wait for external callback (`source`, `match`, `timeout`, optional)
-- `wait`: Sleep (`seconds` or `until`, optional)
-- `depends_on`: List of step ids this step depends on (optional)
-
-**Templating:** Use `{{ ... }}` to reference `event`, `vars`, previous outputs, loop locals, and helper functions (`now()`, `duration()`, `join()`, `map()`, `length()`, `base64()`, etc.).
+BeemFlow is a text-first, open protocol and runtime for AI-powered, event-driven automations. It provides a **protocol-agnostic, consistent interface** for flows and tools—CLI, HTTP, and MCP clients all speak the same language. All tools (local, HTTP, MCP) are available in a single, LLM-native registry.
 
 ---
 
-## Triggers
-- `on` supports:
-  - `event: webhook.shopify.order_created`
-  - `cron: "0 2 1 * *"`
-  - `eventbus.inventory.low_stock`
-  - `cli.manual`
+## 2. YAML File Grammar
 
----
+A BeemFlow flow is defined in a single YAML file:
 
-## Tool Resolution & Manifests
-- **Resolution order:**
-  1. Local manifests (`tools/<name>.json`)
-  2. Community hub (e.g. `https://hub.beemflow.com/index.json`)
-  3. MCP servers (`mcp://server/tool`)
-  4. GitHub shorthand (`github:owner/repo[/path][@ref]`)
-- **Tool manifests** are JSON-Schema, describing parameters, types, and optionally events.
-- MCP tools are discovered at runtime; no static manifest required.
-
----
-
-## Execution Model
-- Steps run in dependency order.
-- Steps with no dependencies and `parallel: true` can run concurrently.
-- Only block-parallel (`parallel: true` with nested `steps:`) is supported.
-- Outputs from previous steps are referenced as `.outputs.<step_id>.<field>`.
-- For nested/parallel, use `.outputs.<parent>.<child>.<field>`.
-
----
-
-## Durable Waits
-- `await_event` pauses execution, saves state, and resumes on external callback.
-- Callback via `POST /resume/{token}` (HMAC-signed).
-
----
-
-## Authentication & Secrets
-- Reference secrets as `{{secrets.KEY}}`.
-- Secrets can be loaded from `.env`, event, or secrets backend (e.g., AWS Secrets Manager).
-- Adapters can declare default parameters from environment variables.
-
----
-
-## Runtime Configuration (flow.config.json)
-- Controls storage, blob, event, secrets, registries, HTTP, log, and MCP servers.
-- Defaults to in-memory for dev if omitted.
-- Example drivers: `postgres`, `sqlite`, `dynamo`, `cockroachdb`, `filesystem`, `s3`, `gcs`, `minio`, `redis`, `nats`, `sns`.
-
----
-
-## Adapters & Extensibility
-- Adapters implement `ID()`, `Execute()`, `Manifest()`.
-- MCP and HTTP-based tools are preferred; custom Go adapters for advanced use.
-- All tools in `tools/` are auto-registered.
-
----
-
-## CLI Commands
-- `flow serve` — start the runtime
-- `flow run` — execute a flow
-- `flow lint` — validate a flow YAML
-- `flow graph` — visualize a flow as a DAG
-- `flow tool scaffold` — generate a tool manifest
-- `flow validate` — validate and simulate a flow
-- `flow test` — run unit tests for a flow
-
----
-
-## Examples
-
-### Echo with Durable Wait
 ```yaml
-name: echo_await_resume
-on:
-  - event: test.manual
+name:       string                       # required
+version:    string                       # optional semver
+on:         list|object                  # triggers
+vars:       map[string]                  # optional constants / secret refs
+steps:      array of step objects        # required
+catch:      array of step objects        # optional global error flow (ordered list)
+```
 
-vars:
-  token: "abc123"
+### Example Flow
 
+```yaml
+name: hello
+on: cli.manual
 steps:
-  - id: echo_start
+  - id: greet
     use: core.echo
     with:
-      text: "Started (token: {{.vars.token}})"
-
-  - id: wait_for_resume
-    await_event:
-      source: test
-      match:
-        token: "{{.vars.token}}"
-      timeout: 1h
-
-  - id: echo_resumed
+      text: "Hello, BeemFlow!"
+  - id: print
     use: core.echo
     with:
-      text: "Resumed with: {{.event.resume_value}} (token: {{.vars.token}})"
+      text: "{{.outputs.greet.text}}"
 ```
 
 ---
 
+## 3. Step Definition Keys
+
+Each step in `steps:` supports the following keys:
+
+```yaml
+- id: string (required)
+  use: string (tool identifier)
+  with: object (tool inputs)
+  if: expression (optional)
+  foreach: expression (optional)
+    as: string
+    do: sequence
+  parallel: true (optional, block-parallel only)
+    steps: [ ... ]
+  retry: { attempts: n, delay_sec: m } (optional)
+  await_event: { source, match, timeout } (optional)
+  wait: { seconds: n } | { until: ts } (optional)
+  depends_on: [step ids] (optional)
+```
+
+- Only block-parallel (`parallel: true` with nested `steps:`) is supported.
+- Templating: `{{ ... }}` for referencing event, vars, outputs, helpers.
+
+---
+
+## 4. Tool Registry & Resolution
+
+Tools are auto-discovered and prioritized as follows:
+1. **Local manifests**: `tools/<name>.json`
+2. **MCP servers**: `mcp://server/tool` (auto-discovered at runtime)
+3. **Remote registries**: e.g. `https://hub.beemflow.com/index.json`
+4. **GitHub shorthand**: `github:owner/repo[/path][@ref]`
+
+All tools are exposed in a single, LLM-native registry for use in flows, CLI, HTTP, MCP, or LLMs.
+
+**Registry Resolution Order:**
+1. If the `BEEMFLOW_REGISTRY` environment variable is set, it is used.
+2. If `registry/index.json` exists, it is used.
+3. Otherwise, the public hub at `https://hub.beemflow.com/index.json` is used.
+
+---
+
+## 5. Protocol-Agnostic API (CLI, HTTP, MCP)
+
+BeemFlow exposes a consistent interface for all operations:
+
+| Operation         | CLI Command                  | HTTP Endpoint                | MCP Tool Name      |
+|-------------------|-----------------------------|------------------------------|--------------------|
+| List flows        | `flow list`                  | `GET /runs`                  | `listFlows`        |
+| Get flow          | `flow get <name>`            | (not exposed)                | `getFlow`          |
+| Validate flow     | `flow lint <file>`           | `POST /validate`             | `validateFlow`     |
+| Run flow          | `flow run <name> [--event]`  | `POST /runs`                 | `startRun`         |
+| Get run status    | `flow status <run_id>`       | `GET /runs/{id}`             | `getRun`           |
+| Resume run        | `flow resume <token>`        | `POST /resume/{token}`       | (not exposed)      |
+| Test flow         | `flow test <file>`           | `POST /test`                 | (not exposed)      |
+| Graph flow        | `flow graph <file>`          | `GET /graph`                 | `graphFlow`        |
+| List tools        | `flow tools`                 | `GET /tools`                 | (not exposed)      |
+| Get tool manifest | (n/a)                        | `GET /tools/{name}`          | (not exposed)      |
+| Inline run        | (n/a)                        | `POST /runs/inline`          | `flow.execute`     |
+| Assistant         | (n/a)                        | `POST /assistant/chat`       | `beemflow.assistant`|
+
+All endpoints accept/return JSON.
+
+### Example: Run a Flow (HTTP)
+
+**Request:**
+```http
+POST /runs
+Content-Type: application/json
+
+{
+  "flow": "hello",
+  "event": {}
+}
+```
+**Response:**
+```json
+{
+  "run_id": "b1e2...",
+  "status": "STARTED"
+}
+```
+
+### Example: Get Run Status (HTTP)
+
+**Request:**
+```http
+GET /runs/b1e2...
+```
+**Response:**
+```json
+{
+  "id": "b1e2...",
+  "flow_name": "hello",
+  "status": "SUCCEEDED",
+  "outputs": { "print": { "text": "Hello, BeemFlow!" } }
+}
+```
+
+### Example: List Tools (HTTP)
+
+**Request:**
+```http
+GET /tools
+```
+**Response:**
+```json
+[
+  { "name": "core.echo", "description": "Echo text", ... },
+  { "name": "http.fetch", "description": "Fetch a URL", ... }
+]
+```
+
+---
+
+## 6. Tool Manifest Schema (JSON-Schema)
+
+Each tool is described by a JSON-Schema manifest:
+
+```jsonc
+{
+  "name": "tool.name",
+  "description": "What this tool does",
+  "kind": "task",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "input": { "type": "string", "default": "hello" }
+    },
+    "required": ["input"]
+  },
+  "endpoint": "https://..." // for HTTP tools
+}
+```
+
+**Manifest Default Injection:**
+BeemFlow automatically injects any `default` values from the manifest's parameters into the request body for missing fields. This means you can omit defaulted fields in your YAML flows, and the runtime will fill them in, making flows DRY and ergonomic.
+
+---
+
+## 7. Configuration (flow.config.json)
+
+The runtime is configured via a JSON file. All fields in `config.Config` are supported.
+
+### Example Configuration
+
+```json
+{
+  "storage":    { "driver": "sqlite", "dsn": "beemflow.db" },
+  "blob":       { "driver": "filesystem", "bucket": "./beemflow-files" },
+  "event":      { "driver": "redis", "url": "redis://localhost:6379" },
+  "secrets":    { "driver": "env" },
+  "registries": [ "https://hub.beemflow.com/index.json" ],
+  "http":       { "host": "0.0.0.0", "port": 8080 },
+  "log":        { "level": "info" },
+  "flowsDir":   "flows/",
+  "mcpServers": {
+    "supabase-mcp": {
+      "command": "npx",
+      "args": ["-y", "@supabase/mcp-server-postgrest@latest"],
+      "env": { "SUPABASE_URL": "...", "SUPABASE_ANON_KEY": "..." },
+      "port": 3030,
+      "transport": "http"
+    }
+  }
+}
+```
+
+---
+
+## 8. Adapter Interfaces
+
+All tool integrations implement the `Adapter` interface:
+
+```go
+type Adapter interface {
+  ID() string
+  Execute(ctx context.Context, inputs map[string]any) (map[string]any, error)
+  Manifest() *ToolManifest
+}
+```
+
+HTTP, OpenAI, MCP, and custom adapters are all supported.
+
+---
+
+## 9. Durable Waits & Callbacks
+
+Flows can pause on `await_event` and resume via `POST /resume/{token}` (HMAC-signed). State is persisted in the configured storage backend.
+
+### Example Await Event Step
+
+```yaml
+- id: await_approval
+  await_event:
+    source: airtable
+    match:
+      record_id: "{{airtable_row.id}}"
+      field: Status
+      equals: Approved
+    timeout: 24h
+- id: notify
+  use: core.echo
+  with:
+    text: "Approval received!"
+```
+
+---
+
+## 10. Security & Secrets
+
+- Secrets can be injected from env, event, or secrets backend.
+- HMAC signatures for resume callbacks.
+- Step-level timeouts and resource limits (roadmap).
+
+### Example: Using Secrets
+
+```yaml
+steps:
+  - id: notify_ops
+    use: slack.chat.postMessage
+    with:
+      channel: "#ops"
+      text:    "All systems go!"
+      token:   "{{secrets.SLACK_TOKEN}}"
+```
+
+---
+
+## 11. Canonical Example Flows
+
+### Hello World
+
+```yaml
+name: hello
+on: cli.manual
+steps:
+  - id: greet
+    use: core.echo
+    with:
+      text: "Hello, BeemFlow!"
+  - id: print
+    use: core.echo
+    with:
+      text: "{{.outputs.greet.text}}"
+```
+
 ### Fetch and Summarize
+
 ```yaml
 name: fetch_and_summarize
 on: cli.manual
-vars:
-  fetch_url: "https://raw.githubusercontent.com/awantoch/beemflow/refs/heads/main/README.md"
 steps:
-  - id: fetch_page
-    use: http
+  - id: fetch
+    use: http.fetch
     with:
-      url: "{{.vars.fetch_url}}"
+      url: "https://en.wikipedia.org/api/rest_v1/page/summary/Artificial_intelligence"
   - id: summarize
     use: openai
     with:
       model: "gpt-4o"
       messages:
         - role: system
-          content: "You are a concise assistant. Summarize the following web page in a simple paragraph."
+          content: "Summarize the following text in 3 bullet points."
         - role: user
-          content: "{{.fetch_page.body}}"
+          content: "{{.outputs.fetch.body}}"
   - id: print
     use: core.echo
     with:
-      text: "Summary: {{(index .summarize.choices 0).message.content}}"
+      text: "{{.outputs.summarize.choices[0].message.content}}"
 ```
 
 ---
 
-### List Airtable Bases
-```yaml
-name: list_airtable_tables
-on:
-  - cli.manual
-steps:
-  - id: list_bases
-    use: mcp://airtable/list_bases
-```
+## 12. Extensibility Patterns
+
+- **Add a local tool:** Drop a manifest in `tools/`.
+- **Add an MCP server:** Add config in `mcp_servers/` and reference in config.
+- **Add a remote tool:** Reference a remote registry or GitHub manifest.
+- **Write a custom adapter:** Implement the Adapter interface in Go.
 
 ---
 
-### Parallel OpenAI (Fanout/Fanin)
-```yaml
-name: parallel_openai_nested
-on: cli.manual
-vars:
-  prompt1: "Generate a fun fact about space"
-  prompt2: "Generate a fun fact about oceans"
-steps:
-  - id: fanout
-    parallel: true
-    steps:
-      - id: chat1
-        use: openai
-        with:
-          model: "gpt-3.5-turbo"
-          messages:
-            - role: user
-              content: "{{.vars.prompt1}}"
-      - id: chat2
-        use: openai
-        with:
-          model: "gpt-3.5-turbo"
-          messages:
-            - role: user
-              content: "{{.vars.prompt2}}"
-  - id: combine
-    depends_on: [fanout]
-    use: core.echo
-    with:
-      text: |
-        Combined responses:
-        - chat1: {{ (index .outputs.fanout.chat1.choices 0).message.content }}
-        - chat2: {{ (index .outputs.fanout.chat2.choices 0).message.content }}
-```
+## 13. System Prompt(s) for LLMs
+
+LLMs can use the following system prompt to interact with BeemFlow as a tool registry and flow orchestrator:
+
+> "You are an expert BeemFlow agent. You can list, validate, and run flows, discover and call tools, and manage automations using the BeemFlow protocol. All tools and flows are described in the registry. Always use the protocol-agnostic API and follow the canonical YAML grammar."
 
 ---
 
-## Best Practices
-- Version control all manifests and configs.
-- Document required environment variables.
-- Provide sample flows and tests.
-- Prefer MCP or HTTP-based tools; use custom adapters only for advanced needs.
-- Use block-parallel (`parallel: true` with nested `steps:`) for concurrency.
-- Reference outputs and secrets using templating.
+## 14. License
+
+MIT. Use it, remix it, ship it.
 
 ---
 
-## Instructions for LLMs
-- Help users draft, refine, and validate BeemFlow YAML flows.
-- Always return valid YAML conforming to the above schema and rules.
-- If the user asks for a flow, output only the YAML (no extra commentary).
-- If the user requests validation, check against the schema and report errors inline.
-- Support recursive/meta-flows and human-in-the-loop steps.
-- Never reference external files or links; all information must be self-contained. 
+## 15. Roadmap
+
+- VSCode extension (syntax highlight, lint, live Mermaid)
+- Optional web canvas (edits YAML)
+- Flow template gallery (`flow init`)
+- Temporal backend adapter
+- Metrics / observability plugin
+- Cron triggers, step-level resource limits, advanced event bus drivers, and adapter hot-reload (roadmap)
+
+---
+
+## 16. Integration Patterns
+
+- MCP, HTTP, and custom adapters are all supported and interoperable.
+
+---
+
+END OF SPEC

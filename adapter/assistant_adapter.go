@@ -2,20 +2,16 @@ package adapter
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"os"
 
+	"github.com/awantoch/beemflow/docs"
 	"github.com/awantoch/beemflow/parser"
 	"github.com/awantoch/beemflow/pkg/logger"
 )
 
-// NOTE: To update the system prompt, copy docs/system_prompt.md to adapter/assistant/system_prompt.md
-// TODO clean this up to use the symlink to docs so we can keep using go:embed
-//
-//go:generate cp ../docs/system_prompt.md system_prompt.md
-//go:embed system_prompt.md
-var SystemPrompt string
+// SystemPrompt is loaded from the embedded documentation package.
+var SystemPrompt = docs.BeemflowSpec
 
 const schemaPath = "beemflow.schema.json"
 
