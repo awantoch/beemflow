@@ -53,6 +53,7 @@ func NewRootCmd() *cobra.Command {
 		newToolCmd(),
 		newMCPServeCmd(),
 		newAssistCmd(),
+		newMCPCmd(),
 	)
 	return rootCmd
 }

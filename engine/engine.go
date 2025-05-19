@@ -696,3 +696,9 @@ func (e *Engine) GetRunByID(ctx context.Context, id uuid.UUID) (*model.Run, erro
 	}
 	return run, nil
 }
+
+// ListMCPServers returns all MCP servers from the registry.
+func (e *Engine) ListMCPServers() ([]*adapter.MCPServerConfig, error) {
+	_, mcps, err := adapter.LoadUnifiedRegistry("registry/index.json")
+	return mcps, err
+}

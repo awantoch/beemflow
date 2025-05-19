@@ -304,3 +304,58 @@ func RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.
 	}
 	return latest.ID, outputs, nil
 }
+
+// ListTools returns all registered tool manifests (name, description, kind, etc).
+func ListTools(ctx context.Context) ([]map[string]any, error) {
+	eng := engine.NewEngine()
+	adapters := eng.Adapters.All()
+	var tools []map[string]any
+	for _, a := range adapters {
+		m := a.Manifest()
+		if m != nil {
+			// Only include if not an MCP server
+			if m.Kind != "mcp_server" {
+				tools = append(tools, map[string]any{
+					"name":        m.Name,
+					"description": m.Description,
+					"kind":        m.Kind,
+					"endpoint":    m.Endpoint,
+					"type":        "tool",
+				})
+			}
+		}
+	}
+	// Also include MCP servers from the registry
+	mcps, err := eng.ListMCPServers()
+	if err == nil {
+		for _, mcp := range mcps {
+			tools = append(tools, map[string]any{
+				"name":        mcp.Name,
+				"description": "MCP server",
+				"kind":        "mcp_server",
+				"endpoint":    mcp.Endpoint,
+				"type":        "mcp_server",
+			})
+		}
+	}
+	return tools, nil
+}
+
+// ListMCPServers returns all MCP servers from the registry (name, description, endpoint, transport).
+func ListMCPServers(ctx context.Context) ([]map[string]any, error) {
+	eng := engine.NewEngine()
+	mcps, err := eng.ListMCPServers()
+	if err != nil {
+		return nil, err
+	}
+	var out []map[string]any
+	for _, mcp := range mcps {
+		out = append(out, map[string]any{
+			"name":        mcp.Name,
+			"description": "MCP server",
+			"endpoint":    mcp.Endpoint,
+			"transport":   mcp.Transport,
+		})
+	}
+	return out, nil
+}
