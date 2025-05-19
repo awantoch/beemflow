@@ -83,6 +83,13 @@ All tools are exposed in a single, LLM-native registry for use in flows, CLI, HT
 2. If `registry/index.json` exists, it is used.
 3. Otherwise, the public hub at `https://hub.beemflow.com/index.json` is used.
 
+### 4a. Registry Namespacing & Ambiguity
+
+- When multiple registries are enabled, all tool/server names are qualified as `<registry>:<name>` (e.g., `smithery:airtable`, `local:mytool`).
+- CLI and API output always includes a `REGISTRY` column.
+- If a name is ambiguous (exists in more than one registry), the user must specify the qualified name.
+- If only one match exists, the unqualified name is accepted for convenience.
+
 ---
 
 ## 5. Protocol-Agnostic API (CLI, HTTP, MCP)

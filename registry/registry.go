@@ -75,3 +75,24 @@ func (l *LocalRegistry) GetServer(ctx context.Context, name string) (*RegistryEn
 	}
 	return nil, nil
 }
+
+// ToolManifest represents a tool manifest loaded from JSON.
+type ToolManifest struct {
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Kind        string            `json:"kind"`
+	Parameters  map[string]any    `json:"parameters"`
+	Endpoint    string            `json:"endpoint,omitempty"`
+	Headers     map[string]string `json:"headers,omitempty"`
+}
+
+// MCPServerConfig represents a MCP server configuration loaded from JSON.
+type MCPServerConfig struct {
+	Name      string            `json:"name"`
+	Command   string            `json:"command"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	Port      int               `json:"port,omitempty"`
+	Transport string            `json:"transport,omitempty"`
+	Endpoint  string            `json:"endpoint,omitempty"`
+}
