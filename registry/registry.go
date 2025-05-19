@@ -85,14 +85,3 @@ type ToolManifest struct {
 	Endpoint    string            `json:"endpoint,omitempty"`
 	Headers     map[string]string `json:"headers,omitempty"`
 }
-
-// MCPServerConfig represents a MCP server configuration loaded from JSON.
-type MCPServerConfig struct {
-	Name      string            `json:"name"`
-	Command   string            `json:"command"`
-	Args      []string          `json:"args,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
-	Port      int               `json:"port,omitempty"`
-	Transport string            `json:"transport,omitempty"`
-	Endpoint  string            `json:"endpoint,omitempty"`
-}

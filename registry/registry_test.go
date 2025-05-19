@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -113,5 +114,27 @@ func TestRegistryEntry_Namespacing(t *testing.T) {
 	entry := RegistryEntry{Registry: "smithery", Name: "airtable"}
 	if entry.Registry+":"+entry.Name != "smithery:airtable" {
 		t.Errorf("expected smithery:airtable, got %s:%s", entry.Registry, entry.Name)
+	}
+}
+
+// TestLocalRegistry_ListMCPServers ensures ListMCPServers filters only mcp_server entries.
+func TestLocalRegistry_ListMCPServers(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "index.json")
+	entries := []RegistryEntry{
+		{Registry: "local", Type: "mcp_server", Name: "foo", Description: "desc", Kind: "k", Endpoint: "e"},
+		{Registry: "local", Type: "other", Name: "bar", Description: "desc", Kind: "k", Endpoint: "e"},
+	}
+	data, _ := json.Marshal(entries)
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	lr := NewLocalRegistry(filePath)
+	out, err := lr.ListMCPServers(context.Background(), ListOptions{})
+	if err != nil {
+		t.Fatalf("ListMCPServers error: %v", err)
+	}
+	if len(out) != 1 || out[0].Name != "foo" {
+		t.Errorf("expected 1 mcp_server foo, got %+v", out)
 	}
 }

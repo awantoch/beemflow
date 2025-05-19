@@ -25,6 +25,7 @@
     - [CLI Usage](#cli-usage)
     - [Adding More Registries](#adding-more-registries)
     - [Migration Notes](#migration-notes)
+  - [Registries: Curated vs Local](#registries-curated-vs-local)
 
 ---
 
@@ -307,3 +308,36 @@ To add more registry integrations, implement the `MCPRegistry` interface in `reg
 ## Migration Notes
 - All Smithery-specific CLI commands have been removed in favor of the unified interface.
 - The system is DRY, extensible, and production-grade.
+
+## Registries: Curated vs Local
+
+BeemFlow supports two types of registries:
+
+- **Curated registry**: A read-only, repo-managed set of tools, always loaded from `registry/index.json`. This is the default set of tools provided by BeemFlow and can be split into a community repo in the future.
+- **Local registry**: A user-writable registry, by default at `.beemflow/local_registry.json`, where any tool installed via the CLI is saved. This allows you to extend or override the curated set with your own tools.
+
+### How it works
+- On startup, BeemFlow loads both the curated and local registries.
+- When listing or using tools, local entries take precedence over curated ones (by tool name).
+- Any tool installed via the CLI is written to the local registry file, never to the curated registry.
+- All config roots (db, files, registries) default to `.beemflow/` for a clean, user-specific experience.
+- The system is future-proofed for remote/community registries (coming soon).
+
+### Sample config
+```json
+{
+  "storage": { "driver": "sqlite", "dsn": ".beemflow/flow.db" },
+  "blob": { "driver": "filesystem", "bucket": "", "directory": ".beemflow/files" },
+  "registries": [
+    { "type": "local", "path": ".beemflow/local_registry.json" }
+  ],
+  "http": { "host": "localhost", "port": 8080 },
+  "log": { "level": "info" }
+}
+```
+
+### Example: Merging
+If you have a tool `foo` in both the curated and local registries, the local version will be used.
+
+### No legacy/old-style registry logic
+All registry logic is config-driven and future-proof. No backwards compatibility is needed.

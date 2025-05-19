@@ -14,10 +14,36 @@ import (
 	"github.com/awantoch/beemflow/logger"
 )
 
+// Sample config for BeemFlow registry system:
+//
+// {
+//   "storage": { "driver": "sqlite", "dsn": ".beemflow/flow.db" },
+//   "blob": { "driver": "filesystem", "bucket": "", "directory": ".beemflow/files" },
+//   "registries": [
+//     { "type": "local", "path": ".beemflow/local_registry.json" }
+//   ],
+//   "http": { "host": "localhost", "port": 8080 },
+//   "log": { "level": "info" }
+// }
+//
+// - The curated registry (repo-managed, read-only) is always loaded from registry/index.json.
+// - The local registry (user-writable) is loaded from the path in registries[].path, defaulting to .beemflow/local_registry.json.
+// - When listing/using tools, local entries take precedence over curated ones.
+// - Any tool installed via the CLI is written to the local registry file.
+// - All config roots are under .beemflow/ by default.
+//
+// This system is future-proofed for remote/community registries.
+//
+// See docs for more details.
+
 // RegistryConfig is the base type for all registry configs.
+// For local registries, set type: "local" and path: ".beemflow/local_registry.json" (default).
+// For Smithery, set type: "smithery" and url: "https://registry.smithery.ai/servers" (default).
+// For other remote registries, set type: "remote" and url: the base URL of the registry.
 type RegistryConfig struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`
+	Path string `json:"path,omitempty"` // For local registries, path to the registry file (default: .beemflow/local_registry.json)
 	// Add other common fields here
 }
 
@@ -304,4 +330,77 @@ func (m *MCPServerConfig) UnmarshalJSON(data []byte) error {
 	}
 	*m = MCPServerConfig(aux)
 	return nil
+}
+
+// InjectEnvVarsIntoRegistry walks a registry config and replaces any string field set to "$env:VARNAME" or missing required fields with the value from the environment.
+// It works generically for any registry type and any field.
+func InjectEnvVarsIntoRegistry(reg map[string]any) {
+	for k, v := range reg {
+		str, ok := v.(string)
+		if ok && strings.HasPrefix(str, "$env:") {
+			envVar := strings.TrimPrefix(str, "$env:")
+			if val := os.Getenv(envVar); val != "" {
+				reg[k] = val
+			}
+		} else if v == nil {
+			// If the field is nil, check for a matching env var by convention
+			envVar := strings.ToUpper(k)
+			if val := os.Getenv(envVar); val != "" {
+				reg[k] = val
+			}
+		}
+	}
+}
+
+// LoadAndInjectRegistries loads config, auto-enables Smithery if needed, and injects env vars into all registries.
+func LoadAndInjectRegistries(path string) (*Config, error) {
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		cfg = &Config{}
+	}
+	// Auto-enable Smithery if not present and env var is set
+	apiKey := os.Getenv("SMITHERY_API_KEY")
+	foundSmithery := false
+	for _, reg := range cfg.Registries {
+		if reg.Type == "smithery" {
+			foundSmithery = true
+			break
+		}
+	}
+	if !foundSmithery && apiKey != "" {
+		cfg.Registries = append(cfg.Registries, RegistryConfig{
+			Type: "smithery",
+			URL:  "https://registry.smithery.ai/servers",
+		})
+	}
+	// Inject env vars for all registries
+	for i := range cfg.Registries {
+		regMap := map[string]any{
+			"type": cfg.Registries[i].Type,
+			"url":  cfg.Registries[i].URL,
+			"path": cfg.Registries[i].Path,
+		}
+		InjectEnvVarsIntoRegistry(regMap)
+		cfg.Registries[i].Type = regMap["type"].(string)
+		cfg.Registries[i].URL = regMap["url"].(string)
+		cfg.Registries[i].Path, _ = regMap["path"].(string)
+	}
+	return cfg, nil
+}
+
+// SaveConfig writes the config to the given path.
+func SaveConfig(path string, cfg *Config) error {
+	bytesOut, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, bytesOut, 0644)
+}
+
+// UpsertMCPServer adds or updates an MCP server entry in the config.
+func UpsertMCPServer(cfg *Config, name string, spec MCPServerConfig) {
+	if cfg.MCPServers == nil {
+		cfg.MCPServers = map[string]MCPServerConfig{}
+	}
+	cfg.MCPServers[name] = spec
 }

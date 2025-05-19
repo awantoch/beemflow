@@ -2,17 +2,5 @@
   "storage": {
     "driver": "sqlite",
     "dsn": "./.beemflow/flow.db"
-  },
-  "mcpServers": {
-    "airtable": {},
-    "supabase": {}
-  },
-  "registries": [
-    { "type": "local", "path": "registry/index.json" },
-    {
-      "type": "smithery",
-      "url": "https://registry.smithery.ai/servers",
-      "apiKey": "$env:SMITHERY_API_KEY"
-    }
-  ]
+  }
 }

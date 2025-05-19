@@ -14,7 +14,7 @@ func newMCPServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Serve BeemFlow as an MCP server (HTTP or stdio)",
 		Run: func(cmd *cobra.Command, args []string) {
-			tools := getAllMCPToolRegistrations()
+			tools := buildMCPToolRegistrations()
 			if err := mcpserver.Serve(configPath, debug, stdio, addr, tools); err != nil {
 				log.Fatalf("MCP server failed: %v", err)
 			}
@@ -23,9 +23,4 @@ func newMCPServeCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&stdio, "stdio", true, "serve over stdin/stdout instead of HTTP (default)")
 	cmd.Flags().StringVar(&addr, "addr", ":9090", "listen address for HTTP mode")
 	return cmd
-}
-
-// getAllMCPToolRegistrations returns the tool registrations for the MCP server.
-func getAllMCPToolRegistrations() []mcpserver.ToolRegistration {
-	return buildMCPToolRegistrations()
 }

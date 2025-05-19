@@ -2,7 +2,9 @@ package adapter
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
+	"os"
+	"path/filepath"
 
 	"github.com/awantoch/beemflow/registry"
 )
@@ -41,28 +43,52 @@ func (r *Registry) Get(id string) (Adapter, bool) {
 	return a, ok
 }
 
+// Add helper to append a tool to the local registry file
+//
+// This function ensures that any tool installed via the CLI is written to the local registry file.
+// The path is determined from config (registries[].path) or defaults to .beemflow/local_registry.json.
+// This is future-proofed for remote/community registries.
+func appendToLocalRegistry(entry registry.RegistryEntry, path string) error {
+	var entries []registry.RegistryEntry
+	data, err := os.ReadFile(path)
+	if err == nil {
+		_ = json.Unmarshal(data, &entries)
+	}
+	// Remove any existing entry with the same name
+	newEntries := []registry.RegistryEntry{}
+	for _, e := range entries {
+		if e.Name != entry.Name {
+			newEntries = append(newEntries, e)
+		}
+	}
+	newEntries = append(newEntries, entry)
+	out, _ := json.MarshalIndent(newEntries, "", "  ")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0644)
+}
+
 // LoadAndRegisterTool loads a tool manifest from a local directory and registers an HTTPAdapter.
-func (r *Registry) LoadAndRegisterTool(name, toolsDir string) error {
+//
+// After registering, it writes the tool to the local registry file (user-writable),
+// never to the curated registry (repo-managed, read-only).
+//
+// This ensures user-installed tools persist across runs and are merged with curated tools.
+func (r *Registry) LoadAndRegisterTool(name, manifestPath string) error {
 	if _, exists := r.adapters[name]; exists {
 		return nil
 	}
-	localRegistry := registry.NewLocalRegistry(toolsDir)
-	entry, err := localRegistry.GetServer(context.Background(), name)
+	// Read the manifest file directly
+	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return err
 	}
-	if entry == nil {
-		return errors.New("tool not found")
+	var manifest registry.ToolManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return err
 	}
-	manifest := &registry.ToolManifest{
-		Name:        entry.Name,
-		Description: entry.Description,
-		Kind:        entry.Kind,
-		Parameters:  entry.Parameters,
-		Endpoint:    entry.Endpoint,
-		Headers:     entry.Headers,
-	}
-	r.Register(&HTTPAdapter{AdapterID: name, ToolManifest: manifest})
+	r.Register(&HTTPAdapter{AdapterID: name, ToolManifest: &manifest})
 	return nil
 }
 

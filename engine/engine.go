@@ -10,6 +10,7 @@ import (
 
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/blob"
+	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
@@ -44,35 +45,66 @@ type PausedRun struct {
 	RunID   uuid.UUID
 }
 
-// NewEngineWithBlobStore creates a new Engine with a custom BlobStore.
-func NewEngineWithBlobStore(blobStore blob.BlobStore) *Engine {
+// newDefaultAdapterRegistry creates and returns a default adapter registry with core and registry tools.
+//
+// - Loads the curated registry (repo-managed, read-only) from registry/index.json.
+// - Loads the local registry (user-writable) from config (registries[].path) or .beemflow/local_registry.json.
+// - Merges both, with local entries taking precedence over curated ones.
+// - Any tool installed via the CLI is written to the local registry file.
+// - This is future-proofed for remote/community registries.
+func newDefaultAdapterRegistry() *adapter.Registry {
 	reg := adapter.NewRegistry()
 	reg.Register(&adapter.CoreAdapter{})
 	reg.Register(adapter.NewMCPAdapter())
 	reg.Register(&adapter.HTTPFetchAdapter{})
 
-	// Load unified registry
-	localReg := registry.NewLocalRegistry("registry/index.json")
-	regMgr := registry.NewRegistryManager(localReg)
-	tools, err := regMgr.ListAllServers(context.Background(), registry.ListOptions{})
-	if err != nil {
-		logger.Warn("Failed to load registry: %v", err)
-	} else {
-		for _, entry := range tools {
-			manifest := &registry.ToolManifest{
-				Name:        entry.Name,
-				Description: entry.Description,
-				Kind:        entry.Kind,
-				Parameters:  entry.Parameters,
-				Endpoint:    entry.Endpoint,
-				Headers:     entry.Headers,
+	// Load config if available
+	cfg, err := config.LoadConfig("flow.config.json")
+	localRegistryPath := ".beemflow/local_registry.json"
+	if err == nil && len(cfg.Registries) > 0 {
+		for _, regCfg := range cfg.Registries {
+			if regCfg.Type == "local" && regCfg.Path != "" {
+				localRegistryPath = regCfg.Path
 			}
-			reg.Register(&adapter.HTTPAdapter{AdapterID: entry.Name, ToolManifest: manifest})
 		}
 	}
 
+	// Load curated registry
+	curatedReg := registry.NewLocalRegistry("registry/index.json")
+	curatedMgr := registry.NewRegistryManager(curatedReg)
+	curatedTools, _ := curatedMgr.ListAllServers(context.Background(), registry.ListOptions{})
+
+	// Load local registry
+	localReg := registry.NewLocalRegistry(localRegistryPath)
+	localMgr := registry.NewRegistryManager(localReg)
+	localTools, _ := localMgr.ListAllServers(context.Background(), registry.ListOptions{})
+
+	// Merge: local takes precedence
+	toolMap := map[string]registry.RegistryEntry{}
+	for _, entry := range curatedTools {
+		toolMap[entry.Name] = entry
+	}
+	for _, entry := range localTools {
+		toolMap[entry.Name] = entry
+	}
+	for _, entry := range toolMap {
+		manifest := &registry.ToolManifest{
+			Name:        entry.Name,
+			Description: entry.Description,
+			Kind:        entry.Kind,
+			Parameters:  entry.Parameters,
+			Endpoint:    entry.Endpoint,
+			Headers:     entry.Headers,
+		}
+		reg.Register(&adapter.HTTPAdapter{AdapterID: entry.Name, ToolManifest: manifest})
+	}
+	return reg
+}
+
+// NewEngineWithBlobStore creates a new Engine with a custom BlobStore.
+func NewEngineWithBlobStore(blobStore blob.BlobStore) *Engine {
 	return &Engine{
-		Adapters:         reg,
+		Adapters:         newDefaultAdapterRegistry(),
 		Templater:        templater.NewTemplater(),
 		EventBus:         event.NewInProcEventBus(),
 		BlobStore:        blobStore,
@@ -94,36 +126,11 @@ func NewEngine() *Engine {
 
 // NewEngineWithStorage creates a new Engine with a custom Storage backend.
 func NewEngineWithStorage(store storage.Storage) *Engine {
-	reg := adapter.NewRegistry()
-	reg.Register(&adapter.CoreAdapter{})
-	reg.Register(adapter.NewMCPAdapter())
-	reg.Register(&adapter.HTTPFetchAdapter{})
-
-	// Load unified registry
-	localReg := registry.NewLocalRegistry("registry/index.json")
-	regMgr := registry.NewRegistryManager(localReg)
-	tools, err := regMgr.ListAllServers(context.Background(), registry.ListOptions{})
-	if err != nil {
-		logger.Warn("Failed to load registry: %v", err)
-	} else {
-		for _, entry := range tools {
-			manifest := &registry.ToolManifest{
-				Name:        entry.Name,
-				Description: entry.Description,
-				Kind:        entry.Kind,
-				Parameters:  entry.Parameters,
-				Endpoint:    entry.Endpoint,
-				Headers:     entry.Headers,
-			}
-			reg.Register(&adapter.HTTPAdapter{AdapterID: entry.Name, ToolManifest: manifest})
-		}
-	}
-
 	if store == nil {
 		store = storage.NewMemoryStorage()
 	}
 	eng := &Engine{
-		Adapters:         reg,
+		Adapters:         newDefaultAdapterRegistry(),
 		Templater:        templater.NewTemplater(),
 		EventBus:         event.NewInProcEventBus(),
 		BlobStore:        nil, // or set to a default if needed
@@ -718,25 +725,32 @@ func (e *Engine) GetRunByID(ctx context.Context, id uuid.UUID) (*model.Run, erro
 	return run, nil
 }
 
-// ListMCPServers returns all MCP servers from the registry.
-func (e *Engine) ListMCPServers() ([]*registry.MCPServerConfig, error) {
+// ListMCPServers returns all MCP servers from the registry, including their names.
+type MCPServerWithName struct {
+	Name   string
+	Config *config.MCPServerConfig
+}
+
+func (e *Engine) ListMCPServers() ([]*MCPServerWithName, error) {
 	localReg := registry.NewLocalRegistry("registry/index.json")
 	regMgr := registry.NewRegistryManager(localReg)
 	tools, err := regMgr.ListAllServers(context.Background(), registry.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	var mcps []*registry.MCPServerConfig
+	var mcps []*MCPServerWithName
 	for _, entry := range tools {
 		if strings.HasPrefix(entry.Name, "mcp://") {
-			mcps = append(mcps, &registry.MCPServerConfig{
-				Name:      entry.Name,
-				Command:   entry.Command,
-				Args:      entry.Args,
-				Env:       entry.Env,
-				Port:      entry.Port,
-				Transport: entry.Transport,
-				Endpoint:  entry.Endpoint,
+			mcps = append(mcps, &MCPServerWithName{
+				Name: entry.Name,
+				Config: &config.MCPServerConfig{
+					Command:   entry.Command,
+					Args:      entry.Args,
+					Env:       entry.Env,
+					Port:      entry.Port,
+					Transport: entry.Transport,
+					Endpoint:  entry.Endpoint,
+				},
 			})
 		}
 	}

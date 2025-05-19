@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -20,7 +21,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestLoadConfig(t *testing.T) {
-	cfgJSON := `{"storage":{"driver":"d","dsn":"u"},"blob":{"driver":"b","bucket":"c"},"event":{"driver":"e","url":"u"},"secrets":{"driver":"s","region":"r","prefix":"p"},"registries":["r1","r2"],"http":{"host":"h","port":8080},"log":{"level":"l"}}`
+	cfgJSON := `{"storage":{"driver":"d","dsn":"u"},"blob":{"driver":"b","bucket":"c"},"event":{"driver":"e","url":"u"},"secrets":{"driver":"s","region":"r","prefix":"p"},"registries":[{"type":"local","path":"foo.json"},{"type":"smithery","url":"bar"}],"http":{"host":"h","port":8080},"log":{"level":"l"}}`
 	tmp, err := os.CreateTemp("", "config.json")
 	if err != nil {
 		t.Fatalf("create temp: %v", err)
@@ -51,7 +52,7 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func TestLoadConfig_Partial(t *testing.T) {
-	cfgJSON := `{"storage":{"driver":"d","dsn":"u"}}`
+	cfgJSON := `{"storage":{"driver":"d","dsn":"u"},"registries":[{"type":"local","path":"foo.json"}]}`
 	tmp, err := os.CreateTemp("", "config_partial.json")
 	if err != nil {
 		t.Fatalf("create temp: %v", err)
@@ -251,5 +252,73 @@ func TestGetMergedMCPServerConfig_MissingHostError(t *testing.T) {
 	_, err := GetMergedMCPServerConfig(cfg, "unknown")
 	if err == nil {
 		t.Fatalf("expected error for unknown host, got nil")
+	}
+}
+
+// TestUpsertAndSaveConfig tests UpsertMCPServer and SaveConfig/LoadConfig roundtrip.
+func TestUpsertAndSaveConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "flow.config.json")
+	cfg := &Config{}
+	UpsertMCPServer(cfg, "foo", MCPServerConfig{Command: "cmd", Args: []string{"a"}})
+	if err := SaveConfig(cfgPath, cfg); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+	cfg2, err := LoadConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	spec, ok := cfg2.MCPServers["foo"]
+	if !ok {
+		t.Fatalf("expected mcpServers foo, got none")
+	}
+	if spec.Command != "cmd" || len(spec.Args) != 1 || spec.Args[0] != "a" {
+		t.Errorf("unexpected spec, got %+v", spec)
+	}
+}
+
+// TestLoadAndInjectRegistries tests env var injection and Smithery auto-include.
+func TestLoadAndInjectRegistries(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "cfg.json")
+	raw := map[string]any{
+		"registries": []any{
+			map[string]any{"type": "foo", "url": "$env:TESTURL", "path": "$env:TESTPATH"},
+		},
+	}
+	bytes, _ := json.Marshal(raw)
+	if err := os.WriteFile(cfgPath, bytes, 0644); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+	os.Setenv("TESTURL", "https://example.com")
+	os.Setenv("TESTPATH", "/tmp")
+	os.Setenv("SMITHERY_API_KEY", "apikey123")
+	cfg, err := LoadAndInjectRegistries(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadAndInjectRegistries error: %v", err)
+	}
+	if len(cfg.Registries) != 2 {
+		t.Fatalf("expected 2 registries, got %d", len(cfg.Registries))
+	}
+	var foundFoo, foundSmithery bool
+	for _, r := range cfg.Registries {
+		switch r.Type {
+		case "foo":
+			foundFoo = true
+			if r.URL != "https://example.com" {
+				t.Errorf("expected foo URL injected, got %s", r.URL)
+			}
+			if r.Path != "/tmp" {
+				t.Errorf("expected foo Path injected, got %s", r.Path)
+			}
+		case "smithery":
+			foundSmithery = true
+			if r.URL != "https://registry.smithery.ai/servers" {
+				t.Errorf("expected smithery URL default, got %s", r.URL)
+			}
+		}
+	}
+	if !foundFoo || !foundSmithery {
+		t.Errorf("missing expected registries: foo(%v) smithery(%v)", foundFoo, foundSmithery)
 	}
 }

@@ -334,7 +334,7 @@ func ListTools(ctx context.Context) ([]map[string]any, error) {
 				"name":        mcp.Name,
 				"description": "MCP server",
 				"kind":        "mcp_server",
-				"endpoint":    mcp.Endpoint,
+				"endpoint":    mcp.Config.Endpoint,
 				"type":        "mcp_server",
 			})
 		}

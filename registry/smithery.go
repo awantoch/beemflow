@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
+
+	"github.com/awantoch/beemflow/config"
 )
 
 type SmitheryRegistry struct {
@@ -69,6 +72,7 @@ func (s *SmitheryRegistry) ListServers(ctx context.Context, opts ListOptions) ([
 	var entries []RegistryEntry
 	for _, s := range data.Servers {
 		entries = append(entries, RegistryEntry{
+			Registry:    "smithery",
 			Type:        "mcp_server",
 			Name:        s.QualifiedName,
 			Description: s.Description,
@@ -120,6 +124,7 @@ func (s *SmitheryRegistry) GetServer(ctx context.Context, name string) (*Registr
 	for _, conn := range data.Connections {
 		if (conn.Type == "http" || conn.Type == "stdio") && conn.Url != "" {
 			return &RegistryEntry{
+				Registry:    "smithery",
 				Type:        "mcp_server",
 				Name:        data.QualifiedName,
 				Description: data.Description,
@@ -130,4 +135,89 @@ func (s *SmitheryRegistry) GetServer(ctx context.Context, name string) (*Registr
 		}
 	}
 	return nil, fmt.Errorf("no suitable connection found for server %s", name)
+}
+
+// GetServerSpec fetches a server and parses its stdioFunction into MCPServerConfig.
+func (s *SmitheryRegistry) GetServerSpec(ctx context.Context, name string) (config.MCPServerConfig, error) {
+	endpoint := fmt.Sprintf("%s/%s", strings.TrimSuffix(s.BaseURL, "/"), url.PathEscape(name))
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return config.MCPServerConfig{}, err
+	}
+	if s.APIKey == "" {
+		s.APIKey = os.Getenv("SMITHERY_API_KEY")
+	}
+	if s.APIKey == "" {
+		return config.MCPServerConfig{}, fmt.Errorf("Smithery API key not set")
+	}
+	req.Header.Set("Authorization", "Bearer "+s.APIKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return config.MCPServerConfig{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return config.MCPServerConfig{}, fmt.Errorf("Smithery registry returned status %s", resp.Status)
+	}
+	var data struct {
+		Connections []struct {
+			Type          string         `json:"type"`
+			ConfigSchema  map[string]any `json:"configSchema"`
+			Published     bool           `json:"published"`
+			StdioFunction string         `json:"stdioFunction"`
+		} `json:"connections"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return config.MCPServerConfig{}, err
+	}
+	for _, c := range data.Connections {
+		if c.Type == "stdio" && c.Published {
+			fn := c.StdioFunction
+			start := strings.Index(fn, "({")
+			end := strings.LastIndex(fn, "})")
+			if start < 0 || end < 0 || end <= start+1 {
+				return config.MCPServerConfig{}, fmt.Errorf("invalid stdioFunction format: %s", fn)
+			}
+			obj := fn[start+1 : end+1]
+			interim := strings.ReplaceAll(obj, "'", "\"")
+			re := regexp.MustCompile(`(\w+)\s*:`)
+			jsonObj := re.ReplaceAllString(interim, `"$1":`)
+			var m map[string]any
+			if err := json.Unmarshal([]byte(jsonObj), &m); err != nil {
+				return config.MCPServerConfig{}, fmt.Errorf("failed to parse stdioFunction object: %w", err)
+			}
+			cmdVal, ok := m["command"].(string)
+			if !ok {
+				return config.MCPServerConfig{}, fmt.Errorf("stdioFunction object missing command")
+			}
+			var argsList []string
+			if arr, ok2 := m["args"].([]any); ok2 {
+				for _, ai := range arr {
+					if s, sok := ai.(string); sok {
+						argsList = append(argsList, s)
+					}
+				}
+			}
+			return config.MCPServerConfig{
+				Command: cmdVal,
+				Args:    argsList,
+			}, nil
+		}
+	}
+	return config.MCPServerConfig{}, fmt.Errorf("no stdio connection found for server %s", name)
+}
+
+// ListMCPServers returns only entries of type 'mcp_server' from the local registry.
+func (l *LocalRegistry) ListMCPServers(ctx context.Context, opts ListOptions) ([]RegistryEntry, error) {
+	entries, err := l.ListServers(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	var out []RegistryEntry
+	for _, e := range entries {
+		if e.Type == "mcp_server" {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }

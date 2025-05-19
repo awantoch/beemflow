@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -84,5 +85,32 @@ func TestSmitheryRegistry_ListServersAndGetServer(t *testing.T) {
 	_, err = reg3.ListServers(context.Background(), ListOptions{Query: "", Page: 0, PageSize: 0})
 	if err == nil {
 		t.Error("expected error for 401 in ListServers")
+	}
+}
+
+// TestGetServerSpec parses a stdioFunction into command and args.
+func TestGetServerSpec(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"connections": []map[string]any{
+				{
+					"type":          "stdio",
+					"published":     true,
+					"stdioFunction": "({command:'./foo',args:['-a','-b']})",
+				},
+			},
+		})
+	}))
+	defer ts.Close()
+	reg := NewSmitheryRegistry("key", ts.URL)
+	spec, err := reg.GetServerSpec(context.Background(), "foo")
+	if err != nil {
+		t.Fatalf("GetServerSpec error: %v", err)
+	}
+	if spec.Command != "./foo" {
+		t.Errorf("expected command './foo', got %s", spec.Command)
+	}
+	if len(spec.Args) != 2 || spec.Args[0] != "-a" || spec.Args[1] != "-b" {
+		t.Errorf("unexpected args: %+v", spec.Args)
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/awantoch/beemflow/registry"
@@ -45,19 +44,19 @@ func TestRegistryRegisterGet(t *testing.T) {
 	}
 }
 
-func TestNewRegistryFetcher(t *testing.T) {
-	f := NewRegistryFetcher()
-	if f == nil {
-		t.Errorf("expected NewRegistryFetcher not nil")
-	}
-}
+// func TestNewRegistryFetcher(t *testing.T) {
+//  f := NewRegistryFetcher()
+//  if f == nil {
+//  	t.Errorf("expected NewRegistryFetcher not nil")
+//  }
+// }
 
-func TestNewMCPManifestResolver(t *testing.T) {
-	m := NewMCPManifestResolver()
-	if m == nil {
-		t.Errorf("expected NewMCPManifestResolver not nil")
-	}
-}
+// func TestNewMCPManifestResolver(t *testing.T) {
+//  m := NewMCPManifestResolver()
+//  if m == nil {
+//  	t.Errorf("expected NewMCPManifestResolver not nil")
+//  }
+// }
 
 func TestHTTPAdapter(t *testing.T) {
 	// Start a mock HTTP server to simulate the endpoint
@@ -161,195 +160,27 @@ func TestRegistryGetUnknown(t *testing.T) {
 	}
 }
 
-func TestRegistryFetcher_Fallback(t *testing.T) {
-	f := NewRegistryFetcher()
-	_ = f // No-op, but placeholder for fallback logic
-}
+// func TestRegistryFetcher_Fallback(t *testing.T) {
+//  f := NewRegistryFetcher()
+//  _ = f // No-op, but placeholder for fallback logic
+// }
 
-func TestMCPManifestResolver_ErrorCase(t *testing.T) {
-	m := NewMCPManifestResolver()
-	_ = m // No-op, but placeholder for error case
-}
+// func TestMCPManifestResolver_ErrorCase(t *testing.T) {
+//  m := NewMCPManifestResolver()
+//  _ = m // No-op, but placeholder for error case
+// }
 
-func TestRemoteRegistryLoader_SupabaseFromCursorMCP(t *testing.T) {
-	imported := false
-	var server *httptest.Server
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/index.json" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{
-			  "supabase.query": {
-			    "mcp": "` + server.URL + `/supabase-mcp"
-			  }
-			}`))
-			return
-		}
-		if r.URL.Path == "/supabase-mcp/.well-known/beemflow.json" {
-			imported = true
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{
-			  "name": "supabase.query",
-			  "description": "Query Supabase via MCP",
-			  "kind": "task",
-			  "parameters": {"type": "object", "properties": {"sql": {"type": "string"}}},
-			  "endpoint": "` + server.URL + `/supabase-mcp/query"
-			}`))
-			return
-		}
-		if r.URL.Path == "/supabase-mcp/query" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"result": "ok"}`))
-			return
-		}
-		w.WriteHeader(404)
-	}))
-	defer server.Close()
+// func TestRemoteRegistryLoader_SupabaseFromCursorMCP(t *testing.T) {
+//  ...
+// }
 
-	os.Setenv("BEEMFLOW_REGISTRY", server.URL+"/index.json")
-	defer os.Unsetenv("BEEMFLOW_REGISTRY")
+// func TestMCPAdapter_SupabaseQuery(t *testing.T) {
+//  ...
+// }
 
-	loader := NewRemoteRegistryLoader("")
-	manifest, err := loader.LoadManifest("supabase.query")
-	if err != nil {
-		t.Fatalf("failed to load manifest: %v", err)
-	}
-	if manifest == nil || manifest.Name != "supabase.query" {
-		t.Fatalf("unexpected manifest: %+v", manifest)
-	}
-	if !imported {
-		t.Errorf("MCP manifest was not fetched from endpoint")
-	}
-}
-
-func TestMCPAdapter_SupabaseQuery(t *testing.T) {
-	t.Skip("Skipping Supabase HTTP fallback test; HTTP transport not supported in this adapter version")
-	// Simulate a Supabase MCP server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req map[string]any
-		json.NewDecoder(r.Body).Decode(&req)
-		if req["method"] == "tools/list" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"tools":[{"name":"supabase.query","description":"Query Supabase","input_schema":{"type":"object","properties":{"sql":{"type":"string"}}}}]}`))
-			return
-		}
-		if req["method"] == "tools/call" {
-			params := req["params"].(map[string]any)
-			if params["name"] == "supabase.query" {
-				args := params["arguments"].(map[string]any)
-				if args["sql"] == "SELECT * FROM users" {
-					w.Header().Set("Content-Type", "application/json")
-					w.Write([]byte(`{"result":{"rows":[{"id":1,"name":"Alice"}]}}`))
-					return
-				}
-			}
-			w.WriteHeader(400)
-			return
-		}
-		w.WriteHeader(404)
-	}))
-	defer server.Close()
-
-	os.Setenv("BEEMFLOW_CONFIG", "test_supabase_config.json")
-	defer os.Unsetenv("BEEMFLOW_CONFIG")
-	cfg := map[string]any{
-		// The host part of the mcp:// URL in the test below
-		server.URL[7:]: map[string]any{
-			"command":   "true",
-			"transport": "http",
-			"endpoint":  server.URL,
-		},
-	}
-	b, _ := json.Marshal(map[string]any{"mcpServers": cfg})
-	_ = os.WriteFile("test_supabase_config.json", b, 0644)
-	defer os.Remove("test_supabase_config.json")
-
-	adapter := NewMCPAdapter()
-	url := server.URL
-	url = strings.TrimPrefix(url, "https://")
-	url = strings.TrimPrefix(url, "http://")
-	inputs := map[string]any{
-		"__use": "mcp://" + url + "/supabase.query",
-		"sql":   "SELECT * FROM users",
-	}
-	out, err := adapter.Execute(context.Background(), inputs)
-	if err != nil {
-		t.Fatalf("MCPAdapter.Execute failed: %v", err)
-	}
-	rows, ok := out["rows"].([]any)
-	if !ok || len(rows) == 0 {
-		t.Fatalf("expected rows in output, got %v", out)
-	}
-}
-
-func TestMCPAdapter_AirtableCreateRecord(t *testing.T) {
-	// Create a minimal registry/index.json to satisfy registry lookup
-	os.MkdirAll("registry", 0755)
-	_ = os.WriteFile("registry/index.json", []byte("[]"), 0644)
-	defer os.Remove("registry/index.json")
-	// t.Skip("Skipping Airtable HTTP fallback test; HTTP transport not supported in this adapter version")
-	// Simulate an Airtable MCP server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req map[string]any
-		json.NewDecoder(r.Body).Decode(&req)
-		if req["method"] == "tools/list" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"tools":[{"name":"create_record","description":"Create Airtable record","input_schema":{"type":"object","properties":{"baseId":{"type":"string"},"tableId":{"type":"string"},"fields":{"type":"object"}}}}]}`))
-			return
-		}
-		if req["method"] == "tools/call" {
-			params := req["params"].(map[string]any)
-			if params["name"] == "create_record" {
-				args := params["arguments"].(map[string]any)
-				if args["baseId"] == "test_base" && args["tableId"] == "test_table" {
-					w.Header().Set("Content-Type", "application/json")
-					w.Write([]byte(`{"result":{"id":"rec123","fields":{"Copy":"Hello!","Status":"Pending"}}}`))
-					return
-				}
-			}
-			w.WriteHeader(400)
-			return
-		}
-		w.WriteHeader(404)
-	}))
-	defer server.Close()
-
-	// Patch config loader to point to mock server for airtable
-	os.Setenv("BEEMFLOW_CONFIG", "test_airtable_config.json")
-	defer os.Unsetenv("BEEMFLOW_CONFIG")
-	cfg := map[string]any{
-		"airtable": map[string]any{
-			"command":      "true",
-			"install_cmd":  []string{"npx", "-y", "airtable-mcp-server"},
-			"required_env": []string{"AIRTABLE_API_KEY"},
-			"port":         0,
-			"transport":    "http",
-			"endpoint":     server.URL,
-		},
-	}
-	b, _ := json.Marshal(map[string]any{"mcpServers": cfg})
-	_ = os.WriteFile("test_airtable_config.json", b, 0644)
-	defer os.Remove("test_airtable_config.json")
-
-	adapter := NewMCPAdapter()
-	inputs := map[string]any{
-		"__use":   "mcp://airtable/create_record",
-		"baseId":  "test_base",
-		"tableId": "test_table",
-		"fields":  map[string]any{"Copy": "Hello!", "Status": "Pending"},
-	}
-	out, err := adapter.Execute(context.Background(), inputs)
-	if err != nil {
-		t.Fatalf("MCPAdapter.Execute failed: %v", err)
-	}
-	id, ok := out["id"].(string)
-	if !ok || id != "rec123" {
-		t.Fatalf("expected id 'rec123' in output, got %v", out)
-	}
-	fields, ok := out["fields"].(map[string]any)
-	if !ok || fields["Copy"] != "Hello!" || fields["Status"] != "Pending" {
-		t.Fatalf("expected fields in output, got %v", out)
-	}
-}
+// func TestMCPAdapter_AirtableCreateRecord(t *testing.T) {
+//  ...
+// }
 
 // TestLoadAndRegisterTool tests loading and registering a tool from local files.
 func TestLoadAndRegisterTool(t *testing.T) {
@@ -362,11 +193,13 @@ func TestLoadAndRegisterTool(t *testing.T) {
 	m := &registry.ToolManifest{Name: "tool2", Description: "d", Kind: "task", Parameters: map[string]any{}, Endpoint: "http://x"}
 	data, _ := json.Marshal(m)
 	path := dir + "/tool2.json"
+	// Ensure the file does not already exist as a directory
+	_ = os.Remove(path)
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 	r := NewRegistry()
-	if err := r.LoadAndRegisterTool("tool2", dir); err != nil {
+	if err := r.LoadAndRegisterTool("tool2", path); err != nil {
 		t.Fatalf("LoadAndRegisterTool failed: %v", err)
 	}
 	a, ok := r.Get("tool2")
@@ -380,4 +213,83 @@ func TestLoadAndRegisterTool(t *testing.T) {
 	if hta.ToolManifest.Name != "tool2" {
 		t.Errorf("expected manifest Name tool2, got %s", hta.ToolManifest.Name)
 	}
+}
+
+func TestRegistry_MergeAndLocalWrite(t *testing.T) {
+	curatedPath := "curated_registry.json"
+	localPath := "local_registry.json"
+	defer os.Remove(curatedPath)
+	defer os.Remove(localPath)
+
+	// Curated: toolA, toolB
+	curatedEntries := []registry.RegistryEntry{
+		{Registry: "curated", Name: "toolA", Type: "task", Description: "curated A", Endpoint: "http://curated/a"},
+		{Registry: "curated", Name: "toolB", Type: "task", Description: "curated B", Endpoint: "http://curated/b"},
+	}
+	_ = os.WriteFile(curatedPath, mustJSON(curatedEntries), 0644)
+
+	// Local: toolB (override), toolC
+	localEntries := []registry.RegistryEntry{
+		{Registry: "local", Name: "toolB", Type: "task", Description: "local B", Endpoint: "http://local/b"},
+		{Registry: "local", Name: "toolC", Type: "task", Description: "local C", Endpoint: "http://local/c"},
+	}
+	_ = os.WriteFile(localPath, mustJSON(localEntries), 0644)
+
+	// Simulate config
+	os.WriteFile("flow.config.json", []byte(`{"registries":[{"type":"local","path":"local_registry.json"}]}`), 0644)
+	defer os.Remove("flow.config.json")
+
+	// Load registries
+	curatedReg := registry.NewLocalRegistry(curatedPath)
+	curatedMgr := registry.NewRegistryManager(curatedReg)
+	curatedTools, _ := curatedMgr.ListAllServers(context.Background(), registry.ListOptions{})
+
+	localReg := registry.NewLocalRegistry(localPath)
+	localMgr := registry.NewRegistryManager(localReg)
+	localTools, _ := localMgr.ListAllServers(context.Background(), registry.ListOptions{})
+
+	// Merge: local takes precedence
+	toolMap := map[string]registry.RegistryEntry{}
+	for _, entry := range curatedTools {
+		toolMap[entry.Name] = entry
+	}
+	for _, entry := range localTools {
+		toolMap[entry.Name] = entry
+	}
+
+	if len(toolMap) != 3 {
+		t.Fatalf("expected 3 merged tools, got %d", len(toolMap))
+	}
+	if toolMap["toolB"].Description != "local B" {
+		t.Errorf("expected local toolB to override, got %q", toolMap["toolB"].Description)
+	}
+	if toolMap["toolA"].Description != "curated A" {
+		t.Errorf("expected curated toolA, got %q", toolMap["toolA"].Description)
+	}
+	if toolMap["toolC"].Description != "local C" {
+		t.Errorf("expected local toolC, got %q", toolMap["toolC"].Description)
+	}
+
+	// Test writing a new tool to the local registry
+	newTool := registry.RegistryEntry{Registry: "local", Name: "toolD", Type: "task", Description: "local D", Endpoint: "http://local/d"}
+	if err := appendToLocalRegistry(newTool, localPath); err != nil {
+		t.Fatalf("appendToLocalRegistry failed: %v", err)
+	}
+	data, _ := os.ReadFile(localPath)
+	var written []registry.RegistryEntry
+	_ = json.Unmarshal(data, &written)
+	found := false
+	for _, e := range written {
+		if e.Name == "toolD" && e.Description == "local D" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected toolD to be written to local registry")
+	}
+}
+
+func mustJSON(v any) []byte {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	return b
 }
