@@ -14,6 +14,7 @@ import (
 
 	"github.com/awantoch/beemflow/config"
 	mcpmanager "github.com/awantoch/beemflow/mcp"
+	"github.com/awantoch/beemflow/registry"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
 )
@@ -201,7 +202,7 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 	return out, nil
 }
 
-func (a *MCPAdapter) Manifest() *ToolManifest {
+func (a *MCPAdapter) Manifest() *registry.ToolManifest {
 	return nil
 }
 

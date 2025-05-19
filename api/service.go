@@ -7,6 +7,7 @@ import (
 
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/registry"
 	"github.com/google/uuid"
 )
 
@@ -24,8 +25,8 @@ type FlowService interface {
 	ResumeRun(ctx context.Context, token string, event map[string]any) (map[string]any, error)
 	RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.UUID, map[string]any, error)
 	AssistantChat(ctx context.Context, systemPrompt string, userMessages []string) (string, []string, error)
-	ListTools(ctx context.Context) ([]adapter.ToolManifest, error)
-	GetToolManifest(ctx context.Context, name string) (*adapter.ToolManifest, error)
+	ListTools(ctx context.Context) ([]registry.ToolManifest, error)
+	GetToolManifest(ctx context.Context, name string) (*registry.ToolManifest, error)
 }
 
 // defaultService is the default implementation of FlowService.
@@ -79,18 +80,18 @@ func (s *defaultService) AssistantChat(ctx context.Context, systemPrompt string,
 	draft, errs, err := adapter.Execute(ctx, userMessages)
 	return draft, errs, err
 }
-func (s *defaultService) ListTools(ctx context.Context) ([]adapter.ToolManifest, error) {
+func (s *defaultService) ListTools(ctx context.Context) ([]registry.ToolManifest, error) {
 	data, err := ioutil.ReadFile("registry/index.json")
 	if err != nil {
 		return nil, err
 	}
-	var entries []adapter.ToolManifest
+	var entries []registry.ToolManifest
 	if err := json.Unmarshal(data, &entries); err != nil {
 		return nil, err
 	}
 	return entries, nil
 }
-func (s *defaultService) GetToolManifest(ctx context.Context, name string) (*adapter.ToolManifest, error) {
+func (s *defaultService) GetToolManifest(ctx context.Context, name string) (*registry.ToolManifest, error) {
 	entries, err := s.ListTools(ctx)
 	if err != nil {
 		return nil, err

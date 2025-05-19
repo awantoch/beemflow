@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/awantoch/beemflow/registry"
 )
 
 // TestHTTPPostJSONAndGetRaw covers success and error cases for HTTPPostJSON and HTTPGetRaw.
@@ -103,7 +105,7 @@ func TestHTTPAdapter_DefaultInjection(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manifest := &ToolManifest{
+	manifest := &registry.ToolManifest{
 		Name:     "test-defaults",
 		Endpoint: server.URL,
 		Parameters: map[string]any{

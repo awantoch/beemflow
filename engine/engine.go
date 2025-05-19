@@ -13,6 +13,7 @@ import (
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/templater"
 	"github.com/google/uuid"
@@ -51,12 +52,22 @@ func NewEngineWithBlobStore(blobStore blob.BlobStore) *Engine {
 	reg.Register(&adapter.HTTPFetchAdapter{})
 
 	// Load unified registry
-	tools, _, err := adapter.LoadUnifiedRegistry("registry/index.json")
+	localReg := registry.NewLocalRegistry("registry/index.json")
+	regMgr := registry.NewRegistryManager(localReg)
+	tools, err := regMgr.ListAllServers(context.Background(), registry.ListOptions{})
 	if err != nil {
-		logger.Warn("Failed to load unified registry: %v", err)
+		logger.Warn("Failed to load registry: %v", err)
 	} else {
-		for _, manifest := range tools {
-			reg.Register(&adapter.HTTPAdapter{AdapterID: manifest.Name, ToolManifest: manifest})
+		for _, entry := range tools {
+			manifest := &registry.ToolManifest{
+				Name:        entry.Name,
+				Description: entry.Description,
+				Kind:        entry.Kind,
+				Parameters:  entry.Parameters,
+				Endpoint:    entry.Endpoint,
+				Headers:     entry.Headers,
+			}
+			reg.Register(&adapter.HTTPAdapter{AdapterID: entry.Name, ToolManifest: manifest})
 		}
 	}
 
@@ -89,12 +100,22 @@ func NewEngineWithStorage(store storage.Storage) *Engine {
 	reg.Register(&adapter.HTTPFetchAdapter{})
 
 	// Load unified registry
-	tools, _, err := adapter.LoadUnifiedRegistry("registry/index.json")
+	localReg := registry.NewLocalRegistry("registry/index.json")
+	regMgr := registry.NewRegistryManager(localReg)
+	tools, err := regMgr.ListAllServers(context.Background(), registry.ListOptions{})
 	if err != nil {
-		logger.Warn("Failed to load unified registry: %v", err)
+		logger.Warn("Failed to load registry: %v", err)
 	} else {
-		for _, manifest := range tools {
-			reg.Register(&adapter.HTTPAdapter{AdapterID: manifest.Name, ToolManifest: manifest})
+		for _, entry := range tools {
+			manifest := &registry.ToolManifest{
+				Name:        entry.Name,
+				Description: entry.Description,
+				Kind:        entry.Kind,
+				Parameters:  entry.Parameters,
+				Endpoint:    entry.Endpoint,
+				Headers:     entry.Headers,
+			}
+			reg.Register(&adapter.HTTPAdapter{AdapterID: entry.Name, ToolManifest: manifest})
 		}
 	}
 
@@ -698,7 +719,26 @@ func (e *Engine) GetRunByID(ctx context.Context, id uuid.UUID) (*model.Run, erro
 }
 
 // ListMCPServers returns all MCP servers from the registry.
-func (e *Engine) ListMCPServers() ([]*adapter.MCPServerConfig, error) {
-	_, mcps, err := adapter.LoadUnifiedRegistry("registry/index.json")
-	return mcps, err
+func (e *Engine) ListMCPServers() ([]*registry.MCPServerConfig, error) {
+	localReg := registry.NewLocalRegistry("registry/index.json")
+	regMgr := registry.NewRegistryManager(localReg)
+	tools, err := regMgr.ListAllServers(context.Background(), registry.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	var mcps []*registry.MCPServerConfig
+	for _, entry := range tools {
+		if strings.HasPrefix(entry.Name, "mcp://") {
+			mcps = append(mcps, &registry.MCPServerConfig{
+				Name:      entry.Name,
+				Command:   entry.Command,
+				Args:      entry.Args,
+				Env:       entry.Env,
+				Port:      entry.Port,
+				Transport: entry.Transport,
+				Endpoint:  entry.Endpoint,
+			})
+		}
+	}
+	return mcps, nil
 }

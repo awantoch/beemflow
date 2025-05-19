@@ -1,12 +1,17 @@
 package adapter
 
-import "context"
+import (
+	"context"
+	"errors"
+
+	"github.com/awantoch/beemflow/registry"
+)
 
 // Adapter is the interface for all BeemFlow adapters. Implement this to add new tool integrations.
 type Adapter interface {
 	ID() string
 	Execute(ctx context.Context, inputs map[string]any) (map[string]any, error)
-	Manifest() *ToolManifest
+	Manifest() *registry.ToolManifest
 }
 
 // ClosableAdapter is an optional interface for adapters that need cleanup.
@@ -41,10 +46,21 @@ func (r *Registry) LoadAndRegisterTool(name, toolsDir string) error {
 	if _, exists := r.adapters[name]; exists {
 		return nil
 	}
-	loader := &LocalManifestLoader{Dir: toolsDir}
-	manifest, err := loader.LoadManifest(name)
+	localRegistry := registry.NewLocalRegistry(toolsDir)
+	entry, err := localRegistry.GetServer(context.Background(), name)
 	if err != nil {
 		return err
+	}
+	if entry == nil {
+		return errors.New("tool not found")
+	}
+	manifest := &registry.ToolManifest{
+		Name:        entry.Name,
+		Description: entry.Description,
+		Kind:        entry.Kind,
+		Parameters:  entry.Parameters,
+		Endpoint:    entry.Endpoint,
+		Headers:     entry.Headers,
 	}
 	r.Register(&HTTPAdapter{AdapterID: name, ToolManifest: manifest})
 	return nil

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/registry"
 )
 
 // defaultClient is used for HTTP requests with a timeout to avoid hanging.
@@ -79,7 +80,7 @@ func HTTPGetRaw(ctx context.Context, url string, headers map[string]string) (str
 // HTTPAdapter is a generic HTTP-backed tool adapter.
 type HTTPAdapter struct {
 	AdapterID    string
-	ToolManifest *ToolManifest
+	ToolManifest *registry.ToolManifest
 }
 
 // ID returns the unique identifier of the adapter.
@@ -214,11 +215,11 @@ func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (
 	}
 }
 
-func (a *HTTPFetchAdapter) Manifest() *ToolManifest {
+func (a *HTTPFetchAdapter) Manifest() *registry.ToolManifest {
 	return nil
 }
 
-func (a *HTTPAdapter) Manifest() *ToolManifest {
+func (a *HTTPAdapter) Manifest() *registry.ToolManifest {
 	return a.ToolManifest
 }
 

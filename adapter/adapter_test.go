@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/awantoch/beemflow/registry"
 )
 
 // dummyAdapter implements Adapter for testing
@@ -21,7 +23,7 @@ func (d *dummyAdapter) Execute(ctx context.Context, inputs map[string]any) (map[
 	return inputs, nil
 }
 
-func (d *dummyAdapter) Manifest() *ToolManifest {
+func (d *dummyAdapter) Manifest() *registry.ToolManifest {
 	return nil
 }
 
@@ -65,7 +67,7 @@ func TestHTTPAdapter(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manifest := &ToolManifest{
+	manifest := &registry.ToolManifest{
 		Name:     "http",
 		Endpoint: server.URL,
 	}
@@ -357,7 +359,7 @@ func TestLoadAndRegisterTool(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 	// Create manifest file
-	m := &ToolManifest{Name: "tool2", Description: "d", Kind: "task", Parameters: map[string]any{}, Endpoint: "http://x"}
+	m := &registry.ToolManifest{Name: "tool2", Description: "d", Kind: "task", Parameters: map[string]any{}, Endpoint: "http://x"}
 	data, _ := json.Marshal(m)
 	path := dir + "/tool2.json"
 	if err := os.WriteFile(path, data, 0644); err != nil {

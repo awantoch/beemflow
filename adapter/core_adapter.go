@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/registry"
 )
 
 // CoreAdapter is the built-in echo adapter for debugging (consolidated from core_echo_adapter.go).
@@ -25,6 +26,6 @@ func (a *CoreAdapter) Execute(ctx context.Context, inputs map[string]any) (map[s
 	return inputs, nil
 }
 
-func (a *CoreAdapter) Manifest() *ToolManifest {
+func (a *CoreAdapter) Manifest() *registry.ToolManifest {
 	return nil
 }
