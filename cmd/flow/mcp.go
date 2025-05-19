@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -56,15 +57,26 @@ func newMCPCmd() *cobra.Command {
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				qn := args[0]
-				// Load existing config (do not inject defaults) to preserve only user overrides
-				cfg, err := config.LoadConfig(*configFile)
+				// Read existing config as raw JSON (preserve only user overrides)
+				var doc map[string]any
+				data, err := os.ReadFile(*configFile)
 				if err != nil {
 					if os.IsNotExist(err) {
-						cfg = &config.Config{}
+						doc = map[string]any{}
 					} else {
 						return err
 					}
+				} else {
+					if err := json.Unmarshal(data, &doc); err != nil {
+						return fmt.Errorf("failed to parse %s: %w", *configFile, err)
+					}
 				}
+				// Ensure mcpServers map exists
+				mcpMap, ok := doc["mcpServers"].(map[string]any)
+				if !ok {
+					mcpMap = map[string]any{}
+				}
+				// Fetch spec from Smithery
 				ctx := context.Background()
 				apiKey := os.Getenv("SMITHERY_API_KEY")
 				if apiKey == "" {
@@ -75,11 +87,16 @@ func newMCPCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				config.UpsertMCPServer(cfg, qn, spec)
-				// Remove registry overrides so built-in registries are not persisted
-				cfg.Registries = nil
-				if err := config.SaveConfig(*configFile, cfg); err != nil {
-					return err
+				// Patch mcpServers
+				mcpMap[qn] = spec
+				doc["mcpServers"] = mcpMap
+				// Write updated config
+				out, err := json.MarshalIndent(doc, "", "  ")
+				if err != nil {
+					return fmt.Errorf("failed to serialize config: %w", err)
+				}
+				if err := os.WriteFile(*configFile, out, 0644); err != nil {
+					return fmt.Errorf("failed to write %s: %w", *configFile, err)
 				}
 				fmt.Fprintf(os.Stdout, "Installed MCP server %s to %s (mcpServers)\n", qn, *configFile)
 				return nil
