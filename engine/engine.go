@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -52,27 +51,13 @@ func NewEngineWithBlobStore(blobStore blob.BlobStore) *Engine {
 	reg.Register(adapter.NewMCPAdapter())
 	reg.Register(&adapter.HTTPFetchAdapter{})
 
-	// Load openai.chat manifest
-	var openaiManifest *adapter.ToolManifest
-	manifestPath := filepath.Join("tools", "openai.json")
-	if f, err := os.ReadFile(manifestPath); err == nil {
-		var m adapter.ToolManifest
-		if err := json.Unmarshal(f, &m); err == nil {
-			openaiManifest = &m
-		}
-	}
-	reg.Register(&adapter.OpenAIAdapter{ManifestField: openaiManifest})
-
-	// Auto-register all tools in tools/ directory
-	toolsDir := "tools"
-	entries, err := os.ReadDir(toolsDir)
-	if err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
-				continue
-			}
-			name := entry.Name()[:len(entry.Name())-len(".json")]
-			_ = reg.LoadAndRegisterTool(name, toolsDir) // ignore errors for now
+	// Load unified registry
+	tools, _, err := adapter.LoadUnifiedRegistry("registry/index.json")
+	if err != nil {
+		logger.Warn("Failed to load unified registry: %v", err)
+	} else {
+		for _, manifest := range tools {
+			reg.Register(&adapter.HTTPAdapter{AdapterID: manifest.Name, ToolManifest: manifest})
 		}
 	}
 
@@ -104,27 +89,13 @@ func NewEngineWithStorage(store storage.Storage) *Engine {
 	reg.Register(adapter.NewMCPAdapter())
 	reg.Register(&adapter.HTTPFetchAdapter{})
 
-	// Load openai.chat manifest
-	var openaiManifest *adapter.ToolManifest
-	manifestPath := filepath.Join("tools", "openai.json")
-	if f, err := os.ReadFile(manifestPath); err == nil {
-		var m adapter.ToolManifest
-		if err := json.Unmarshal(f, &m); err == nil {
-			openaiManifest = &m
-		}
-	}
-	reg.Register(&adapter.OpenAIAdapter{ManifestField: openaiManifest})
-
-	// Auto-register all tools in tools/ directory
-	toolsDir := "tools"
-	entries, err := os.ReadDir(toolsDir)
-	if err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
-				continue
-			}
-			name := entry.Name()[:len(entry.Name())-len(".json")]
-			_ = reg.LoadAndRegisterTool(name, toolsDir) // ignore errors for now
+	// Load unified registry
+	tools, _, err := adapter.LoadUnifiedRegistry("registry/index.json")
+	if err != nil {
+		logger.Warn("Failed to load unified registry: %v", err)
+	} else {
+		for _, manifest := range tools {
+			reg.Register(&adapter.HTTPAdapter{AdapterID: manifest.Name, ToolManifest: manifest})
 		}
 	}
 

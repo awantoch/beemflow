@@ -1,7 +1,0 @@
-{
-  "supabase": {
-    "command": "npx",
-    "args": ["-y", "@supabase/mcp-server-postgrest@latest"],
-    "env": { "SUPABASE_URL": "$env", "SUPABASE_ANON_KEY": "$env" }
-  }
-} 

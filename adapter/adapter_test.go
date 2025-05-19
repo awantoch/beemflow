@@ -69,7 +69,7 @@ func TestHTTPAdapter(t *testing.T) {
 		Name:     "http",
 		Endpoint: server.URL,
 	}
-	a := &HTTPAdapter{id: "http", manifest: manifest}
+	a := &HTTPAdapter{AdapterID: "http", ToolManifest: manifest}
 	if a.ID() != "http" {
 		t.Errorf("expected ID 'http', got '%s'", a.ID())
 	}
@@ -203,7 +203,10 @@ func TestRemoteRegistryLoader_SupabaseFromCursorMCP(t *testing.T) {
 	}))
 	defer server.Close()
 
-	loader := NewRemoteRegistryLoader(server.URL + "/index.json")
+	os.Setenv("BEEMFLOW_REGISTRY", server.URL+"/index.json")
+	defer os.Unsetenv("BEEMFLOW_REGISTRY")
+
+	loader := NewRemoteRegistryLoader("")
 	manifest, err := loader.LoadManifest("supabase.query")
 	if err != nil {
 		t.Fatalf("failed to load manifest: %v", err)
@@ -277,6 +280,10 @@ func TestMCPAdapter_SupabaseQuery(t *testing.T) {
 }
 
 func TestMCPAdapter_AirtableCreateRecord(t *testing.T) {
+	// Create a minimal registry/index.json to satisfy registry lookup
+	os.MkdirAll("registry", 0755)
+	_ = os.WriteFile("registry/index.json", []byte("[]"), 0644)
+	defer os.Remove("registry/index.json")
 	// t.Skip("Skipping Airtable HTTP fallback test; HTTP transport not supported in this adapter version")
 	// Simulate an Airtable MCP server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -368,7 +375,7 @@ func TestLoadAndRegisterTool(t *testing.T) {
 	if !ok {
 		t.Errorf("expected HTTPAdapter, got %T", a)
 	}
-	if hta.manifest.Name != "tool2" {
-		t.Errorf("expected manifest Name tool2, got %s", hta.manifest.Name)
+	if hta.ToolManifest.Name != "tool2" {
+		t.Errorf("expected manifest Name tool2, got %s", hta.ToolManifest.Name)
 	}
 }

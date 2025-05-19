@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -76,22 +77,59 @@ func HTTPGetRaw(ctx context.Context, url string, headers map[string]string) (str
 
 // HTTPAdapter is a generic HTTP-backed tool adapter.
 type HTTPAdapter struct {
-	id       string
-	manifest *ToolManifest
+	AdapterID    string
+	ToolManifest *ToolManifest
 }
 
 // ID returns the unique identifier of the adapter.
 func (a *HTTPAdapter) ID() string {
-	return a.id
+	return a.AdapterID
+}
+
+// injectDefaults merges manifest defaults into inputs for any missing fields.
+func injectDefaults(params map[string]any, inputs map[string]any) {
+	props, ok := params["properties"].(map[string]any)
+	if !ok {
+		return
+	}
+	for k, v := range props {
+		prop, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, present := inputs[k]; !present {
+			if def, hasDefault := prop["default"]; hasDefault {
+				inputs[k] = def
+			}
+		}
+	}
 }
 
 // Execute calls the manifest's endpoint with JSON inputs and returns parsed JSON output.
 func (a *HTTPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
-	if a.manifest == nil || a.manifest.Endpoint == "" {
-		return nil, fmt.Errorf("no endpoint for tool %s", a.id)
+	if a.ToolManifest == nil || a.ToolManifest.Endpoint == "" {
+		return nil, fmt.Errorf("no endpoint for tool %s", a.AdapterID)
+	}
+	// Inject manifest defaults for missing fields
+	if a.ToolManifest.Parameters != nil {
+		injectDefaults(a.ToolManifest.Parameters, inputs)
+	}
+	// Merge headers: manifest headers (with $env expansion) + step input headers (step input wins)
+	headers := map[string]string{}
+	if a.ToolManifest.Headers != nil {
+		for k, v := range expandEnvHeaders(a.ToolManifest.Headers) {
+			headers[k] = v
+		}
+	}
+	if h, ok := inputs["headers"].(map[string]any); ok {
+		for k, v := range h {
+			if s, ok := v.(string); ok {
+				headers[k] = s
+			}
+		}
 	}
 	var out map[string]any
-	err := HTTPPostJSON(ctx, a.manifest.Endpoint, inputs, nil, &out)
+	err := HTTPPostJSON(ctx, a.ToolManifest.Endpoint, inputs, headers, &out)
 	return out, err
 }
 
@@ -177,4 +215,30 @@ func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (
 
 func (a *HTTPFetchAdapter) Manifest() *ToolManifest {
 	return nil
+}
+
+func (a *HTTPAdapter) Manifest() *ToolManifest {
+	return a.ToolManifest
+}
+
+func expandEnvHeaders(headers map[string]string) map[string]string {
+	out := make(map[string]string, len(headers))
+	for k, v := range headers {
+		newVal := v
+		for {
+			start := strings.Index(newVal, "$env:")
+			if start == -1 {
+				break
+			}
+			end := start + 5
+			for end < len(newVal) && (newVal[end] == '_' || newVal[end] == '-' || (newVal[end] >= 'A' && newVal[end] <= 'Z') || (newVal[end] >= 'a' && newVal[end] <= 'z') || (newVal[end] >= '0' && newVal[end] <= '9')) {
+				end++
+			}
+			varName := newVal[start+5 : end]
+			envVal := os.Getenv(varName)
+			newVal = newVal[:start] + envVal + newVal[end:]
+		}
+		out[k] = newVal
+	}
+	return out
 }

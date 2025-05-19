@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -352,23 +353,23 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// toolsIndexHandler returns a JSON list of all registered tool manifests.
+// toolsIndexHandler returns a JSON list of all registered tool manifests from the registry index.json.
 func toolsIndexHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	var list []adapter.ToolManifest
-	for _, a := range eng.Adapters.All() {
-		if m := a.Manifest(); m != nil {
-			list = append(list, *m)
-		}
+	data, err := ioutil.ReadFile("registry/index.json")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("failed to read registry index"))
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(list)
+	w.Write(data)
 }
 
-// toolsManifestHandler returns the manifest for a single tool by name.
+// toolsManifestHandler returns the manifest for a single tool by name from the registry index.json.
 func toolsManifestHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -376,11 +377,24 @@ func toolsManifestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	nameWithExt := strings.TrimPrefix(r.URL.Path, "/tools/")
 	name := strings.TrimSuffix(nameWithExt, ".json")
-	a, ok := eng.Adapters.Get(name)
-	if !ok || a.Manifest() == nil {
-		w.WriteHeader(http.StatusNotFound)
+	data, err := ioutil.ReadFile("registry/index.json")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("failed to read registry index"))
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(a.Manifest())
+	var entries []adapter.ToolManifest
+	if err := json.Unmarshal(data, &entries); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("failed to parse registry index"))
+		return
+	}
+	for _, entry := range entries {
+		if entry.Name == name {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(entry)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNotFound)
 }

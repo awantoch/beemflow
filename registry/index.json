@@ -1,0 +1,67 @@
+[
+  {
+    "type": "tool",
+    "name": "http.fetch",
+    "description": "Fetches a URL via HTTP GET and returns the response body as text.",
+    "kind": "task",
+    "parameters": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string", "description": "The URL to fetch." },
+        "headers": {
+          "type": "object",
+          "description": "Optional HTTP headers to send.",
+          "additionalProperties": { "type": "string" },
+          "default": {}
+        }
+      }
+    }
+  },
+  {
+    "type": "tool",
+    "name": "openai",
+    "description": "Call OpenAI's Chat Completions API (v1/chat/completions) for LLM and function-calling tasks.",
+    "kind": "task",
+    "parameters": {
+      "type": "object",
+      "required": ["model", "messages"],
+      "properties": {
+        "model": { "type": "string", "description": "The OpenAI model to use (e.g., gpt-4o)." },
+        "messages": { "type": "array", "description": "Chat messages.", "items": { "type": "object" } }
+      }
+    },
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "headers": {
+      "Authorization": "Bearer $env:OPENAI_API_KEY"
+    }
+  },
+  {
+    "type": "mcp_server",
+    "name": "airtable",
+    "command": "npx",
+    "args": ["-y", "airtable-mcp-server"],
+    "env": { "AIRTABLE_API_KEY": "$env" }
+  },
+  {
+    "type": "tool",
+    "name": "anthropic",
+    "description": "Call Anthropic's Claude models via OpenAI-compatible API.",
+    "kind": "task",
+    "parameters": {
+      "type": "object",
+      "required": ["model", "messages"],
+      "properties": {
+        "model": { "type": "string", "description": "Claude model name (e.g., claude-3-7-sonnet-20250219)" },
+        "messages": { "type": "array", "description": "Chat messages.", "items": { "type": "object" } },
+        "max_tokens": { "type": "integer", "description": "Maximum number of tokens to generate.", "default": 1024 }
+      }
+    },
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "headers": {
+      "x-api-key": "$env:ANTHROPIC_API_KEY",
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01"
+    }
+  }
+] 

@@ -84,48 +84,90 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// GetMergedMCPServerConfig returns the merged MCPServerConfig for a given host, merging the main config and curated config from mcp_servers/<host>.json if available.
-func GetMergedMCPServerConfig(cfg *Config, host string) (MCPServerConfig, error) {
-	info, ok := cfg.MCPServers[host]
-	if !ok {
-		return MCPServerConfig{}, fmt.Errorf("MCP server '%s' not found in config", host)
+// Minimal MCP server registry loader (no import cycle)
+type registryEntry struct {
+	Type      string            `json:"type"`
+	Name      string            `json:"name"`
+	Command   string            `json:"command,omitempty"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	Port      int               `json:"port,omitempty"`
+	Transport string            `json:"transport,omitempty"`
+	Endpoint2 string            `json:"endpoint2,omitempty"`
+	Endpoint  string            `json:"endpoint,omitempty"`
+}
+
+func loadMCPServersFromRegistry(path string) (map[string]MCPServerConfig, error) {
+	// Use BEEMFLOW_REGISTRY env var if set
+	if envPath := os.Getenv("BEEMFLOW_REGISTRY"); envPath != "" {
+		path = envPath
 	}
-	curatedPath := "mcp_servers/" + host + ".json"
-	data, err := os.ReadFile(curatedPath)
-	if err == nil {
-		var m map[string]MCPServerConfig
-		if err := json.Unmarshal(data, &m); err == nil {
-			if ci, ok2 := m[host]; ok2 {
-				merged := ci
-				// Args: prefer original if present
-				if len(info.Args) > 0 {
-					merged.Args = info.Args
-				}
-				// Env: merge, original overrides curated
-				if merged.Env == nil {
-					merged.Env = map[string]string{}
-				}
-				if info.Env != nil {
-					for k, v := range info.Env {
-						merged.Env[k] = v
-					}
-				}
-				// Port: prefer original if present
-				if info.Port != 0 {
-					merged.Port = info.Port
-				}
-				// Transport: prefer original if present
-				if info.Transport != "" {
-					merged.Transport = info.Transport
-				}
-				// Endpoint: prefer original if present
-				if info.Endpoint != "" {
-					merged.Endpoint = info.Endpoint
-				}
-				// Command: always use curated (even if empty)
-				info = merged
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var entries []registryEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil, err
+	}
+	out := map[string]MCPServerConfig{}
+	for _, e := range entries {
+		if e.Type == "mcp_server" {
+			out[e.Name] = MCPServerConfig{
+				Command:   e.Command,
+				Args:      e.Args,
+				Env:       e.Env,
+				Port:      e.Port,
+				Transport: e.Transport,
+				Endpoint:  e.Endpoint2,
 			}
 		}
 	}
-	return info, nil
+	return out, nil
+}
+
+// GetMergedMCPServerConfig returns the merged MCPServerConfig for a given host, merging the registry (registry/index.json) and config file (flow.config.json).
+func GetMergedMCPServerConfig(cfg *Config, host string) (MCPServerConfig, error) {
+	regMap, err := loadMCPServersFromRegistry("registry/index.json")
+	if err != nil {
+		return MCPServerConfig{}, err
+	}
+	// 2. Load override from config file
+	var override MCPServerConfig
+	ok := false
+	if cfg != nil && cfg.MCPServers != nil {
+		override, ok = cfg.MCPServers[host]
+	}
+	// 3. Merge: config wins, then registry
+	base, found := regMap[host]
+	if !found && !ok {
+		return MCPServerConfig{}, fmt.Errorf("MCP server '%s' not found in registry or config", host)
+	}
+	merged := base
+	if ok {
+		if override.Command != "" {
+			merged.Command = override.Command
+		}
+		if len(override.Args) > 0 {
+			merged.Args = override.Args
+		}
+		if override.Env != nil {
+			if merged.Env == nil {
+				merged.Env = map[string]string{}
+			}
+			for k, v := range override.Env {
+				merged.Env[k] = v
+			}
+		}
+		if override.Port != 0 {
+			merged.Port = override.Port
+		}
+		if override.Transport != "" {
+			merged.Transport = override.Transport
+		}
+		if override.Endpoint != "" {
+			merged.Endpoint = override.Endpoint
+		}
+	}
+	return merged, nil
 }

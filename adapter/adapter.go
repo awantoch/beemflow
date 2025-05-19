@@ -46,12 +46,8 @@ func (r *Registry) LoadAndRegisterTool(name, toolsDir string) error {
 	if err != nil {
 		return err
 	}
-	r.Register(&HTTPAdapter{id: name, manifest: manifest})
+	r.Register(&HTTPAdapter{AdapterID: name, ToolManifest: manifest})
 	return nil
-}
-
-func (a *HTTPAdapter) Manifest() *ToolManifest {
-	return a.manifest
 }
 
 // Add CloseAll to Registry to close all adapters that support it.

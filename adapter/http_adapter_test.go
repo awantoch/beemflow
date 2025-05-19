@@ -90,3 +90,35 @@ func TestHTTPFetchAdapter(t *testing.T) {
 		t.Errorf("expected body=data, got %v", res)
 	}
 }
+
+func TestHTTPAdapter_DefaultInjection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["foo"] != "bar" {
+			t.Errorf("expected foo=bar in request body, got %v", body["foo"])
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	manifest := &ToolManifest{
+		Name:     "test-defaults",
+		Endpoint: server.URL,
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"foo": map[string]any{"type": "string", "default": "bar"},
+			},
+		},
+	}
+	a := &HTTPAdapter{AdapterID: "test-defaults", ToolManifest: manifest}
+	out, err := a.Execute(context.Background(), map[string]any{})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if out["ok"] != true {
+		t.Errorf("expected ok=true in response, got %v", out)
+	}
+}

@@ -1,684 +1,360 @@
-AGENTFLOW — ULTRA‑COMPREHENSIVE SPECIFICATION
-==============================================
+# BeemFlow Protocol & Specification
 
-──────────────────────────────────────────────
-1. PURPOSE & VISION
-──────────────────────────────────────────────
-• Text‑first, open protocol to define and run AI‑powered, event‑driven automations.  
-• One `.flow.yaml` file expresses:
-  – Triggers (webhook / cron / bus / CLI)  
-  – Steps (tool calls)  
-  – Control‑flow (if, loop, parallel)  
-  – Retries & back‑offs  
-  – Durable waits on external callbacks  
-  – Error routing (`catch`)  
-• Spec‑first, GUI‑later: file is Git‑diff‑able source‑of‑truth.  
-• Runtime is plug‑and‑play: storage/blob/event back‑ends chosen via JSON.  
-• Integrations are "tools" described by JSON‑Schema manifests (OpenAI tool spec).  
-• Supports MCP endpoints (`mcp://server/tool`) + GitHub‑sourced adapters.  
-• Flows run unchanged in SaaS cloud or self‑hosted engine.
+---
 
-──────────────────────────────────────────────
-2. YAML FILE GRAMMAR
-──────────────────────────────────────────────
+This document is the **canonical, LLM-ingestible specification** for BeemFlow. It is fully self-contained: all YAML grammar, config, API, and extension patterns are included below.
+
+---
+
+## 1. Purpose & Vision
+
+BeemFlow is a text-first, open protocol and runtime for AI-powered, event-driven automations. It provides a **protocol-agnostic, consistent interface** for flows and tools—CLI, HTTP, and MCP clients all speak the same language. All tools (local, HTTP, MCP) are available in a single, LLM-native registry.
+
+---
+
+## 2. YAML File Grammar
+
+A BeemFlow flow is defined in a single YAML file:
+
 ```yaml
 name:       string                       # required
 version:    string                       # optional semver
 on:         list|object                  # triggers
 vars:       map[string]                  # optional constants / secret refs
-steps:      array of step objects         # required
+steps:      array of step objects        # required
 catch:      array of step objects        # optional global error flow (ordered list)
 ```
 
-**Trigger kinds**
-```yaml
-on:
-  - event: webhook.shopify.order_created   # manifest auto‑registers webhook
-  - cron:  "0 2 1 * *"                     # 02:00 on 1st monthly
-  - eventbus.inventory.low_stock
-  - cli.manual
-```
+### Example Flow
 
-──────────────────────────────────────────────
-3. STEP DEFINITION KEYS
-──────────────────────────────────────────────
-```yaml
-label:                                  # e.g., fetch_tweet:
-  use: string                           # tool identifier
-  with: object                          # args validated by manifest
-  if:  expression                       # skip/branch
-  foreach: expression                   # loop array
-    as: string                          # loop var
-    do: sequence                        # nested steps
-  parallel: true                        # run all children in parallel (fan-out), parent is join (fan-in)
-  steps:
-    - id: a
-      use: ...
-    - id: b
-      use: ...
-  retry: { attempts: n, delay_sec: m }  # automatic retry
-  await_event:                          # durable wait
-    source: string
-    match:  object
-    timeout: 7d|5h|60s
-  wait: { seconds: 30 } | { until: ts } # sleep
-```
-> Only block-parallel (`parallel: true` with nested `steps:`) is supported. The legacy array form (`parallel: [id, id]`) is not implemented and is considered a roadmap feature.
-
-**Templating** `{{ … }}`  
-Scopes: `event`, `vars`, previous step outputs (`label.field`), loop locals, helper funcs (`now()`, `duration(n,'days')`, `join`, `map`, `length`, `base64()`, etc.).
-- Secrets can be injected from environment, event, or secrets backend.
-
-──────────────────────────────────────────────
-4. TOOL IDENTIFIER RESOLUTION
-──────────────────────────────────────────────
-Priority order when resolving `use:` value:
-
-1. **Local manifests**: `/tools/<name>.json` (auto-registered as HTTPAdapters).
-2. **Community hub**: `https://hub.beemflow.com/index.json` (supports `tool@version`).
-3. **MCP servers**: `mcp://server/tool` → fetch manifest at `/.well-known/beemflow.json` (MCP config is merged from main config and `mcp_servers/`).
-4. **GitHub shorthand**: `github:owner/repo[/path][@ref]`
-   • default `path=tools/<tool>.json`, default `ref=main`.  
-   • Runtime clones / archives repo at `ref`, caches manifest.
-
-──────────────────────────────────────────────
-5. TOOL MANIFEST (JSON‑SCHEMA)
-──────────────────────────────────────────────
-```jsonc
-{
-  "name": "shippo.label.create",
-  "description": "Buy a shipping label via Shippo",
-  "kind": "task",               // or "event"
-  "parameters": {
-    "type": "object",
-    "required": ["order_id","ship_from","ship_to"],
-    "properties": {
-      "order_id":  { "type": "string" },
-      "ship_from": { "$ref": "#/definitions/address" },
-      "ship_to":   { "$ref": "#/definitions/address" }
-    },
-    "definitions": {
-      "address": {
-        "type": "object",
-        "required": ["name","street","city","zip"],
-        "properties": {
-          "name":   { "type": "string" },
-          "street": { "type": "string" },
-          "city":   { "type": "string" },
-          "zip":    { "type": "string" }
-        }
-      }
-    }
-  },
-  "event": {                    // present only if kind="event"
-    "source": "shopify",
-    "topic": "orders/create",
-    "sample": { /* webhook example */ }
-  }
-}
-```
-
-──────────────────────────────────────────────
-6. DURABLE WAITS & CALLBACKS
-──────────────────────────────────────────────
-`await_event` step → adapter returns `WAIT(token)` → runtime:
-• Saves run/step state to Storage adapter.  
-• Inserts token into `events_waiting`.  
-External system calls `POST /resume/{token}` (HMAC‑signed) → runtime loads run, removes wait, continues DAG.
-
-──────────────────────────────────────────────
-7. RUNTIME HTTP API
-──────────────────────────────────────────────
-```
-POST /runs              { flow_id, event }         → { run_id, status }
-GET  /runs/{id}                                       status + outputs
-POST /resume/{token}                                  resume paused run
-GET  /files/{file_id}                                 presigned blob
-```
-
-──────────────────────────────────────────────
-8. ADAPTER INTERFACES
-──────────────────────────────────────────────
-```ts
-// Storage
-interface Storage {
-  saveRun(run: Run):               Promise<void>;
-  getRun(id: UUID):                Promise<Run|null>;
-  saveStep(step: Step):            Promise<void>;
-  getSteps(runId: UUID):           Promise<Step[]>;
-  registerWait(token: UUID, wakeAt?:Date): Promise<void>;
-  resolveWait(token: UUID):        Promise<Run|null>;
-}
-
-// Blob Store
-interface BlobStore {
-  put(buf:ArrayBuffer, mime:string, filename?:string): Promise<string>; // URL
-  get(url:string): Promise<ArrayBuffer>;
-}
-
-// Event Bus
-interface EventBus {
-  publish(topic:string, payload:any): Promise<void>;
-  subscribe(topic:string, cb:(p:any)=>void): Unsub;
-}
-```
-Reference adapters:  
-Storage `memory | sqlite | postgres | dynamo | cockroachdb`  
-Blob    `inline-base64 | s3 | gcs | minio`  
-Event   `in-proc | redis | nats | sns`
-
-──────────────────────────────────────────────
-9. RUNTIME CONFIG (JSON)
-──────────────────────────────────────────────
-```json
-{
-  "storage": { "driver": "postgres", "dsn": "postgres://user:pw@host/db" },
-  "blob":    { "driver": "filesystem", "directory": "./beemflow/files" },
-  "event":   { "driver": "redis",    "url": "redis://host:6379" },
-  "registries": [
-    "https://hub.beemflow.com/index.json",
-    "https://raw.githubusercontent.com/my-org/tools/main/index.json"
-  ],
-  "mcp_servers": {
-    "airtable-mcp-server": {
-      "install_cmd": ["npx", "-y", "airtable-mcp-server"],
-      "required_env": ["AIRTABLE_API_KEY"],
-      "port": 3030
-    },
-    "supabase-mcp-postgrest": {
-      "install_cmd": ["npx", "-y", "@supabase/mcp-server-postgrest@latest"],
-      "required_env": ["SUPABASE_URL", "SUPABASE_ANON_KEY"],
-      "port": 3030
-    }
-  }
-}
-```
-Omit adapters for dev quick‑start: falls back to in‑memory + base64.
-
-**Blob Store Drivers:**
-- `filesystem` (default, recommended for local/dev/prod): stores blobs as files in a configurable directory on disk.
-- `inline-base64` (dev): stores blobs in memory as base64-encoded strings.
-- `s3`, `gcs`, `minio`: for distributed/cloud deployments.
-
-**Filesystem Blob Store Example:**
-```json
-{
-  "blob": {
-    "driver": "filesystem",
-    "directory": "./beemflow-files"
-  }
-}
-```
-- `driver`: Must be set to `filesystem` to use the local disk blob store.
-- `directory`: Path to the directory where blobs will be stored. This directory will be created if it does not exist.
-
-**S3 Example:**
-```json
-{
-  "blob": {
-    "driver": "s3",
-    "bucket": "beemflow-files"
-  }
-}
-```
-
-──────────────────────────────────────────────
-10. PROJECT SKELETON
-──────────────────────────────────────────────
-```
-my-beemflow/
-├ flows/                 # YAML specs
-│  └ my_flow.flow.yaml
-├ tools/                 # optional manifests
-├ adapters/              # optional custom adapters
-├ runtime.config.json    # selects back‑ends
-├ .env                   # secrets (ignored)
-└ README.md
-```
-
-──────────────────────────────────────────────
-11. CLI COMMANDS
-──────────────────────────────────────────────
-```bash
-flow serve --config runtime.config.json    # start engine
-flow run [--config runtime.config.json] <flow> --event event.json         # run once (with optional config)
-flow lint <file>                           # validate spec
-flow graph <file> -o diagram.svg           # Mermaid DAG
-flow tool scaffold <tool.name>             # generate manifest+stub
-flow validate <file> [--dry-run]           # validate and simulate a flow without executing adapters
-flow test <file>                           # run unit tests for a flow using mock adapters
-```
-
-──────────────────────────────────────────────
-12. SECURITY PRACTICES
-──────────────────────────────────────────────
-• Secrets can be injected from env, event, or secrets backend.  
-• `await_event` callbacks: HMAC signature.  
-• Step‑level timeout/memory caps. (roadmap)  
-• SQL Row‑Level Security for multi‑tenant. (roadmap)  
-• On error → dump `context` JSON via `blob.upload` for forensics.
-
-──────────────────────────────────────────────
-13. COMPLETE EXAMPLE FLOWS
-──────────────────────────────────────────────
-
-───────────────────────────────
-A. HELLO WORLD (10 lines)
-───────────────────────────────
 ```yaml
 name: hello
-on:   cli.manual
+on: cli.manual
 steps:
   - id: greet
-    use: openai.chat
-    with: { system: "Friendly AI", text: "Hello, world!" }
+    use: core.echo
+    with:
+      text: "Hello, BeemFlow!"
   - id: print
     use: core.echo
-    with: { text: "{{greet.text}}" }
+    with:
+      text: "{{.outputs.greet.text}}"
 ```
 
-───────────────────────────────
-B. TWITTER → INSTAGRAM (30 lines)
-───────────────────────────────
+---
+
+## 3. Step Definition Keys
+
+Each step in `steps:` supports the following keys:
+
 ```yaml
-name: tweet_to_instagram
-on:
-  - event: webhook.twitter.tweet
-
-steps:
-  - id: fetch_tweet
-    use: twitter.tweet.get
-    with:
-      id: "{{event.id}}"
-
-  - id: rewrite
-    use: openai.chat
-    with:
-      text: "{{fetch_tweet.text}}"
-      style: "instagram"
-
-  - id: post_instagram
-    use: instagram.media.create
-    with:
-      caption: "{{rewrite.text}}"
-      image_url: "{{fetch_tweet.media_url}}"
+- id: string (required)
+  use: string (tool identifier)
+  with: object (tool inputs)
+  if: expression (optional)
+  foreach: expression (optional)
+    as: string
+    do: sequence
+  parallel: true (optional, block-parallel only)
+    steps: [ ... ]
+  retry: { attempts: n, delay_sec: m } (optional)
+  await_event: { source, match, timeout } (optional)
+  wait: { seconds: n } | { until: ts } (optional)
+  depends_on: [step ids] (optional)
 ```
 
-───────────────────────────────
-C. MARKETING "LAUNCH BLAST" MULTI‑CHANNEL
-───────────────────────────────
-```yaml
-name: launch_blast
-on:
-  - webhook.product_feature
+- Only block-parallel (`parallel: true` with nested `steps:`) is supported.
+- Templating: `{{ ... }}` for referencing event, vars, outputs, helpers.
 
-vars:
-  wait_between_polls: 30
+---
 
-steps:
-  search_docs:
-    use: docs.search
-    with: { query: "{{event.feature}}", top_k: 5 }
+## 4. Tool Registry & Resolution
 
-  marketing_context:
-    use: openai.chat
-    with:
-      system:  "You are product marketing."
-      text: |
-        ### Feature
-        {{event.feature}}
-        ### Docs
-        {{search_docs.results | join('\n\n')}}
-      max_tokens: 400
+Tools are auto-discovered and prioritized as follows:
+1. **Local manifests**: `tools/<name>.json`
+2. **MCP servers**: `mcp://server/tool` (auto-discovered at runtime)
+3. **Remote registries**: e.g. `https://hub.beemflow.com/index.json`
+4. **GitHub shorthand**: `github:owner/repo[/path][@ref]`
 
-  gen_copy:
-    use: openai.chat
-    with:
-      function_schema: |
-        { "name":"mk_copy","parameters":{
-          "type":"object","properties":{
-            "twitter":{"type":"array","items":{"type":"string"}},
-            "instagram":{"type":"string"},
-            "facebook":{"type":"string"}
-        }}}
-      prompt: |
-        Write 3 Tweets, 1 IG caption, 1 FB post about:
-        {{marketing_context.summary}}
+All tools are exposed in a single, LLM-native registry for use in flows, CLI, HTTP, MCP, or LLMs.
 
-  airtable_row:
-    use: airtable.records.create
-    with:
-      base_id: "{{secrets.AIR_BASE}}"
-      table:   "Launch Copy"
-      fields:
-        Feature:   "{{event.feature}}"
-        Twitter:   "{{gen_copy.twitter | join('\n\n---\n\n')}}"
-        Instagram: "{{gen_copy.instagram}}"
-        Facebook:  "{{gen_copy.facebook}}"
-        Status:    "Pending"
+**Registry Resolution Order:**
+1. If the `BEEMFLOW_REGISTRY` environment variable is set, it is used.
+2. If `registry/index.json` exists, it is used.
+3. Otherwise, the public hub at `https://hub.beemflow.com/index.json` is used.
 
-  await_approval:
-    await_event:
-      source: airtable
-      match:
-        record_id: "{{airtable_row.id}}"
-        field:     Status
-        equals:    Approved
+---
 
-  publish_all:
-    parallel:
-      - path: push_twitter
-      - path: push_instagram
-      - path: push_facebook
+## 5. Protocol-Agnostic API (CLI, HTTP, MCP)
 
-  push_twitter:
-    foreach: "{{gen_copy.twitter}}"
-    as: tweet
-    do:
-      - step_id: post_tw
-        use: twitter.tweet.create
-        with: { text: "{{tweet}}" }
+BeemFlow exposes a consistent interface for all operations:
 
-  push_instagram:
-    use: instagram.media.create
-    with:
-      caption: "{{gen_copy.instagram}}"
-      image_url: "{{event.image_url}}"
+| Operation         | CLI Command                  | HTTP Endpoint                | MCP Tool Name      |
+|-------------------|-----------------------------|------------------------------|--------------------|
+| List flows        | `flow list`                  | `GET /runs`                  | `listFlows`        |
+| Get flow          | `flow get <name>`            | (not exposed)                | `getFlow`          |
+| Validate flow     | `flow lint <file>`           | `POST /validate`             | `validateFlow`     |
+| Run flow          | `flow run <name> [--event]`  | `POST /runs`                 | `startRun`         |
+| Get run status    | `flow status <run_id>`       | `GET /runs/{id}`             | `getRun`           |
+| Resume run        | `flow resume <token>`        | `POST /resume/{token}`       | (not exposed)      |
+| Test flow         | `flow test <file>`           | `POST /test`                 | (not exposed)      |
+| Graph flow        | `flow graph <file>`          | `GET /graph`                 | `graphFlow`        |
+| List tools        | `flow tools`                 | `GET /tools`                 | (not exposed)      |
+| Get tool manifest | (n/a)                        | `GET /tools/{name}`          | (not exposed)      |
+| Inline run        | (n/a)                        | `POST /runs/inline`          | `flow.execute`     |
+| Assistant         | (n/a)                        | `POST /assistant/chat`       | `beemflow.assistant`|
 
-  push_facebook:
-    use: facebook.post.create
-    with: { message: "{{gen_copy.facebook}}" }
+All endpoints accept/return JSON.
 
-  done:
-    use: core.log.info
-    with: { message: "Launch blast complete" }
+### Example: Run a Flow (HTTP)
+
+**Request:**
+```http
+POST /runs
+Content-Type: application/json
+
+{
+  "flow": "hello",
+  "event": {}
+}
+```
+**Response:**
+```json
+{
+  "run_id": "b1e2...",
+  "status": "STARTED"
+}
 ```
 
-───────────────────────────────
-D. HVAC DISPATCH & INVOICE (60 lines)
-───────────────────────────────
+### Example: Get Run Status (HTTP)
+
+**Request:**
+```http
+GET /runs/b1e2...
+```
+**Response:**
+```json
+{
+  "id": "b1e2...",
+  "flow_name": "hello",
+  "status": "SUCCEEDED",
+  "outputs": { "print": { "text": "Hello, BeemFlow!" } }
+}
+```
+
+### Example: List Tools (HTTP)
+
+**Request:**
+```http
+GET /tools
+```
+**Response:**
+```json
+[
+  { "name": "core.echo", "description": "Echo text", ... },
+  { "name": "http.fetch", "description": "Fetch a URL", ... }
+]
+```
+
+---
+
+## 6. Tool Manifest Schema (JSON-Schema)
+
+Each tool is described by a JSON-Schema manifest:
+
+```jsonc
+{
+  "name": "tool.name",
+  "description": "What this tool does",
+  "kind": "task",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "input": { "type": "string", "default": "hello" }
+    },
+    "required": ["input"]
+  },
+  "endpoint": "https://..." // for HTTP tools
+}
+```
+
+**Manifest Default Injection:**
+BeemFlow automatically injects any `default` values from the manifest's parameters into the request body for missing fields. This means you can omit defaulted fields in your YAML flows, and the runtime will fill them in, making flows DRY and ergonomic.
+
+---
+
+## 7. Configuration (flow.config.json)
+
+The runtime is configured via a JSON file. All fields in `config.Config` are supported.
+
+### Example Configuration
+
+```json
+{
+  "storage":    { "driver": "sqlite", "dsn": "beemflow.db" },
+  "blob":       { "driver": "filesystem", "bucket": "./beemflow-files" },
+  "event":      { "driver": "redis", "url": "redis://localhost:6379" },
+  "secrets":    { "driver": "env" },
+  "registries": [ "https://hub.beemflow.com/index.json" ],
+  "http":       { "host": "0.0.0.0", "port": 8080 },
+  "log":        { "level": "info" },
+  "flowsDir":   "flows/",
+  "mcpServers": {
+    "supabase-mcp": {
+      "command": "npx",
+      "args": ["-y", "@supabase/mcp-server-postgrest@latest"],
+      "env": { "SUPABASE_URL": "...", "SUPABASE_ANON_KEY": "..." },
+      "port": 3030,
+      "transport": "http"
+    }
+  }
+}
+```
+
+---
+
+## 8. Adapter Interfaces
+
+All tool integrations implement the `Adapter` interface:
+
+```go
+type Adapter interface {
+  ID() string
+  Execute(ctx context.Context, inputs map[string]any) (map[string]any, error)
+  Manifest() *ToolManifest
+}
+```
+
+HTTP, OpenAI, MCP, and custom adapters are all supported.
+
+---
+
+## 9. Durable Waits & Callbacks
+
+Flows can pause on `await_event` and resume via `POST /resume/{token}` (HMAC-signed). State is persisted in the configured storage backend.
+
+### Example Await Event Step
+
 ```yaml
-name: hvac_dispatch_invoice
-on:
-  - event: airtable.records.create
-    table: "Service Requests"
+- id: await_approval
+  await_event:
+    source: airtable
+    match:
+      record_id: "{{airtable_row.id}}"
+      field: Status
+      equals: Approved
+    timeout: 24h
+- id: notify
+  use: core.echo
+  with:
+    text: "Approval received!"
+```
 
-vars:
-  invoice_terms: "Net 15"
-  payment_grace_days: 5
+---
 
+## 10. Security & Secrets
+
+- Secrets can be injected from env, event, or secrets backend.
+- HMAC signatures for resume callbacks.
+- Step-level timeouts and resource limits (roadmap).
+
+### Example: Using Secrets
+
+```yaml
 steps:
-  get_tech:
-    use: techfinder.closest_oncall
-    with:
-      zipcode: "{{event.fields.Zip}}"
-      skill:   "{{event.fields.IssueType}}"
-
-  schedule_calendar:
-    use: google.calendar.event.create
-    with:
-      calendar_id: "field-techs@hvac.com"
-      title: "Service – {{event.fields.IssueType}}"
-      start: "{{now()}}"
-      end:   "{{now() + duration(2,'hours')}}"
-      attendees:
-        - "{{get_tech.email}}"
-        - "{{event.fields.CustomerEmail}}"
-
-  update_row:
-    use: airtable.records.update
-    with:
-      base_id: "{{event.base_id}}"
-      table:   "Service Requests"
-      record_id: "{{event.record_id}}"
-      fields:
-        Tech: "{{get_tech.name}}"
-        Status: "Scheduled"
-
-  await_complete:
-    await_event:
-      source: airtable
-      match:
-        record_id: "{{event.record_id}}"
-        field: Status
-        equals: Completed
-      timeout: 7d
-
-  create_invoice:
-    use: quickbooks.invoice.create
-    with:
-      customer_email: "{{event.fields.CustomerEmail}}"
-      items:
-        - description: "{{event.fields.IssueType}} repair"
-          qty: 1
-          rate: "{{event.fields.EstimatedCost}}"
-      terms: "{{vars.invoice_terms}}"
-
-  capture_payment:
-    use: stripe.payment_intent.create
-    with:
-      customer_email: "{{event.fields.CustomerEmail}}"
-      amount: "{{event.fields.EstimatedCost}}"
-      invoice_id: "{{create_invoice.id}}"
-
-  payment_failed:
-    if: "{{capture_payment.status != 'succeeded'}}"
-
-  wait_grace:
-    if: payment_failed
-    wait:
-      until: "{{now() + duration(vars.payment_grace_days,'days')}}"
-
-  reminder_text:
-    if: payment_failed
-    use: openai.chat
-    with:
-      system: "Friendly collections assistant."
-      text: |
-        Compose a gentle reminder for invoice {{create_invoice.number}}.
-
-  send_reminder:
-    if: payment_failed
-    use: email.send
-    with:
-      to: "{{event.fields.CustomerEmail}}"
-      subject: "Reminder: Invoice {{create_invoice.number}}"
-      body: "{{reminder_text.text}}"
-
-catch:
-  alert_ops:
+  - id: notify_ops
     use: slack.chat.postMessage
     with:
-      channel: "#dispatch-alerts"
-      text: "HVAC flow error {{error.message}}"
+      channel: "#ops"
+      text:    "All systems go!"
+      token:   "{{secrets.SLACK_TOKEN}}"
 ```
 
-───────────────────────────────
-E. BOOKKEEPING MONTH‑END CLOSE (FULL)
-───────────────────────────────
+---
+
+## 11. Canonical Example Flows
+
+### Hello World
+
 ```yaml
-name: month_end_close
-on:
-  - cron: "0 2 1 * *"     # 2 AM on 1st of each month
-
-vars:
-  payment_terms: "Net 15"
-
+name: hello
+on: cli.manual
 steps:
-  foreach_client:
-    foreach: "{{secrets.CLIENT_LIST}}"   # env JSON array
-    as: client
-    do:
-      - step_id: bank_txns
-        use: plaid.transactions.get
-        with:
-          client_id: "{{client.id}}"
-          start: "{{first_day_prev_month()}}"
-          end:   "{{last_day_prev_month()}}"
-
-      - step_id: categorize
-        use: openai.chat
-        with:
-          function_schema: |
-            { "name":"categorize","parameters":{
-              "type":"object","properties":{
-                "txns":{"type":"array","items":{"type":"object"}}
-          }}}
-          prompt: |
-            Categorize the following for Xero:
-            {{bank_txns.transactions}}
-
-      - step_id: draft
-        use: xero.journal.create_draft
-        with:
-          client_id: "{{client.id}}"
-          entries: "{{categorize.txns}}"
-
-      - step_id: email_client
-        use: email.send
-        with:
-          to: "{{client.email}}"
-          subject: "Month‑end draft ready"
-          body: |
-            Please reply "Approved" to post.
-          attachments: []
-
-      - step_id: await_ok
-        await_event:
-          source: email
-          match:
-            thread_id: "{{email_client.thread_id}}"
-            subject_contains: "Approved"
-          timeout: 14d
-
-      - step_id: post
-        use: xero.journal.post
-        with:
-          draft_id: "{{draft.id}}"
-
-      - step_id: archive_pdf
-        use: blob.upload
-        with:
-          data_base64: "{{post.pdf_base64}}"
-          mime: "application/pdf"
-          filename: "{{client.name}}-{{prev_month_string()}}.pdf"
+  - id: greet
+    use: core.echo
+    with:
+      text: "Hello, BeemFlow!"
+  - id: print
+    use: core.echo
+    with:
+      text: "{{.outputs.greet.text}}"
 ```
 
-───────────────────────────────
-F. SAAS RELEASE NOTES PIPELINE (FULL)
-───────────────────────────────
+### Fetch and Summarize
+
 ```yaml
-name: release_notes
-on:
-  - event: github.push
-    branch: main
-
+name: fetch_and_summarize
+on: cli.manual
 steps:
-  list_commits:
-    use: github.api.list_commits
+  - id: fetch
+    use: http.fetch
     with:
-      range: "{{event.before}}..{{event.after}}"
-
-  summarise:
-    use: openai.chat
+      url: "https://en.wikipedia.org/api/rest_v1/page/summary/Artificial_intelligence"
+  - id: summarize
+    use: openai
     with:
-      system: "Rewrite commit messages to user‑friendly changelog."
-      text: "{{list_commits.commits | map('message') | join('\n')}}"
-      max_tokens: 300
-
-  notion_page:
-    use: notion.page.create
+      model: "gpt-4o"
+      messages:
+        - role: system
+          content: "Summarize the following text in 3 bullet points."
+        - role: user
+          content: "{{.outputs.fetch.body}}"
+  - id: print
+    use: core.echo
     with:
-      database_id: "{{secrets.NOTION_CHANGELOG_DB}}"
-      title: "Release {{event.after | short_sha}} — {{today()}}"
-      content: "{{summarise.text}}"
-
-  cms_post:
-    use: github:my-org/cms-adapter@main/tools/cms.post.json
-    with:
-      slug:  "{{today() | date_slug}}"
-      title: "Release Notes — {{today()}}"
-      body:  "{{summarise.text}}"
-
-  tweet:
-    use: twitter.tweet.create
-    with:
-      text: "{{summarise.text | first_240_chars}} 🚀"
-
-  email_draft:
-    use: mailchimp.campaign.create_draft
-    with:
-      list_id: "{{secrets.MC_LIST}}"
-      subject: "What's new — {{today()}}"
-      html_body: "{{summarise.text | markdown_to_html}}"
-
-done:
-  use: core.log.info
-  with: { message: "release_notes flow complete" }
+      text: "{{.outputs.summarize.choices[0].message.content}}"
 ```
 
-──────────────────────────────────────────────
-MCP CLIENT SUPPORT
-──────────────────────────────────────────────
+---
 
-BeemFlow is a first-class MCP (Model Context Protocol) client. This means:
+## 12. Extensibility Patterns
 
-• BeemFlow can connect to any MCP server (Node.js, Python, Go, Java, etc.) using HTTP or stdio transports.
-• At runtime, BeemFlow discovers available tools by calling the `tools/list` method on the MCP server. Each tool provides its name, description, and input schema (if available).
-• To invoke a tool, BeemFlow sends a `tools/call` request with the tool name and arguments. The server executes the tool and returns the result.
-• No static manifest is required for MCP tools. BeemFlow will use the schema provided by the server at runtime. If no schema is provided, users can supply arguments as raw JSON.
-• This approach ensures maximum compatibility with the MCP ecosystem, including Node.js servers used by Cursor, Claude, and others.
+- **Add a local tool:** Drop a manifest in `tools/`.
+- **Add an MCP server:** Add config in `mcp_servers/` and reference in config.
+- **Add a remote tool:** Reference a remote registry or GitHub manifest.
+- **Write a custom adapter:** Implement the Adapter interface in Go.
 
-Example MCP tool usage in a flow:
-```yaml
-steps:
-  - query_supabase:
-      use: mcp://supabase-mcp-postgrest/supabase.query
-      with:
-        sql: "SELECT * FROM users"
-```
+---
 
-BeemFlow will:
-1. Connect to the MCP server at `supabase-mcp-postgrest`.
-2. Call `tools/list` to discover available tools and their schemas.
-3. Call `tools/call` with the tool name and arguments.
-4. Return the result as the step output.
+## 13. System Prompt(s) for LLMs
 
-──────────────────────────────────────────────
-14. LICENSE
-──────────────────────────────────────────────
-Spec + reference runtime: **MIT**.  
-Adapters default MIT unless otherwise noted.
+LLMs can use the following system prompt to interact with BeemFlow as a tool registry and flow orchestrator:
 
-──────────────────────────────────────────────
-15. ROADMAP
-──────────────────────────────────────────────
-• VSCode extension (syntax highlight, lint, live Mermaid).  
-• Optional web canvas (edits YAML).  
-• Flow template gallery (`flow init`).  
-• Temporal backend adapter.  
-• Metrics / observability plugin.  
-• Cron triggers, step-level resource limits, advanced event bus drivers, and adapter hot-reload are not yet implemented and are considered roadmap features.
+> "You are an expert BeemFlow agent. You can list, validate, and run flows, discover and call tools, and manage automations using the BeemFlow protocol. All tools and flows are described in the registry. Always use the protocol-agnostic API and follow the canonical YAML grammar."
 
-──────────────────────────────────────────────
-16. INTEGRATION PATTERNS
-──────────────────────────────────────────────
+---
 
-BeemFlow supports three main extension patterns:
+## 14. License
 
-• **MCP Servers:**
-  Add a mapping under `mcp_servers` in your config. No manifest required; tools are discovered dynamically at runtime via the MCP protocol.
+MIT. Use it, remix it, ship it.
 
-• **HTTP Tools:**
-  Add a JSON-Schema manifest describing your tool. BeemFlow loads all manifests at startup and exposes them by name.
+---
 
-• **Custom Adapters:**
-  Implement the Adapter interface for new protocols or advanced logic. Register your adapter in the runtime.
+## 15. Roadmap
 
-This ensures maximum flexibility and minimal boilerplate for most integrations.
+- VSCode extension (syntax highlight, lint, live Mermaid)
+- Optional web canvas (edits YAML)
+- Flow template gallery (`flow init`)
+- Temporal backend adapter
+- Metrics / observability plugin
+- Cron triggers, step-level resource limits, advanced event bus drivers, and adapter hot-reload (roadmap)
 
-──────────────────────────────────────────────
+---
+
+## 16. Integration Patterns
+
+- MCP, HTTP, and custom adapters are all supported and interoperable.
+
+---
+
 END OF SPEC
-──────────────────────────────────────────────
-
-Note: The parent step (e.g. 'fanout') will not complete until all its children are done. Downstream steps can depend on the parent for fan-in.

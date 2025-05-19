@@ -6,5 +6,6 @@
   "mcpServers": {
     "airtable": {},
     "supabase": {}
-  }
+  },
+  "registries": ["registry/index.json"]
 } 
