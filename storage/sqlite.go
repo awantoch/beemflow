@@ -39,9 +39,12 @@ func runIDFromStepCtx(ctx map[string]any) string {
 }
 
 func NewSqliteStorage(dsn string) (*SqliteStorage, error) {
-	// Ensure parent directory exists (MkdirAll is a no-op for " . ").
-	if err := os.MkdirAll(filepath.Dir(dsn), 0755); err != nil {
-		return nil, logger.Errorf("failed to create db directory %q: %w", filepath.Dir(dsn), err)
+	// Only create parent directories if not using in-memory SQLite (":memory:").
+	if dsn != ":memory:" && dsn != "" {
+		dir := filepath.Dir(dsn)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, logger.Errorf("failed to create db directory %q: %w", dir, err)
+		}
 	}
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {

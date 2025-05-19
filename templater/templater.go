@@ -9,6 +9,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/Masterminds/sprig/v3"
 	"github.com/awantoch/beemflow/logger"
 )
 
@@ -17,13 +18,12 @@ type Templater struct {
 	helperFuncs template.FuncMap
 	// You can register custom helpers using RegisterHelpers. Example:
 	//   t.RegisterHelpers(template.FuncMap{"myfunc": func(x string) string { return ... }})
-	// For more helpers, consider integrating github.com/Masterminds/sprig in the future.
 }
 
 // NewTemplater creates a new Templater with built-in helper functions.
 func NewTemplater() *Templater {
 	t := &Templater{
-		helperFuncs: make(template.FuncMap),
+		helperFuncs: sprig.TxtFuncMap(),
 	}
 	t.RegisterHelpers(template.FuncMap{
 		"eq": func(a any, b any) bool {

@@ -13,8 +13,8 @@ import (
 type MemoryStorage struct {
 	runs   map[uuid.UUID]*model.Run
 	steps  map[uuid.UUID][]*model.StepRun // runID -> steps
-	mu     sync.Mutex
-	paused map[string]any // token -> paused run
+	mu     sync.RWMutex                   // Use RWMutex for improved concurrent read access. For context-aware cancellation, consider errgroup or context-aware primitives in the future.
+	paused map[string]any                 // token -> paused run
 }
 
 var _ Storage = (*MemoryStorage)(nil)
@@ -35,8 +35,8 @@ func (m *MemoryStorage) SaveRun(ctx context.Context, run *model.Run) error {
 }
 
 func (m *MemoryStorage) GetRun(ctx context.Context, id uuid.UUID) (*model.Run, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	run, ok := m.runs[id]
 	if !ok {
 		return nil, sql.ErrNoRows
@@ -52,8 +52,8 @@ func (m *MemoryStorage) SaveStep(ctx context.Context, step *model.StepRun) error
 }
 
 func (m *MemoryStorage) GetSteps(ctx context.Context, runID uuid.UUID) ([]*model.StepRun, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.steps[runID], nil
 }
 
@@ -66,8 +66,8 @@ func (m *MemoryStorage) ResolveWait(ctx context.Context, token uuid.UUID) (*mode
 }
 
 func (m *MemoryStorage) ListRuns(ctx context.Context) ([]*model.Run, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	var out []*model.Run
 	for _, run := range m.runs {
 		out = append(out, run)
@@ -83,8 +83,8 @@ func (m *MemoryStorage) SavePausedRun(token string, paused any) error {
 }
 
 func (m *MemoryStorage) LoadPausedRuns() (map[string]any, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	out := make(map[string]any, len(m.paused))
 	for k, v := range m.paused {
 		out[k] = v

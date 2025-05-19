@@ -174,6 +174,7 @@ func TestMCPServer_HappyPath_EndToEnd(t *testing.T) {
 	if err := os.MkdirAll(flowsDir, 0755); err != nil {
 		t.Fatalf("os.MkdirAll failed: %v", err)
 	}
+	api.SetFlowsDir(flowsDir)
 	flowYAML := `name: testflow
 on: cli.manual
 steps:
@@ -182,7 +183,7 @@ steps:
     with:
       text: "hello"
 `
-	flowPath := filepath.Join(flowsDir, t.Name()+"-testflow.flow.yaml")
+	flowPath := filepath.Join(flowsDir, "testflow.flow.yaml")
 	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
@@ -293,6 +294,7 @@ func TestMCPServer_HappyPath_HTTP(t *testing.T) {
 	if err := os.MkdirAll(flowsDir, 0755); err != nil {
 		t.Fatalf("os.MkdirAll failed: %v", err)
 	}
+	api.SetFlowsDir(flowsDir)
 	flowYAML := `name: testflow
 on: cli.manual
 steps:
@@ -301,7 +303,7 @@ steps:
     with:
       text: "hello"
 `
-	flowPath := filepath.Join(flowsDir, t.Name()+"-testflow.flow.yaml")
+	flowPath := filepath.Join(flowsDir, "testflow.flow.yaml")
 	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
@@ -609,6 +611,7 @@ func TestMCPServer_HappyPath_AirtableE2E(t *testing.T) {
 	if err := os.MkdirAll(flowsDir, 0755); err != nil {
 		t.Fatalf("os.MkdirAll failed: %v", err)
 	}
+	api.SetFlowsDir(flowsDir)
 	flowYAML := `name: airtable_e2e
 on: cli.manual
 steps:
@@ -621,7 +624,7 @@ steps:
         Copy: "Hello!"
         Status: "Pending"
 `
-	flowPath := filepath.Join(flowsDir, t.Name()+"-airtable_e2e.flow.yaml")
+	flowPath := filepath.Join(flowsDir, "airtable_e2e.flow.yaml")
 	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}

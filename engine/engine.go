@@ -64,7 +64,7 @@ func newDefaultAdapterRegistry() *adapter.Registry {
 	reg.Register(&adapter.HTTPFetchAdapter{})
 
 	// Load config if available
-	cfg, err := config.LoadConfig("flow.config.json")
+	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	localRegistryPath := config.DefaultLocalRegistryPath
 	if err == nil && len(cfg.Registries) > 0 {
 		for _, regCfg := range cfg.Registries {
@@ -440,7 +440,7 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 			StartedAt: time.Now(),
 			EndedAt:   ptrTime(time.Now()),
 		}
-		if err := e.Storage.SaveRun(context.Background(), run); err != nil {
+		if err := e.Storage.SaveRun(ctx, run); err != nil {
 			logger.Error("SaveRun failed: %v", err)
 		}
 	}

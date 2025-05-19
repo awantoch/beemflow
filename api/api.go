@@ -17,35 +17,35 @@ import (
 	"github.com/google/uuid"
 )
 
-// getStoreFromConfig returns a storage instance based on config, defaulting to SQLite.
-func getStoreFromConfig(cfg *config.Config) storage.Storage {
+// getStoreFromConfig returns a storage instance based on config, or an error if the driver is unknown.
+func getStoreFromConfig(cfg *config.Config) (storage.Storage, error) {
 	if cfg != nil && cfg.Storage.Driver != "" {
 		switch strings.ToLower(cfg.Storage.Driver) {
 		case "sqlite":
 			store, err := storage.NewSqliteStorage(cfg.Storage.DSN)
 			if err != nil {
 				logger.Warn("Failed to create sqlite storage: %v, using in-memory fallback", err)
-				return storage.NewMemoryStorage()
+				return storage.NewMemoryStorage(), nil
 			}
-			return store
+			return store, nil
 		case "postgres":
 			store, err := storage.NewPostgresStorage(cfg.Storage.DSN)
 			if err != nil {
 				logger.Warn("Failed to create postgres storage: %v, using in-memory fallback", err)
-				return storage.NewMemoryStorage()
+				return storage.NewMemoryStorage(), nil
 			}
-			return store
+			return store, nil
 		default:
-			logger.Warn("Unsupported storage driver: %s, defaulting to SQLite", cfg.Storage.Driver)
+			return nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
 		}
 	}
 	// Default to SQLite
 	store, err := storage.NewSqliteStorage(config.DefaultSQLiteDSN)
 	if err != nil {
 		logger.Warn("Failed to create default sqlite storage: %v, using in-memory fallback", err)
-		return storage.NewMemoryStorage()
+		return storage.NewMemoryStorage(), nil
 	}
-	return store
+	return store, nil
 }
 
 // flowsDir is the base directory for flow definitions; can be overridden via CLI or config.
@@ -117,12 +117,15 @@ func GraphFlow(ctx context.Context, name string) (string, error) {
 // StartRun starts a new run for the given flow and event.
 func StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.UUID, error) {
 	// Load config
-	cfg, err := config.LoadConfig("flow.config.json")
+	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
 		return uuid.Nil, err
 	}
 	// Initialize storage
-	store := getStoreFromConfig(cfg)
+	store, err := getStoreFromConfig(cfg)
+	if err != nil {
+		return uuid.Nil, err
+	}
 	eng := engine.NewEngineWithStorage(store)
 	flow, err := parser.ParseFlow(filepath.Join(flowsDir, flowName+".flow.yaml"))
 	if err != nil {
@@ -181,12 +184,15 @@ func StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.
 
 // GetRun returns the run by ID.
 func GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
-	cfg, err := config.LoadConfig("flow.config.json")
+	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 	// Initialize storage
-	store := getStoreFromConfig(cfg)
+	store, err := getStoreFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
 	eng := engine.NewEngineWithStorage(store)
 	run, err := eng.GetRunByID(ctx, runID)
 	if err != nil {
@@ -197,12 +203,15 @@ func GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
 
 // ListRuns returns all runs.
 func ListRuns(ctx context.Context) ([]*model.Run, error) {
-	cfg, err := config.LoadConfig("flow.config.json")
+	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 	// Initialize storage
-	store := getStoreFromConfig(cfg)
+	store, err := getStoreFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
 	eng := engine.NewEngineWithStorage(store)
 	return eng.ListRuns(ctx)
 }
@@ -215,12 +224,15 @@ func PublishEvent(ctx context.Context, topic string, payload map[string]any) err
 
 // ResumeRun resumes a paused run with the given token and event, returning outputs if available.
 func ResumeRun(ctx context.Context, token string, event map[string]any) (map[string]any, error) {
-	cfg, err := config.LoadConfig("flow.config.json")
+	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 	// Initialize storage
-	store := getStoreFromConfig(cfg)
+	store, err := getStoreFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
 	eng := engine.NewEngineWithStorage(store)
 	eng.Resume(token, event)
 	outputs := eng.GetCompletedOutputs(token)
@@ -234,12 +246,15 @@ func ParseFlowFromString(yamlStr string) (*model.Flow, error) {
 
 // RunSpec validates and runs a flow spec inline, returning run ID and outputs.
 func RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.UUID, map[string]any, error) {
-	cfg, err := config.LoadConfig("flow.config.json")
+	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
 		return uuid.Nil, nil, err
 	}
 	// Initialize storage
-	store := getStoreFromConfig(cfg)
+	store, err := getStoreFromConfig(cfg)
+	if err != nil {
+		return uuid.Nil, nil, err
+	}
 	eng := engine.NewEngineWithStorage(store)
 	outputs, err := eng.Execute(ctx, flow, event)
 	if err != nil {

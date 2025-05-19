@@ -53,10 +53,7 @@ var mcpRe = regexp.MustCompile(`^mcp://([^/]+)/([\w.-]+)$`)
 
 // Helper to resolve MCP server config from environment/config file
 func getMCPServerConfig(host string) (config.MCPServerConfig, error) {
-	cfgPath := os.Getenv("BEEMFLOW_CONFIG")
-	if cfgPath == "" {
-		cfgPath = "flow.config.json"
-	}
+	cfgPath := config.DefaultConfigPath
 	cfg, err := config.LoadConfig(cfgPath)
 	if err != nil {
 		return config.MCPServerConfig{}, err

@@ -128,6 +128,9 @@ type SecretsProvider interface {
 	GetSecret(key string) (string, error)
 }
 
+// DefaultConfigPath is the default path for the main config file.
+const DefaultConfigPath = "flow.config.json"
+
 // LoadConfig loads the JSON config from the given path.
 func LoadConfig(path string) (*Config, error) {
 	logger.Debug("Entered LoadConfig with path: %s", path)
