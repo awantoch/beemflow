@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,8 +111,7 @@ func ValidateFlow(ctx context.Context, name string) error {
 
 // GraphFlow returns the DOT graph for the given flow.
 func GraphFlow(ctx context.Context, name string) (string, error) {
-	// TODO: Implement using engine/graphviz. Far future feature though.
-	return "", nil
+	return "", fmt.Errorf("GraphFlow is not yet implemented")
 }
 
 // StartRun starts a new run for the given flow and event.

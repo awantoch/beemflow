@@ -25,9 +25,7 @@ type LLMMessage struct {
 var CallLLM = callLLMImpl
 
 func callLLMImpl(ctx context.Context, systemPrompt string, userMessages []string) (string, error) {
-	// TODO: Implement actual LLM call via tool registry (Anthropic, OpenAI, etc.)
-	// use the built in structs and flow model
-	return "", fmt.Errorf("LLM call not implemented")
+	return "", fmt.Errorf("LLM call not yet implemented")
 }
 
 // Execute builds messages, calls LLM, validates YAML, and returns draft and errors.

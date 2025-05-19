@@ -13,7 +13,7 @@ import (
 type MemoryStorage struct {
 	runs   map[uuid.UUID]*model.Run
 	steps  map[uuid.UUID][]*model.StepRun // runID -> steps
-	mu     sync.RWMutex                   // Use RWMutex for improved concurrent read access. For context-aware cancellation, consider errgroup or context-aware primitives in the future.
+	mu     sync.RWMutex                   // RWMutex is sufficient for most use cases; consider context-aware primitives if high concurrency or cancellation is needed.
 	paused map[string]any                 // token -> paused run
 }
 

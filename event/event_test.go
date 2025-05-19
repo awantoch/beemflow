@@ -2,6 +2,7 @@ package event
 
 import (
 	"testing"
+	"time"
 )
 
 func TestNewInProcEventBus(t *testing.T) {
@@ -45,7 +46,7 @@ func TestEventBus_RoundTrip(t *testing.T) {
 		if v != 42 {
 			t.Errorf("expected 42, got %v", v)
 		}
-	default:
+	case <-time.After(time.Second):
 		t.Errorf("handler did not receive payload")
 	}
 }

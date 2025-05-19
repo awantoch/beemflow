@@ -12,7 +12,7 @@ func newTestCmd() *cobra.Command {
 		Use:   "test",
 		Short: "Test a flow file",
 		Run: func(cmd *cobra.Command, args []string) {
-			logger.User("flow test (stub)")
+			logger.User("flow test (not yet implemented)")
 		},
 	}
 }

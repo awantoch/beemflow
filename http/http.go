@@ -26,7 +26,7 @@ var (
 )
 
 func StartServer(addr string) error {
-	// REFACTOR: Replace hardcoded "flow.config.json" with centralized config path management for flexibility and testability.
+	// TODO: Replace hardcoded "flow.config.json" with centralized config path management for flexibility and testability.
 	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -60,7 +60,7 @@ func StartServer(addr string) error {
 			store = sqliteStore
 		}
 	}
-	// REFACTOR: Use dependency injection for engine construction to allow easier testing and extension.
+	// TODO: Use dependency injection for engine construction to allow easier testing and extension.
 	eng = engine.NewEngineWithStorage(store)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {

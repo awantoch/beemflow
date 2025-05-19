@@ -17,7 +17,7 @@ func newToolCmd() *cobra.Command {
 		Use:   "tool",
 		Short: "Tooling commands",
 		Run: func(cmd *cobra.Command, args []string) {
-			logger.User("flow tool (stub)")
+			logger.User("flow tool (not yet implemented)")
 		},
 	}
 	cmd.AddCommand(
