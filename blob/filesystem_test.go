@@ -1,9 +1,12 @@
 package blob
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func newTestFilesystemBlobStore(t *testing.T) *FilesystemBlobStore {
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), t.Name()+"-blobstore")
 	store, err := NewFilesystemBlobStore(dir)
 	if err != nil {
 		t.Fatalf("NewFilesystemBlobStore failed: %v", err)

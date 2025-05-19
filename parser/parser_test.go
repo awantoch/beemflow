@@ -2,6 +2,7 @@ package parser
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/awantoch/beemflow/model"
@@ -277,9 +278,11 @@ steps:
 `
 
 func TestParseFlow_HelloWorld(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "hello.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-hello.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -320,9 +323,11 @@ func TestParseFlow_HelloWorld(t *testing.T) {
 }
 
 func TestParseFlow_MarketingBlast(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "marketing_blast.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-marketing_blast.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -369,9 +374,11 @@ func TestParseFlow_MarketingBlast(t *testing.T) {
 }
 
 func TestParseFlow_MinimalPushTwitter(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "minimal_push_twitter.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-minimal_push_twitter.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -403,9 +410,11 @@ func TestParseFlow_MinimalPushTwitter(t *testing.T) {
 }
 
 func TestParseFlow_MinimalPushTwitterAndInstagram(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "minimal_push_twitter_instagram.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-minimal_push_twitter_instagram.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -443,9 +452,11 @@ func TestParseFlow_MinimalPushTwitterAndInstagram(t *testing.T) {
 }
 
 func TestParseFlow_MinimalPushTwitterInstagramFacebook(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "minimal_push_twitter_instagram_facebook.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-minimal_push_twitter_instagram_facebook.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -489,9 +500,11 @@ func TestParseFlow_MinimalPushTwitterInstagramFacebook(t *testing.T) {
 }
 
 func TestParseFlow_MinimalPushTwitterInstagramFacebookParallel(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "minimal_push_twitter_instagram_facebook_parallel.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-minimal_push_twitter_instagram_facebook_parallel.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -538,9 +551,11 @@ func TestParseFlow_MinimalPushTwitterInstagramFacebookParallel(t *testing.T) {
 
 func TestParseFlow_InvalidYAML(t *testing.T) {
 	invalidYAML := `name: bad_flow\nsteps: [this is: not valid yaml]`
-	tmpfile, err := os.CreateTemp("", "invalid.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-invalid.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -556,9 +571,11 @@ func TestParseFlow_InvalidYAML(t *testing.T) {
 }
 
 func TestParseFlow_MissingRequiredFields(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "missing_fields.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-missing_fields.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -581,9 +598,11 @@ func TestParseFlow_MissingRequiredFields(t *testing.T) {
 
 func TestParseFlow_MalformedStep(t *testing.T) {
 	malformedStepYAML := `name: malformed\nsteps:\n  bad_step: not_a_map`
-	tmpfile, err := os.CreateTemp("", "malformed_step.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-malformed_step.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -599,9 +618,11 @@ func TestParseFlow_MalformedStep(t *testing.T) {
 }
 
 func TestParseFlow_DeeplyNestedSteps(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "deep.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-deep.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -620,9 +641,11 @@ func TestParseFlow_DeeplyNestedSteps(t *testing.T) {
 }
 
 func TestParseFlow_UnknownFields(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "unknown.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-unknown.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -638,9 +661,11 @@ func TestParseFlow_UnknownFields(t *testing.T) {
 }
 
 func TestParseFlow_EmptyStepsAndCatch(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "empty.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-empty.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -662,9 +687,11 @@ func TestParseFlow_EmptyStepsAndCatch(t *testing.T) {
 }
 
 func TestParseFlow_AllStepTypes(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "all_types.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-all_types.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -686,9 +713,11 @@ func TestParseFlow_AllStepTypes(t *testing.T) {
 }
 
 func TestParseFlow_InvalidStepsType(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "bad_steps.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpfilePath := filepath.Join(tmpDir, t.Name()+"-bad_steps.flow.yaml")
+	tmpfile, err := os.Create(tmpfilePath)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 

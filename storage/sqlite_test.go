@@ -12,7 +12,7 @@ func TestNewSqliteStorage_FileCreation(t *testing.T) {
 		tmp := t.TempDir()
 		// Define a nested subdirectory that does not exist
 		nested := filepath.Join(tmp, "nested", "subdir")
-		dsn := filepath.Join(nested, "test.db")
+		dsn := filepath.Join(t.TempDir(), t.Name()+"-test.db")
 		// Call NewSqliteStorage, which should create the nested directories and file
 		s, err := NewSqliteStorage(dsn)
 		if err != nil {
@@ -37,7 +37,7 @@ func TestNewSqliteStorage_FileCreation(t *testing.T) {
 		// Create a temporary base directory
 		tmp := t.TempDir()
 		// Define a DSN directly under the base (no subdirectory)
-		dsn := filepath.Join(tmp, "plain.db")
+		dsn := filepath.Join(tmp, t.Name()+"-plain.db")
 		// Call NewSqliteStorage, which should create the file in the existing directory
 		s, err := NewSqliteStorage(dsn)
 		if err != nil {

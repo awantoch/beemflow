@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/logger"
 
 	"github.com/awantoch/beemflow/api"
@@ -168,7 +170,8 @@ func TestMCPServer_PublishEvent(t *testing.T) {
 
 func TestMCPServer_HappyPath_EndToEnd(t *testing.T) {
 	tmpDir := t.TempDir()
-	if err := os.MkdirAll(tmpDir+"/flows", 0755); err != nil {
+	flowsDir := filepath.Join(tmpDir, config.DefaultFlowsDir)
+	if err := os.MkdirAll(flowsDir, 0755); err != nil {
 		t.Fatalf("os.MkdirAll failed: %v", err)
 	}
 	flowYAML := `name: testflow
@@ -179,12 +182,12 @@ steps:
     with:
       text: "hello"
 `
-	flowPath := tmpDir + "/flows/testflow.flow.yaml"
+	flowPath := filepath.Join(flowsDir, t.Name()+"-testflow.flow.yaml")
 	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 	schema := `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`
-	schemaPath := tmpDir + "/beemflow.schema.json"
+	schemaPath := filepath.Join(tmpDir, t.Name()+"-beemflow.schema.json")
 	if err := os.WriteFile(schemaPath, []byte(schema), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
@@ -286,7 +289,8 @@ steps:
 
 func TestMCPServer_HappyPath_HTTP(t *testing.T) {
 	tmpDir := t.TempDir()
-	if err := os.MkdirAll(tmpDir+"/flows", 0755); err != nil {
+	flowsDir := filepath.Join(tmpDir, config.DefaultFlowsDir)
+	if err := os.MkdirAll(flowsDir, 0755); err != nil {
 		t.Fatalf("os.MkdirAll failed: %v", err)
 	}
 	flowYAML := `name: testflow
@@ -297,12 +301,12 @@ steps:
     with:
       text: "hello"
 `
-	flowPath := tmpDir + "/flows/testflow.flow.yaml"
+	flowPath := filepath.Join(flowsDir, t.Name()+"-testflow.flow.yaml")
 	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 	schema := `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`
-	schemaPath := tmpDir + "/beemflow.schema.json"
+	schemaPath := filepath.Join(tmpDir, t.Name()+"-beemflow.schema.json")
 	if err := os.WriteFile(schemaPath, []byte(schema), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
@@ -317,7 +321,7 @@ steps:
 	logger.Debug("working dir: %s", wd)
 	files, _ := os.ReadDir("flows")
 	for _, f := range files {
-		logger.Debug("flows/ contains: %s", f.Name())
+		logger.Debug(config.DefaultFlowsDir+"/ contains: %s", f.Name())
 	}
 
 	// Pick a random available port
@@ -449,7 +453,8 @@ steps:
 
 func TestMCPServer_HTTP_ErrorCases(t *testing.T) {
 	tmpDir := t.TempDir()
-	if err := os.MkdirAll(tmpDir+"/flows", 0755); err != nil {
+	flowsDir := filepath.Join(tmpDir, config.DefaultFlowsDir)
+	if err := os.MkdirAll(flowsDir, 0755); err != nil {
 		t.Fatalf("os.MkdirAll failed: %v", err)
 	}
 	// Write a valid flow for later
@@ -461,12 +466,13 @@ steps:
     with:
       text: "hello"
 `
-	flowPath := tmpDir + "/flows/testflow.flow.yaml"
+	flowPath := filepath.Join(flowsDir, t.Name()+"-testflow.flow.yaml")
 	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 	schema := `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`
-	if err := os.WriteFile(tmpDir+"/beemflow.schema.json", []byte(schema), 0644); err != nil {
+	schemaPath := filepath.Join(tmpDir, t.Name()+"-beemflow.schema.json")
+	if err := os.WriteFile(schemaPath, []byte(schema), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 	origDir, _ := os.Getwd()
@@ -517,10 +523,10 @@ steps:
 
 	// (2) startRun with invalid YAML flow
 	badYAML := "not: [valid: yaml"
-	if err := os.WriteFile("flows/bad.flow.yaml", []byte(badYAML), 0644); err != nil {
+	badPath := filepath.Join(flowsDir, t.Name()+"-bad.flow.yaml")
+	if err := os.WriteFile(badPath, []byte(badYAML), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
-	defer os.Remove("flows/bad.flow.yaml")
 	srParams = struct {
 		FlowName string
 		Event    map[string]any
@@ -599,7 +605,8 @@ func TestMCPServer_HappyPath_AirtableE2E(t *testing.T) {
 
 	// 2. Write a minimal flow YAML that uses mcp://airtable/create_record
 	tmpDir := t.TempDir()
-	if err := os.MkdirAll(tmpDir+"/flows", 0755); err != nil {
+	flowsDir := filepath.Join(tmpDir, config.DefaultFlowsDir)
+	if err := os.MkdirAll(flowsDir, 0755); err != nil {
 		t.Fatalf("os.MkdirAll failed: %v", err)
 	}
 	flowYAML := `name: airtable_e2e
@@ -614,12 +621,13 @@ steps:
         Copy: "Hello!"
         Status: "Pending"
 `
-	flowPath := tmpDir + "/flows/airtable_e2e.flow.yaml"
+	flowPath := filepath.Join(flowsDir, t.Name()+"-airtable_e2e.flow.yaml")
 	if err := os.WriteFile(flowPath, []byte(flowYAML), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 	schema := `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`
-	if err := os.WriteFile(tmpDir+"/beemflow.schema.json", []byte(schema), 0644); err != nil {
+	schemaPath := filepath.Join(tmpDir, t.Name()+"-beemflow.schema.json")
+	if err := os.WriteFile(schemaPath, []byte(schema), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 
@@ -634,7 +642,7 @@ steps:
 		},
 	}
 	cfgBytes, _ := json.Marshal(cfg)
-	if err := os.WriteFile(tmpDir+"/flow.config.json", cfgBytes, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "flow.config.json"), cfgBytes, 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 
@@ -743,7 +751,7 @@ steps:
 // TestMCPServer_ListFlows_CustomDir ensures the MCP server honors api.SetFlowsDir override.
 func TestMCPServer_ListFlows_CustomDir(t *testing.T) {
 	tmpDir := t.TempDir()
-	custom := tmpDir + "/altflows"
+	custom := filepath.Join(tmpDir, "altflows")
 	if err := os.MkdirAll(custom, 0755); err != nil {
 		t.Fatalf("failed to create custom flows dir: %v", err)
 	}
@@ -751,7 +759,7 @@ func TestMCPServer_ListFlows_CustomDir(t *testing.T) {
 	yaml := `name: altflow
 on: cli.manual
 steps: []`
-	if err := os.WriteFile(custom+"/altflow.flow.yaml", []byte(yaml), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(custom, "altflow.flow.yaml"), []byte(yaml), 0644); err != nil {
 		t.Fatalf("failed to write flow YAML: %v", err)
 	}
 	// Override the API flowsDir

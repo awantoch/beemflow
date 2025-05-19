@@ -1,6 +1,7 @@
 package blob
 
 import (
+	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/logger"
 )
 
@@ -23,7 +24,7 @@ type BlobConfig struct {
 // NewDefaultBlobStore returns a BlobStore based on config, or FilesystemBlobStore in ./beemflow-files if config is nil or empty.
 func NewDefaultBlobStore(cfg *BlobConfig) (BlobStore, error) {
 	if cfg == nil || cfg.Driver == "" || cfg.Driver == "filesystem" {
-		dir := "./.beemflow/files"
+		dir := config.DefaultBlobDir
 		if cfg != nil && cfg.Directory != "" {
 			dir = cfg.Directory
 		}

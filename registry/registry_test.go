@@ -24,8 +24,7 @@ func TestNewLocalRegistry_DefaultPath(t *testing.T) {
 }
 
 func TestLocalRegistry_ListAndGetServers(t *testing.T) {
-	path := "test_registry.json"
-	defer os.Remove(path)
+	path := filepath.Join(t.TempDir(), t.Name()+"-test_registry.json")
 	entries := []RegistryEntry{
 		{Registry: "local", Name: "foo", Type: "mcp_server", Description: "desc", Kind: "local", Endpoint: "http://foo"},
 		{Registry: "local", Name: "bar", Type: "mcp_server", Description: "desc2", Kind: "local", Endpoint: "http://bar"},
@@ -92,7 +91,7 @@ func TestRegistryManager_ListAllServersAndGetServer(t *testing.T) {
 }
 
 func TestLocalRegistry_ListServers_FileNotFound(t *testing.T) {
-	reg := NewLocalRegistry("does_not_exist.json")
+	reg := NewLocalRegistry(t.Name() + "-does_not_exist.json")
 	_, err := reg.ListServers(context.Background(), ListOptions{})
 	if err == nil {
 		t.Error("expected error for missing file")
@@ -100,8 +99,7 @@ func TestLocalRegistry_ListServers_FileNotFound(t *testing.T) {
 }
 
 func TestLocalRegistry_ListServers_InvalidJSON(t *testing.T) {
-	path := "bad_registry.json"
-	defer os.Remove(path)
+	path := filepath.Join(t.TempDir(), t.Name()+"-bad_registry.json")
 	osErr := os.WriteFile(path, []byte("not json"), 0644)
 	if osErr != nil {
 		t.Fatalf("os.WriteFile failed: %v", osErr)
@@ -123,7 +121,7 @@ func TestRegistryEntry_Namespacing(t *testing.T) {
 // TestLocalRegistry_ListMCPServers ensures ListMCPServers filters only mcp_server entries.
 func TestLocalRegistry_ListMCPServers(t *testing.T) {
 	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "index.json")
+	filePath := filepath.Join(tmpDir, t.Name()+"-index.json")
 	entries := []RegistryEntry{
 		{Registry: "local", Type: "mcp_server", Name: "foo", Description: "desc", Kind: "k", Endpoint: "e"},
 		{Registry: "local", Type: "other", Name: "bar", Description: "desc", Kind: "k", Endpoint: "e"},

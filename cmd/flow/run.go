@@ -3,12 +3,14 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"strings"
 
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/parser"
+	"github.com/awantoch/beemflow/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -55,8 +57,35 @@ func newRunCmd() *cobra.Command {
 				logger.Error("Failed to load event: %v", err)
 				exit(4)
 			}
+			// Determine storage based on config or default to SQLite
+			var store storage.Storage
+			if cfg.Storage.Driver != "" {
+				switch strings.ToLower(cfg.Storage.Driver) {
+				case "sqlite":
+					store, err = storage.NewSqliteStorage(cfg.Storage.DSN)
+				case "postgres":
+					store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
+				default:
+					logger.Error("unsupported storage driver: %s", cfg.Storage.Driver)
+					exit(6)
+				}
+				if err != nil {
+					logger.Error("Failed to create storage: %v", err)
+					exit(7)
+				}
+			} else {
+				// Default to SQLite
+				sqliteStore, err := storage.NewSqliteStorage(config.DefaultSQLiteDSN)
+				if err != nil {
+					logger.Warn("Failed to create default sqlite storage: %v, using in-memory fallback", err)
+					store = storage.NewMemoryStorage()
+				} else {
+					store = sqliteStore
+				}
+			}
 			eng := engine.NewEngine()
 			defer eng.Close()
+			eng.Storage = store
 			outputs, err := eng.Execute(cmd.Context(), flow, event)
 			if err != nil {
 				logger.Error("Flow execution error: %v", err)

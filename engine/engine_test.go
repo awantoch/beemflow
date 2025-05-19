@@ -3,22 +3,20 @@ package engine
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/storage"
 )
 
 func TestMain(m *testing.M) {
-	// Cleanup before and after tests
-	os.RemoveAll(".beemflow")
-	code := m.Run()
-	os.RemoveAll(".beemflow")
-	os.Exit(code)
+	os.Exit(m.Run())
 }
 
 func TestNewEngine(t *testing.T) {
@@ -111,7 +109,7 @@ func TestExecute_Concurrency(t *testing.T) {
 
 func TestAwaitEventResume_RoundTrip(t *testing.T) {
 	// Load the test flow
-	f, err := os.ReadFile("../flows/echo_await_resume.flow.yaml")
+	f, err := os.ReadFile("../" + config.DefaultFlowsDir + "/echo_await_resume.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to read flow: %v", err)
 	}
@@ -247,11 +245,10 @@ func TestExecute_SecretsInjection(t *testing.T) {
 
 func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	// Use a temp SQLite file
-	dbPath := ".test_resume_fullflow.db"
-	defer os.Remove(dbPath)
+	dbPath := filepath.Join(t.TempDir(), t.Name()+"-resume_fullflow.db")
 
 	// Load the echo_await_resume flow
-	f, err := os.ReadFile("../flows/echo_await_resume.flow.yaml")
+	f, err := os.ReadFile("../" + config.DefaultFlowsDir + "/echo_await_resume.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to read flow: %v", err)
 	}
@@ -334,11 +331,10 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 }
 
 func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
-	dbPath := ".test_query_completed_run.db"
-	defer os.Remove(dbPath)
+	dbPath := filepath.Join(t.TempDir(), t.Name()+"-query_completed_run.db")
 
 	// Load the echo_await_resume flow and remove the await_event step for this test
-	f, err := os.ReadFile("../flows/echo_await_resume.flow.yaml")
+	f, err := os.ReadFile("../" + config.DefaultFlowsDir + "/echo_await_resume.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to read flow: %v", err)
 	}

@@ -65,7 +65,7 @@ func newDefaultAdapterRegistry() *adapter.Registry {
 
 	// Load config if available
 	cfg, err := config.LoadConfig("flow.config.json")
-	localRegistryPath := ".beemflow/local_registry.json"
+	localRegistryPath := config.DefaultLocalRegistryPath
 	if err == nil && len(cfg.Registries) > 0 {
 		for _, regCfg := range cfg.Registries {
 			if regCfg.Type == "local" && regCfg.Path != "" {
@@ -121,10 +121,11 @@ func NewEngineWithBlobStore(blobStore blob.BlobStore) *Engine {
 
 // NewEngine creates a new Engine with the default BlobStore (filesystem, zero config).
 func NewEngine() *Engine {
+	// Default BlobStore
 	bs, err := blob.NewDefaultBlobStore(nil)
 	if err != nil {
 		logger.Warn("Failed to create default blob store: %v, using in-memory fallback", err)
-		bs = nil // or fallback to a stub if you want
+		bs = nil
 	}
 	return NewEngineWithBlobStore(bs)
 }

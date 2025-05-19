@@ -36,7 +36,7 @@ func StartServer(addr string) error {
 			return logger.Errorf("failed to load config: %w", err)
 		}
 	}
-	// Initialize storage based on config
+	// Initialize storage based on config or default to SQLite
 	var store storage.Storage
 	if cfg.Storage.Driver != "" {
 		switch strings.ToLower(cfg.Storage.Driver) {
@@ -50,13 +50,17 @@ func StartServer(addr string) error {
 		if err != nil {
 			return logger.Errorf("failed to initialize storage: %w", err)
 		}
-	}
-	// Always create engine with storage (in-memory if store is nil)
-	if store != nil {
-		eng = engine.NewEngineWithStorage(store)
 	} else {
-		eng = engine.NewEngineWithStorage(storage.NewMemoryStorage())
+		// Default to SQLite
+		sqliteStore, err := storage.NewSqliteStorage(config.DefaultSQLiteDSN)
+		if err != nil {
+			logger.Warn("Failed to create default sqlite storage: %v, using in-memory fallback", err)
+			store = storage.NewMemoryStorage()
+		} else {
+			store = sqliteStore
+		}
 	}
+	eng = engine.NewEngineWithStorage(store)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
 		if eng == nil {
@@ -541,7 +545,7 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if r.Method == http.MethodDelete {
 		// Delete flow (remove YAML file)
-		path := "flows/" + name + ".flow.yaml"
+		path := config.DefaultFlowsDir + "/" + name + ".flow.yaml"
 		err := os.Remove(path)
 		if err != nil {
 			if os.IsNotExist(err) {

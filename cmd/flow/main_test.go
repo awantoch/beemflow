@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -94,17 +95,19 @@ steps:
   - id: s1
     use: core.echo
     with: {text: hi}`
-	tmp, err := os.CreateTemp("", "valid.flow.yaml")
+	tmpDir := t.TempDir()
+	tmpPath := filepath.Join(tmpDir, t.Name()+"-valid.flow.yaml")
+	tmp, err := os.Create(tmpPath)
 	if err != nil {
 		t.Fatalf("create temp: %v", err)
 	}
-	defer os.Remove(tmp.Name())
+	defer os.Remove(tmpPath)
 	if _, err := tmp.Write([]byte(valid)); err != nil {
 		t.Fatalf("write temp: %v", err)
 	}
 	tmp.Close()
 
-	os.Args = []string{"flow", "lint", tmp.Name()}
+	os.Args = []string{"flow", "lint", tmpPath}
 	out := captureOutput(func() {
 		if err := NewRootCmd().Execute(); err != nil {
 			log.Printf("Execute failed: %v", err)
@@ -114,7 +117,7 @@ steps:
 		t.Errorf("expected Lint OK, got %q", out)
 	}
 
-	os.Args = []string{"flow", "validate", tmp.Name()}
+	os.Args = []string{"flow", "validate", tmpPath}
 	out = captureOutput(func() {
 		if err := NewRootCmd().Execute(); err != nil {
 			log.Printf("Execute failed: %v", err)
@@ -137,16 +140,18 @@ steps:
 
 	// Invalid YAML (schema error, but valid YAML)
 	bad := "name: bad\nsteps: [this is: not valid yaml]"
-	tmp2, err := os.CreateTemp("", "bad.flow.yaml")
+	tmpDir = t.TempDir()
+	tmp2Path := filepath.Join(tmpDir, t.Name()+"-bad.flow.yaml")
+	tmp2, err := os.Create(tmp2Path)
 	if err != nil {
 		t.Fatalf("create temp: %v", err)
 	}
-	defer os.Remove(tmp2.Name())
+	defer os.Remove(tmp2Path)
 	if _, err := tmp2.Write([]byte(bad)); err != nil {
 		t.Fatalf("write temp: %v", err)
 	}
 	tmp2.Close()
-	os.Args = []string{"flow", "lint", tmp2.Name()}
+	os.Args = []string{"flow", "lint", tmp2Path}
 	stderr, code = captureStderrExit(func() {
 		if err := NewRootCmd().Execute(); err != nil {
 			log.Printf("Execute failed: %v", err)
@@ -158,16 +163,18 @@ steps:
 
 	// Truly invalid YAML (parse error)
 	badYAML := "name: bad\nsteps: [this is: not valid yaml"
-	tmp3, err := os.CreateTemp("", "bad2.flow.yaml")
+	tmpDir = t.TempDir()
+	tmp3Path := filepath.Join(tmpDir, t.Name()+"-bad2.flow.yaml")
+	tmp3, err := os.Create(tmp3Path)
 	if err != nil {
 		t.Fatalf("create temp: %v", err)
 	}
-	defer os.Remove(tmp3.Name())
+	defer os.Remove(tmp3Path)
 	if _, err := tmp3.Write([]byte(badYAML)); err != nil {
 		t.Fatalf("write temp: %v", err)
 	}
 	tmp3.Close()
-	os.Args = []string{"flow", "lint", tmp3.Name()}
+	os.Args = []string{"flow", "lint", tmp3Path}
 	stderr, code = captureStderrExit(func() {
 		if err := NewRootCmd().Execute(); err != nil {
 			log.Printf("Execute failed: %v", err)
@@ -178,7 +185,7 @@ steps:
 	}
 
 	// Schema error (simulate by patching parser.ValidateFlow)
-	os.Args = []string{"flow", "lint", tmp.Name()}
+	os.Args = []string{"flow", "lint", tmpPath}
 	origValidate := parser.ValidateFlow
 	parser.ValidateFlow = func(flow *model.Flow, schemaPath string) error { return fmt.Errorf("schema fail") }
 	stderr, code = captureStderrExit(func() {

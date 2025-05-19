@@ -17,8 +17,39 @@ import (
 	"github.com/google/uuid"
 )
 
+// getStoreFromConfig returns a storage instance based on config, defaulting to SQLite.
+func getStoreFromConfig(cfg *config.Config) storage.Storage {
+	if cfg != nil && cfg.Storage.Driver != "" {
+		switch strings.ToLower(cfg.Storage.Driver) {
+		case "sqlite":
+			store, err := storage.NewSqliteStorage(cfg.Storage.DSN)
+			if err != nil {
+				logger.Warn("Failed to create sqlite storage: %v, using in-memory fallback", err)
+				return storage.NewMemoryStorage()
+			}
+			return store
+		case "postgres":
+			store, err := storage.NewPostgresStorage(cfg.Storage.DSN)
+			if err != nil {
+				logger.Warn("Failed to create postgres storage: %v, using in-memory fallback", err)
+				return storage.NewMemoryStorage()
+			}
+			return store
+		default:
+			logger.Warn("Unsupported storage driver: %s, defaulting to SQLite", cfg.Storage.Driver)
+		}
+	}
+	// Default to SQLite
+	store, err := storage.NewSqliteStorage(config.DefaultSQLiteDSN)
+	if err != nil {
+		logger.Warn("Failed to create default sqlite storage: %v, using in-memory fallback", err)
+		return storage.NewMemoryStorage()
+	}
+	return store
+}
+
 // flowsDir is the base directory for flow definitions; can be overridden via CLI or config.
-var flowsDir = "flows"
+var flowsDir = config.DefaultFlowsDir
 
 // SetFlowsDir allows overriding the base directory for flow definitions.
 func SetFlowsDir(dir string) {
@@ -90,23 +121,8 @@ func StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.
 	if err != nil && !os.IsNotExist(err) {
 		return uuid.Nil, err
 	}
-	var store storage.Storage
-	if cfg != nil && cfg.Storage.Driver != "" {
-		switch strings.ToLower(cfg.Storage.Driver) {
-		case "sqlite":
-			store, err = storage.NewSqliteStorage(cfg.Storage.DSN)
-		case "postgres":
-			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
-		default:
-			return uuid.Nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
-		}
-		if err != nil {
-			return uuid.Nil, err
-		}
-	}
-	if store == nil {
-		store = storage.NewMemoryStorage()
-	}
+	// Initialize storage
+	store := getStoreFromConfig(cfg)
 	eng := engine.NewEngineWithStorage(store)
 	flow, err := parser.ParseFlow(filepath.Join(flowsDir, flowName+".flow.yaml"))
 	if err != nil {
@@ -169,23 +185,8 @@ func GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	var store storage.Storage
-	if cfg != nil && cfg.Storage.Driver != "" {
-		switch strings.ToLower(cfg.Storage.Driver) {
-		case "sqlite":
-			store, err = storage.NewSqliteStorage(cfg.Storage.DSN)
-		case "postgres":
-			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
-		default:
-			return nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-	if store == nil {
-		store = storage.NewMemoryStorage()
-	}
+	// Initialize storage
+	store := getStoreFromConfig(cfg)
 	eng := engine.NewEngineWithStorage(store)
 	run, err := eng.GetRunByID(ctx, runID)
 	if err != nil {
@@ -200,23 +201,8 @@ func ListRuns(ctx context.Context) ([]*model.Run, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	var store storage.Storage
-	if cfg != nil && cfg.Storage.Driver != "" {
-		switch strings.ToLower(cfg.Storage.Driver) {
-		case "sqlite":
-			store, err = storage.NewSqliteStorage(cfg.Storage.DSN)
-		case "postgres":
-			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
-		default:
-			return nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-	if store == nil {
-		store = storage.NewMemoryStorage()
-	}
+	// Initialize storage
+	store := getStoreFromConfig(cfg)
 	eng := engine.NewEngineWithStorage(store)
 	return eng.ListRuns(ctx)
 }
@@ -233,23 +219,8 @@ func ResumeRun(ctx context.Context, token string, event map[string]any) (map[str
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	var store storage.Storage
-	if cfg != nil && cfg.Storage.Driver != "" {
-		switch strings.ToLower(cfg.Storage.Driver) {
-		case "sqlite":
-			store, err = storage.NewSqliteStorage(cfg.Storage.DSN)
-		case "postgres":
-			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
-		default:
-			return nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-	if store == nil {
-		store = storage.NewMemoryStorage()
-	}
+	// Initialize storage
+	store := getStoreFromConfig(cfg)
 	eng := engine.NewEngineWithStorage(store)
 	eng.Resume(token, event)
 	outputs := eng.GetCompletedOutputs(token)
@@ -267,23 +238,8 @@ func RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.
 	if err != nil && !os.IsNotExist(err) {
 		return uuid.Nil, nil, err
 	}
-	var store storage.Storage
-	if cfg != nil && cfg.Storage.Driver != "" {
-		switch strings.ToLower(cfg.Storage.Driver) {
-		case "sqlite":
-			store, err = storage.NewSqliteStorage(cfg.Storage.DSN)
-		case "postgres":
-			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
-		default:
-			return uuid.Nil, nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
-		}
-		if err != nil {
-			return uuid.Nil, nil, err
-		}
-	}
-	if store == nil {
-		store = storage.NewMemoryStorage()
-	}
+	// Initialize storage
+	store := getStoreFromConfig(cfg)
 	eng := engine.NewEngineWithStorage(store)
 	outputs, err := eng.Execute(ctx, flow, event)
 	if err != nil {

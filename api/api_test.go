@@ -7,16 +7,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awantoch/beemflow/config"
 	"github.com/google/uuid"
 )
 
 // TestMain ensures that the "flows" directory is removed before and after tests.
 func TestMain(m *testing.M) {
-	// Clean up any leftover from previous runs
-	os.RemoveAll("flows")
 	code := m.Run()
-	// Clean up after tests
-	os.RemoveAll("flows")
 	os.Exit(code)
 }
 
@@ -108,14 +105,14 @@ func TestGetFlow_FileNotFound(t *testing.T) {
 }
 
 func TestGetFlow_ParseError(t *testing.T) {
-	if err := os.MkdirAll("flows", 0755); err != nil {
+	flowsDir := filepath.Join(t.TempDir(), config.DefaultFlowsDir)
+	if err := os.MkdirAll(flowsDir, 0755); err != nil {
 		t.Fatalf("os.MkdirAll failed: %v", err)
 	}
-	badPath := "flows/bad.flow.yaml"
+	badPath := filepath.Join(flowsDir, "bad.flow.yaml")
 	if err := os.WriteFile(badPath, []byte("not: [valid: yaml"), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
-	defer os.Remove(badPath)
 	_, err := GetFlow(context.Background(), "bad")
 	if err == nil {
 		t.Errorf("expected parse error, got nil")
@@ -319,10 +316,10 @@ func TestStartRun_ListRunsError(t *testing.T) {
 	if err := os.MkdirAll("flows", 0755); err != nil {
 		t.Fatalf("os.MkdirAll failed: %v", err)
 	}
-	if err := os.WriteFile("flows/empty.flow.yaml", []byte("name: empty\nsteps: []"), 0644); err != nil {
+	if err := os.WriteFile(config.DefaultFlowsDir+"/empty.flow.yaml", []byte("name: empty\nsteps: []"), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
-	defer os.Remove("flows/empty.flow.yaml")
+	defer os.Remove(config.DefaultFlowsDir + "/empty.flow.yaml")
 	id, err := StartRun(context.Background(), "empty", map[string]any{})
 	if err != nil {
 		t.Errorf("expected no error for empty runs, got: %v", err)
@@ -344,10 +341,10 @@ steps:
     with:
       text: "hello"
 `
-	if err := os.WriteFile("flows/testflow.flow.yaml", []byte(flowYAML), 0644); err != nil {
+	if err := os.WriteFile(config.DefaultFlowsDir+"/testflow.flow.yaml", []byte(flowYAML), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
-	defer os.Remove("flows/testflow.flow.yaml")
+	defer os.Remove(config.DefaultFlowsDir + "/testflow.flow.yaml")
 
 	// Write minimal schema for validation
 	schema := `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`
@@ -435,10 +432,10 @@ steps:
     with:
       text: "resumed"
 `
-	if err := os.WriteFile("flows/resumeflow.flow.yaml", []byte(flowYAML), 0644); err != nil {
+	if err := os.WriteFile(config.DefaultFlowsDir+"/resumeflow.flow.yaml", []byte(flowYAML), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
-	defer os.Remove("flows/resumeflow.flow.yaml")
+	defer os.Remove(config.DefaultFlowsDir + "/resumeflow.flow.yaml")
 
 	// Write minimal schema for validation
 	schema := `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`

@@ -2,6 +2,7 @@ package parser
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/awantoch/beemflow/model"
@@ -14,9 +15,11 @@ func TestValidateFlow_Success(t *testing.T) {
 	"properties": { "name": {"type": "string", "minLength": 1} },
 	"required": ["name"]
 }`
-	tmp, err := os.CreateTemp("", "schema-*.json")
+	tmpDir := t.TempDir()
+	tmpPath := filepath.Join(tmpDir, t.Name()+"-schema.json")
+	tmp, err := os.Create(tmpPath)
 	if err != nil {
-		t.Fatalf("failed to create temp schema: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmp.Name())
 
@@ -38,9 +41,11 @@ func TestValidateFlow_Failure(t *testing.T) {
 	"properties": { "name": {"type": "string", "minLength": 1} },
 	"required": ["name"]
 }`
-	tmp, err := os.CreateTemp("", "schema-*.json")
+	tmpDir := t.TempDir()
+	tmpPath := filepath.Join(tmpDir, t.Name()+"-schema.json")
+	tmp, err := os.Create(tmpPath)
 	if err != nil {
-		t.Fatalf("failed to create temp schema: %v", err)
+		t.Fatalf("os.Create failed: %v", err)
 	}
 	defer os.Remove(tmp.Name())
 
