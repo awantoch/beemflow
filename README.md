@@ -2,7 +2,7 @@
 
 > **GitHub Actions for every business process — text-first, AI-native, open-source.**
 
-BeemFlow is a **workflow runtime, protocol, and global tool registry** for the age of LLM co-workers.
+BeemFlow is a **workflow protocol, runtime, and global tool registry** for the age of LLM co-workers.
 Write a single YAML file → run it locally, over REST, or through the Model Context Protocol (MCP). The same spec powers the BeemFlow agency, SaaS, and acquisition flywheel—now you can build on it too.
 
 ---
