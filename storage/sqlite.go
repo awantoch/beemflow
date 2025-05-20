@@ -341,3 +341,8 @@ func (s *SqliteStorage) DeleteRun(ctx context.Context, id uuid.UUID) error {
 	_, err = s.db.ExecContext(ctx, `DELETE FROM runs WHERE id=?`, id.String())
 	return err
 }
+
+// Close closes the underlying SQL database connection.
+func (s *SqliteStorage) Close() error {
+	return s.db.Close()
+}

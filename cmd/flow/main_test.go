@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/parser"
@@ -209,4 +210,13 @@ func TestMain_ToolStub(t *testing.T) {
 	if !strings.Contains(out, "flow tool (stub)") {
 		t.Errorf("expected tool stub output, got %q", out)
 	}
+}
+
+func TestMain(m *testing.M) {
+	// Clean up .beemflow before tests
+	os.RemoveAll(config.DefaultConfigDir)
+	code := m.Run()
+	// Clean up .beemflow after tests
+	os.RemoveAll(config.DefaultConfigDir)
+	os.Exit(code)
 }

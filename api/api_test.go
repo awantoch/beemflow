@@ -13,7 +13,12 @@ import (
 
 // TestMain ensures that the "flows" directory is removed before and after tests.
 func TestMain(m *testing.M) {
+	// Clean up .beemflow directory before tests
+	os.RemoveAll(config.DefaultConfigDir)
+	// Run tests
 	code := m.Run()
+	// Clean up .beemflow directory after tests
+	os.RemoveAll(config.DefaultConfigDir)
 	os.Exit(code)
 }
 

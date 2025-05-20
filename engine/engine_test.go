@@ -16,7 +16,13 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(m.Run())
+	// Clean up .beemflow directory before tests
+	os.RemoveAll(config.DefaultConfigDir)
+	// Run tests
+	code := m.Run()
+	// Clean up .beemflow directory after tests
+	os.RemoveAll(config.DefaultConfigDir)
+	os.Exit(code)
 }
 
 func TestNewEngine(t *testing.T) {
@@ -262,6 +268,9 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create sqlite storage: %v", err)
 	}
+	defer func() {
+		_ = s.Close()
+	}()
 	engine := NewEngineWithStorage(s)
 
 	// Start the flow, should pause at await_event
@@ -295,6 +304,9 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to reopen sqlite storage: %v", err)
 	}
+	defer func() {
+		_ = s2.Close()
+	}()
 	engine2 := NewEngineWithStorage(s2)
 
 	// Simulate resume event
@@ -331,6 +343,7 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 }
 
 func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
+	// Use a temp SQLite file
 	dbPath := filepath.Join(t.TempDir(), t.Name()+"-query_completed_run.db")
 
 	// Load the echo_await_resume flow and remove the await_event step for this test
@@ -351,10 +364,14 @@ func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
 	}
 	flow.Steps = newSteps
 
+	// Create storage and engine
 	s, err := storage.NewSqliteStorage(dbPath)
 	if err != nil {
 		t.Fatalf("failed to create sqlite storage: %v", err)
 	}
+	defer func() {
+		_ = s.Close()
+	}()
 	engine := NewEngineWithStorage(s)
 
 	startEvent := map[string]any{"input": "hello world", "token": "abc123"}
@@ -371,6 +388,9 @@ func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to reopen sqlite storage: %v", err)
 	}
+	defer func() {
+		_ = s2.Close()
+	}()
 
 	// Query the run and steps
 	run, err := s2.GetLatestRunByFlowName(context.Background(), flow.Name)
