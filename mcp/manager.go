@@ -83,7 +83,8 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 		}
 		logger.Info("Spawning MCP server '%s' (stdio) with command: %s %v", server, info.Command, info.Args)
 		cmd := NewMCPCommand(info)
-		// TODO: Replace os.Stdout and os.Stderr with logger-aware writers for subprocess output
+		// If info.StdoutProtocol is true, do not redirect stdout (protocol communication)
+		cmd.Stderr = &logger.LoggerWriter{Fn: logger.Error, Prefix: "[MCP " + server + " ERR] "}
 		if err := cmd.Start(); err != nil {
 			logger.Error("Failed to start MCP server %s: %v", server, err)
 			logger.Error("Command: %s %v", info.Command, info.Args)

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -113,4 +114,23 @@ func Errorf(format string, v ...any) error {
 		internalLogger.Errorf("%s", err)
 	}
 	return err
+}
+
+type LoggerWriter struct {
+	Fn     func(string, ...any)
+	Prefix string
+}
+
+func (w *LoggerWriter) Write(p []byte) (n int, err error) {
+	lines := strings.Split(string(p), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			if w.Prefix != "" {
+				w.Fn("%s%s", w.Prefix, line)
+			} else {
+				w.Fn("%s", line)
+			}
+		}
+	}
+	return len(p), nil
 }

@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"regexp"
 	"sync"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/logger"
 	mcpmanager "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"
 	mcp "github.com/metoro-io/mcp-golang"
@@ -136,8 +136,7 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 				if err != nil {
 					return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
 				}
-				// TODO: Replace os.Stderr with a logger-aware writer for subprocess error output
-				cmd.Stderr = os.Stderr
+				cmd.Stderr = &logger.LoggerWriter{Fn: logger.Error, Prefix: "[MCP " + host + " ERR] "}
 				if err := cmd.Start(); err != nil {
 					return nil, fmt.Errorf("failed to start MCP server %s: %w", host, err)
 				}
