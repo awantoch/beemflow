@@ -8,18 +8,13 @@ import (
 	"testing"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/testutil"
 	"github.com/google/uuid"
 )
 
 // TestMain ensures that the "flows" directory is removed before and after tests.
 func TestMain(m *testing.M) {
-	// Clean up .beemflow directory before tests
-	os.RemoveAll(config.DefaultConfigDir)
-	// Run tests
-	code := m.Run()
-	// Clean up .beemflow directory after tests
-	os.RemoveAll(config.DefaultConfigDir)
-	os.Exit(code)
+	testutil.WithCleanDirs(m, config.DefaultConfigDir, config.DefaultFlowsDir)
 }
 
 func TestListFlows(t *testing.T) {
@@ -93,13 +88,13 @@ func TestResumeRun(t *testing.T) {
 }
 
 func TestListFlows_DirError(t *testing.T) {
+	// Use testutil to clean flows dir before simulating error
+	testutil.CleanupDir(config.DefaultFlowsDir)
 	// Temporarily rename flows dir if it exists
-	if _, err := os.Stat("flows"); err == nil {
-		_ = os.Rename("flows", "flows_tmp")
-		defer func() { _ = os.Rename("flows_tmp", "flows") }()
+	if _, err := os.Stat(config.DefaultFlowsDir); err == nil {
+		_ = os.Rename(config.DefaultFlowsDir, "flows_tmp")
+		defer func() { _ = os.Rename("flows_tmp", config.DefaultFlowsDir) }()
 	}
-	// Remove flows dir to simulate error
-	_ = os.RemoveAll("flows")
 	_, err := ListFlows(context.Background())
 	if err != nil && !os.IsNotExist(err) {
 		t.Errorf("expected nil or not exist error, got: %v", err)
@@ -235,11 +230,11 @@ func TestResumeRun_ConfigError(t *testing.T) {
 
 func TestListFlows_UnexpectedError(t *testing.T) {
 	// Simulate unexpected error by creating a file instead of a dir
-	_ = os.RemoveAll("flows")
+	testutil.CleanupDir(config.DefaultFlowsDir)
 	if err := os.WriteFile("flows", []byte("not a dir"), 0644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
-	defer os.Remove("flows")
+	defer testutil.CleanupDir(config.DefaultFlowsDir)
 	_, err := ListFlows(context.Background())
 	if err == nil {
 		// This is OS/filesystem dependent; skip if not reproducible

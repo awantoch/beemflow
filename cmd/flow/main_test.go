@@ -14,6 +14,7 @@ import (
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/parser"
+	"github.com/awantoch/beemflow/testutil"
 )
 
 func captureOutput(f func()) string {
@@ -213,10 +214,5 @@ func TestMain_ToolStub(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	// Clean up .beemflow before tests
-	os.RemoveAll(config.DefaultConfigDir)
-	code := m.Run()
-	// Clean up .beemflow after tests
-	os.RemoveAll(config.DefaultConfigDir)
-	os.Exit(code)
+	testutil.WithCleanDir(m, config.DefaultConfigDir)
 }

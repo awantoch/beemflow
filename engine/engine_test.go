@@ -13,16 +13,11 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/storage"
+	"github.com/awantoch/beemflow/testutil"
 )
 
 func TestMain(m *testing.M) {
-	// Clean up .beemflow directory before tests
-	os.RemoveAll(config.DefaultConfigDir)
-	// Run tests
-	code := m.Run()
-	// Clean up .beemflow directory after tests
-	os.RemoveAll(config.DefaultConfigDir)
-	os.Exit(code)
+	testutil.WithCleanDir(m, config.DefaultConfigDir)
 }
 
 func TestNewEngine(t *testing.T) {
@@ -251,7 +246,10 @@ func TestExecute_SecretsInjection(t *testing.T) {
 
 func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	// Use a temp SQLite file
-	dbPath := filepath.Join(t.TempDir(), t.Name()+"-resume_fullflow.db")
+	tmpDir := t.TempDir()
+	// Cleanup temp dir (and any SQLite files) before automatic TempDir removal
+	defer func() { os.RemoveAll(tmpDir) }()
+	dbPath := filepath.Join(tmpDir, t.Name()+"-resume_fullflow.db")
 
 	// Load the echo_await_resume flow
 	f, err := os.ReadFile("../" + config.DefaultFlowsDir + "/echo_await_resume.flow.yaml")

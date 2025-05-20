@@ -6,21 +6,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/awantoch/beemflow/testutil"
 )
 
 // TestMain ensures the mcp_servers folder is cleaned up before and after tests
 func TestMain(m *testing.M) {
-	// Clean up .beemflow directory before tests
-	os.RemoveAll(DefaultConfigDir)
-	// Remove any existing mcp_servers directory before tests
-	os.RemoveAll("mcp_servers")
-	// Run tests
-	code := m.Run()
-	// Clean up after tests
-	os.RemoveAll("mcp_servers")
-	// Clean up .beemflow directory after tests
-	os.RemoveAll(DefaultConfigDir)
-	os.Exit(code)
+	testutil.WithCleanDirs(m, DefaultConfigDir, "mcp_servers")
 }
 
 func TestLoadConfig(t *testing.T) {
