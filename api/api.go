@@ -110,7 +110,7 @@ func ValidateFlow(ctx context.Context, name string) error {
 	return parser.ValidateFlow(flow, schemaPath)
 }
 
-// GraphFlow returns the DOT graph for the given flow.
+// GraphFlow returns the Mermaid diagram for the given flow.
 func GraphFlow(ctx context.Context, name string) (string, error) {
 	path := filepath.Join(flowsDir, name+".flow.yaml")
 	flow, err := parser.ParseFlow(path)

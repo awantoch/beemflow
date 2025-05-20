@@ -57,7 +57,7 @@ func buildMCPToolRegistrations() []mcpserver.ToolRegistration {
 		},
 		{
 			Name:        "graphFlow",
-			Description: "Get DOT graph for a flow",
+			Description: "Get the Mermaid diagram for a flow",
 			Handler: func(ctx context.Context, args mcpserver.GraphFlowArgs) (*mcp.ToolResponse, error) {
 				graph, err := svc.GraphFlow(ctx, args.Name)
 				if err != nil {
