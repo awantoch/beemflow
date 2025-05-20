@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -65,7 +66,7 @@ func StartServer(addr string) error {
 		}
 	}
 	// TODO: Use dependency injection for engine construction to allow easier testing and extension.
-	eng = engine.NewEngineWithStorage(store)
+	eng = engine.NewEngineWithStorage(context.Background(), store)
 	mux.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
 		if eng == nil {
 			w.WriteHeader(http.StatusNotImplemented)
@@ -280,7 +281,7 @@ func resumeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Resume the engine
-	eng.Resume(tokenOrID, resumeEvent)
+	eng.Resume(r.Context(), tokenOrID, resumeEvent)
 	outputs := eng.GetCompletedOutputs(tokenOrID)
 	runsMu.Lock()
 	if outputs != nil {

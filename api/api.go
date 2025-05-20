@@ -135,7 +135,7 @@ func StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.
 	if err != nil {
 		return uuid.Nil, err
 	}
-	eng := engine.NewEngineWithStorage(store)
+	eng := engine.NewEngineWithStorage(ctx, store)
 	flow, err := parser.ParseFlow(filepath.Join(flowsDir, flowName+".flow.yaml"))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -202,7 +202,7 @@ func GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.NewEngineWithStorage(store)
+	eng := engine.NewEngineWithStorage(ctx, store)
 	run, err := eng.GetRunByID(ctx, runID)
 	if err != nil {
 		return nil, nil
@@ -221,7 +221,7 @@ func ListRuns(ctx context.Context) ([]*model.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.NewEngineWithStorage(store)
+	eng := engine.NewEngineWithStorage(ctx, store)
 	return eng.ListRuns(ctx)
 }
 
@@ -249,8 +249,8 @@ func ResumeRun(ctx context.Context, token string, event map[string]any) (map[str
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.NewEngineWithStorage(store)
-	eng.Resume(token, event)
+	eng := engine.NewEngineWithStorage(ctx, store)
+	eng.Resume(ctx, token, event)
 	outputs := eng.GetCompletedOutputs(token)
 	return outputs, nil
 }
@@ -271,7 +271,7 @@ func RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
-	eng := engine.NewEngineWithStorage(store)
+	eng := engine.NewEngineWithStorage(ctx, store)
 	outputs, err := eng.Execute(ctx, flow, event)
 	if err != nil {
 		return uuid.Nil, outputs, err
@@ -295,7 +295,7 @@ func RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.
 
 // ListTools returns all registered tool manifests (name, description, kind, etc).
 func ListTools(ctx context.Context) ([]map[string]any, error) {
-	eng := engine.NewEngine()
+	eng := engine.NewEngine(ctx)
 	adapters := eng.Adapters.All()
 	var tools []map[string]any
 	for _, a := range adapters {
@@ -314,7 +314,7 @@ func ListTools(ctx context.Context) ([]map[string]any, error) {
 		}
 	}
 	// Also include MCP servers from the registry
-	mcps, err := eng.ListMCPServers()
+	mcps, err := eng.ListMCPServers(ctx)
 	if err == nil {
 		for _, mcp := range mcps {
 			tools = append(tools, map[string]any{

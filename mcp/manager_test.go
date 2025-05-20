@@ -2,6 +2,7 @@
 package mcp
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -46,7 +47,7 @@ func TestEnsureMCPServers_MissingConfig(t *testing.T) {
 		Steps: []model.Step{{Use: "mcp://unknown/tool"}},
 	}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{}}
-	err := EnsureMCPServers(flow, cfg)
+	err := EnsureMCPServers(context.Background(), flow, cfg)
 	if err == nil {
 		t.Errorf("expected error when MCP server config missing")
 	}
@@ -61,7 +62,7 @@ func TestEnsureMCPServers_MissingEnv(t *testing.T) {
 			"foo": {Command: "true", Env: map[string]string{"FOO": "bar"}},
 		},
 	}
-	err := EnsureMCPServers(flow, cfg)
+	err := EnsureMCPServers(context.Background(), flow, cfg)
 	if err == nil {
 		t.Errorf("expected error when env vars missing")
 	}
@@ -79,7 +80,7 @@ func TestEnsureMCPServers_Success(t *testing.T) {
 	}
 	// Ensure no relevant env vars are set
 	os.Unsetenv("FOO")
-	err := EnsureMCPServers(flow, cfg)
+	err := EnsureMCPServers(context.Background(), flow, cfg)
 	if err != nil {
 		t.Errorf("expected no error when starting MCP server, got %v", err)
 	}
@@ -119,7 +120,7 @@ func TestWaitForMCP_Success(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	err := waitForMCP(server.URL, 1*time.Second)
+	err := waitForMCP(context.Background(), server.URL, 1*time.Second)
 	if err != nil {
 		t.Errorf("expected waitForMCP to succeed, got %v", err)
 	}
@@ -127,7 +128,7 @@ func TestWaitForMCP_Success(t *testing.T) {
 
 // TestWaitForMCP_Error tests that waitForMCP returns an error immediately on negative timeout.
 func TestWaitForMCP_Error(t *testing.T) {
-	err := waitForMCP("http://127.0.0.1:0", -1*time.Second)
+	err := waitForMCP(context.Background(), "http://127.0.0.1:0", -1*time.Second)
 	if err == nil {
 		t.Errorf("expected error for negative timeout")
 	}
@@ -137,7 +138,7 @@ func TestWaitForMCP_Error(t *testing.T) {
 func TestEnsureMCPServers_MissingCommand(t *testing.T) {
 	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {Command: ""}}}
-	err := EnsureMCPServers(flow, cfg)
+	err := EnsureMCPServers(context.Background(), flow, cfg)
 	if err == nil || !strings.Contains(err.Error(), "config is missing 'command'") {
 		t.Errorf("expected missing command error, got %v", err)
 	}
@@ -149,7 +150,7 @@ func TestEnsureMCPServers_DebugLogging(t *testing.T) {
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {Command: "true"}}}
 	os.Setenv("BEEMFLOW_DEBUG", "1")
 	defer os.Unsetenv("BEEMFLOW_DEBUG")
-	err := EnsureMCPServers(flow, cfg)
+	err := EnsureMCPServers(context.Background(), flow, cfg)
 	if err != nil {
 		t.Errorf("expected no error in debug mode, got %v", err)
 	}
@@ -159,7 +160,7 @@ func TestEnsureMCPServers_DebugLogging(t *testing.T) {
 func TestEnsureMCPServers_CommandStartError(t *testing.T) {
 	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {Command: "nonexistent_binary"}}}
-	err := EnsureMCPServers(flow, cfg)
+	err := EnsureMCPServers(context.Background(), flow, cfg)
 	if err == nil || !strings.Contains(err.Error(), "failed to start MCP server foo") {
 		t.Errorf("expected start error for nonexistent command, got %v", err)
 	}
@@ -177,7 +178,7 @@ func TestEnsureMCPServers_EnvMapping(t *testing.T) {
 	os.Setenv("FOO_SHELL", "shellval")
 	defer os.Unsetenv("FOO_LIT")
 	defer os.Unsetenv("FOO_SHELL")
-	err := EnsureMCPServers(flow, cfg)
+	err := EnsureMCPServers(context.Background(), flow, cfg)
 	if err != nil {
 		t.Errorf("expected no error with env mapping, got %v", err)
 	}

@@ -1,6 +1,7 @@
 package blob
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 )
@@ -19,11 +20,11 @@ func TestFilesystemBlobStore_RoundTrip(t *testing.T) {
 	value := []byte("test-data")
 	mime := "text/plain"
 	filename := "test.txt"
-	url, err := store.Put(value, mime, filename)
+	url, err := store.Put(context.Background(), value, mime, filename)
 	if err != nil {
 		t.Errorf("Put failed: %v", err)
 	}
-	got, err := store.Get(url)
+	got, err := store.Get(context.Background(), url)
 	if err != nil {
 		t.Errorf("Get failed: %v", err)
 	}
@@ -34,11 +35,11 @@ func TestFilesystemBlobStore_RoundTrip(t *testing.T) {
 
 func TestFilesystemBlobStore_EmptyData(t *testing.T) {
 	store := newTestFilesystemBlobStore(t)
-	url, err := store.Put([]byte{}, "text/plain", "empty.txt")
+	url, err := store.Put(context.Background(), []byte{}, "text/plain", "empty.txt")
 	if err != nil {
 		t.Errorf("Put failed for empty data: %v", err)
 	}
-	got, err := store.Get(url)
+	got, err := store.Get(context.Background(), url)
 	if err != nil {
 		t.Errorf("Get failed for empty data: %v", err)
 	}
@@ -49,7 +50,7 @@ func TestFilesystemBlobStore_EmptyData(t *testing.T) {
 
 func TestFilesystemBlobStore_GetUnknownURL(t *testing.T) {
 	store := newTestFilesystemBlobStore(t)
-	_, err := store.Get("file:///does/not/exist.txt")
+	_, err := store.Get(context.Background(), "file:///does/not/exist.txt")
 	if err == nil {
 		t.Errorf("expected error for unknown file, got nil")
 	}
@@ -59,19 +60,19 @@ func TestFilesystemBlobStore_Concurrency(t *testing.T) {
 	store := newTestFilesystemBlobStore(t)
 	done := make(chan bool, 2)
 	go func() {
-		if _, err := store.Put([]byte("a"), "text/plain", "a.txt"); err != nil {
+		if _, err := store.Put(context.Background(), []byte("a"), "text/plain", "a.txt"); err != nil {
 			t.Errorf("Put failed: %v", err)
 		}
-		if _, err := store.Get("file://" + store.dir + "/a.txt"); err != nil {
+		if _, err := store.Get(context.Background(), "file://"+store.dir+"/a.txt"); err != nil {
 			t.Errorf("Get failed: %v", err)
 		}
 		done <- true
 	}()
 	go func() {
-		if _, err := store.Put([]byte("b"), "text/plain", "b.txt"); err != nil {
+		if _, err := store.Put(context.Background(), []byte("b"), "text/plain", "b.txt"); err != nil {
 			t.Errorf("Put failed: %v", err)
 		}
-		if _, err := store.Get("file://" + store.dir + "/b.txt"); err != nil {
+		if _, err := store.Get(context.Background(), "file://"+store.dir+"/b.txt"); err != nil {
 			t.Errorf("Get failed: %v", err)
 		}
 		done <- true
@@ -82,8 +83,8 @@ func TestFilesystemBlobStore_Concurrency(t *testing.T) {
 
 func TestFilesystemBlobStore_DoubleStore(t *testing.T) {
 	store := newTestFilesystemBlobStore(t)
-	_, err1 := store.Put([]byte("first"), "text/plain", "dup.txt")
-	_, err2 := store.Put([]byte("second"), "text/plain", "dup.txt")
+	_, err1 := store.Put(context.Background(), []byte("first"), "text/plain", "dup.txt")
+	_, err2 := store.Put(context.Background(), []byte("second"), "text/plain", "dup.txt")
 	if err1 != nil || err2 != nil {
 		t.Errorf("expected no error for double store, got %v, %v", err1, err2)
 	}
@@ -91,11 +92,11 @@ func TestFilesystemBlobStore_DoubleStore(t *testing.T) {
 
 func TestFilesystemBlobStore_ErrorCase(t *testing.T) {
 	store := newTestFilesystemBlobStore(t)
-	url, err := store.Put(nil, "", "errorcase.txt")
+	url, err := store.Put(context.Background(), nil, "", "errorcase.txt")
 	if err != nil {
 		t.Errorf("expected no error for nil input, got %v", err)
 	}
-	got, err := store.Get(url)
+	got, err := store.Get(context.Background(), url)
 	if err != nil {
 		t.Errorf("Get failed for errorcase.txt: %v", err)
 	}
@@ -106,7 +107,7 @@ func TestFilesystemBlobStore_ErrorCase(t *testing.T) {
 
 func TestFilesystemBlobStore_InvalidURL(t *testing.T) {
 	store := newTestFilesystemBlobStore(t)
-	_, err := store.Get("not-a-file-url")
+	_, err := store.Get(context.Background(), "not-a-file-url")
 	if err == nil {
 		t.Errorf("expected error for invalid file URL, got nil")
 	}

@@ -70,8 +70,8 @@ func (b *WatermillEventBus) Publish(topic string, payload any) error {
 	return b.publisher.Publish(topic, msg)
 }
 
-func (b *WatermillEventBus) Subscribe(topic string, handler func(payload any)) {
-	ch, err := b.subscriber.Subscribe(context.Background(), topic)
+func (b *WatermillEventBus) Subscribe(ctx context.Context, topic string, handler func(payload any)) {
+	ch, err := b.subscriber.Subscribe(ctx, topic)
 	if err != nil {
 		return
 	}

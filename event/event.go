@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/awantoch/beemflow/config"
@@ -8,7 +9,7 @@ import (
 
 type EventBus interface {
 	Publish(topic string, payload any) error
-	Subscribe(topic string, handler func(payload any))
+	Subscribe(ctx context.Context, topic string, handler func(payload any))
 }
 
 // NewInProcEventBus returns a new in-memory event bus. Used when event config driver=="memory" or omitted.

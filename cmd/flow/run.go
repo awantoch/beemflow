@@ -48,7 +48,7 @@ func newRunCmd() *cobra.Command {
 				cfgJSON, _ := json.MarshalIndent(cfg.MCPServers, "", "  ")
 				logger.Debug("Loaded MCPServers config:\n%s\n", cfgJSON)
 			}
-			if err := mcp.EnsureMCPServersWithTimeout(flow, cfg, mcpStartupTimeout); err != nil {
+			if err := mcp.EnsureMCPServersWithTimeout(cmd.Context(), flow, cfg, mcpStartupTimeout); err != nil {
 				logger.Error("Failed to ensure MCP servers: %v", err)
 				exit(3)
 			}
@@ -83,7 +83,7 @@ func newRunCmd() *cobra.Command {
 					store = sqliteStore
 				}
 			}
-			eng := engine.NewEngine()
+			eng := engine.NewEngine(cmd.Context())
 			defer eng.Close()
 			eng.Storage = store
 			outputs, err := eng.Execute(cmd.Context(), flow, event)

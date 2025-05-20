@@ -59,7 +59,7 @@ func NewMCPCommand(info config.MCPServerConfig) *exec.Cmd {
 }
 
 // EnsureMCPServersWithTimeout uses runtime configuration to check and run all MCP servers referenced in the flow, with a configurable timeout.
-func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout time.Duration) error {
+func EnsureMCPServersWithTimeout(ctx context.Context, flow *model.Flow, cfg *config.Config, timeout time.Duration) error {
 	servers := FindMCPServersInFlow(flow)
 	for server := range servers {
 		info, err := config.GetMergedMCPServerConfig(cfg, server)
@@ -94,7 +94,7 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 		logger.Debug("MCP server '%s' (stdio) started", server)
 		// Wait for MCP server to be ready (HTTP only for now)
 		if info.Endpoint != "" {
-			if err := waitForMCP(info.Endpoint, timeout); err != nil {
+			if err := waitForMCP(ctx, info.Endpoint, timeout); err != nil {
 				return logger.Errorf("MCP server '%s' did not become ready: %v", server, err)
 			}
 		}
@@ -103,8 +103,8 @@ func EnsureMCPServersWithTimeout(flow *model.Flow, cfg *config.Config, timeout t
 }
 
 // EnsureMCPServers uses a default timeout of 15s for backward compatibility.
-func EnsureMCPServers(flow *model.Flow, cfg *config.Config) error {
-	return EnsureMCPServersWithTimeout(flow, cfg, 15*time.Second)
+func EnsureMCPServers(ctx context.Context, flow *model.Flow, cfg *config.Config) error {
+	return EnsureMCPServersWithTimeout(ctx, flow, cfg, 15*time.Second)
 }
 
 // isPortOpen checks if a TCP port is open on localhost
@@ -118,13 +118,13 @@ func isPortOpen(port int) bool {
 }
 
 // waitForMCP polls the MCP server until it responds to ListTools or timeout, with exponential backoff
-func waitForMCP(baseURL string, timeout time.Duration) error {
+func waitForMCP(ctx context.Context, baseURL string, timeout time.Duration) error {
 	client := NewHTTPMCPClient(baseURL)
 	deadline := time.Now().Add(timeout)
 	interval := 500 * time.Millisecond
 	maxInterval := 5 * time.Second
 	for {
-		_, err := client.ListTools(context.Background(), new(string))
+		_, err := client.ListTools(ctx, new(string))
 		if err == nil {
 			return nil
 		}

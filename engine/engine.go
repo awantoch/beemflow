@@ -57,7 +57,7 @@ type PausedRun struct {
 // - Merges both, with local entries taking precedence over curated ones.
 // - Any tool installed via the CLI is written to the local registry file.
 // - This is future-proofed for remote/community registries.
-func newDefaultAdapterRegistry() *adapter.Registry {
+func newDefaultAdapterRegistry(ctx context.Context) *adapter.Registry {
 	reg := adapter.NewRegistry()
 	reg.Register(&adapter.CoreAdapter{})
 	reg.Register(adapter.NewMCPAdapter())
@@ -77,12 +77,12 @@ func newDefaultAdapterRegistry() *adapter.Registry {
 	// Load curated registry
 	curatedReg := registry.NewLocalRegistry("registry/index.json")
 	curatedMgr := registry.NewRegistryManager(curatedReg)
-	curatedTools, _ := curatedMgr.ListAllServers(context.Background(), registry.ListOptions{})
+	curatedTools, _ := curatedMgr.ListAllServers(ctx, registry.ListOptions{})
 
 	// Load local registry
 	localReg := registry.NewLocalRegistry(localRegistryPath)
 	localMgr := registry.NewRegistryManager(localReg)
-	localTools, _ := localMgr.ListAllServers(context.Background(), registry.ListOptions{})
+	localTools, _ := localMgr.ListAllServers(ctx, registry.ListOptions{})
 
 	// Merge: local takes precedence
 	toolMap := map[string]registry.RegistryEntry{}
@@ -107,9 +107,9 @@ func newDefaultAdapterRegistry() *adapter.Registry {
 }
 
 // NewEngineWithBlobStore creates a new Engine with a custom BlobStore.
-func NewEngineWithBlobStore(blobStore blob.BlobStore) *Engine {
+func NewEngineWithBlobStore(ctx context.Context, blobStore blob.BlobStore) *Engine {
 	return &Engine{
-		Adapters:         newDefaultAdapterRegistry(),
+		Adapters:         newDefaultAdapterRegistry(ctx),
 		Templater:        templater.NewTemplater(),
 		EventBus:         event.NewInProcEventBus(),
 		BlobStore:        blobStore,
@@ -120,18 +120,18 @@ func NewEngineWithBlobStore(blobStore blob.BlobStore) *Engine {
 }
 
 // NewEngine creates a new Engine with the default BlobStore (filesystem, zero config).
-func NewEngine() *Engine {
+func NewEngine(ctx context.Context) *Engine {
 	// Default BlobStore
-	bs, err := blob.NewDefaultBlobStore(nil)
+	bs, err := blob.NewDefaultBlobStore(ctx, nil)
 	if err != nil {
 		logger.Warn("Failed to create default blob store: %v, using in-memory fallback", err)
 		bs = nil
 	}
-	return NewEngineWithBlobStore(bs)
+	return NewEngineWithBlobStore(ctx, bs)
 }
 
 // NewEngineWithConfig creates a new Engine with a custom Storage backend and config-driven EventBus.
-func NewEngineWithConfig(store storage.Storage, cfg *config.Config) *Engine {
+func NewEngineWithConfig(ctx context.Context, store storage.Storage, cfg *config.Config) *Engine {
 	if store == nil {
 		store = storage.NewMemoryStorage()
 	}
@@ -147,7 +147,7 @@ func NewEngineWithConfig(store storage.Storage, cfg *config.Config) *Engine {
 		bus = event.NewInProcEventBus()
 	}
 	eng := &Engine{
-		Adapters:         newDefaultAdapterRegistry(),
+		Adapters:         newDefaultAdapterRegistry(ctx),
 		Templater:        templater.NewTemplater(),
 		EventBus:         bus,
 		BlobStore:        nil, // or set to a default if needed
@@ -185,12 +185,12 @@ func NewEngineWithConfig(store storage.Storage, cfg *config.Config) *Engine {
 				}
 				eng.waiting[token] = pr
 				// Re-subscribe to event bus
-				eng.EventBus.Subscribe("resume:"+token, func(payload any) {
+				eng.EventBus.Subscribe(ctx, "resume:"+token, func(payload any) {
 					resumeEvent, ok := payload.(map[string]any)
 					if !ok {
 						return
 					}
-					eng.Resume(token, resumeEvent)
+					eng.Resume(ctx, token, resumeEvent)
 				})
 			}
 		}
@@ -199,9 +199,9 @@ func NewEngineWithConfig(store storage.Storage, cfg *config.Config) *Engine {
 }
 
 // NewEngineWithStorage creates a new Engine with a custom Storage backend.
-func NewEngineWithStorage(store storage.Storage) *Engine {
+func NewEngineWithStorage(ctx context.Context, store storage.Storage) *Engine {
 	cfg, _ := config.LoadConfig(config.DefaultConfigPath)
-	return NewEngineWithConfig(store, cfg)
+	return NewEngineWithConfig(ctx, store, cfg)
 }
 
 // Execute now supports pausing and resuming at await_event.
@@ -366,12 +366,12 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				_ = e.Storage.SavePausedRun(token, pausedRunToMap(e.waiting[token]))
 			}
 			e.mu.Unlock()
-			e.EventBus.Subscribe("resume:"+token, func(payload any) {
+			e.EventBus.Subscribe(ctx, "resume:"+token, func(payload any) {
 				resumeEvent, ok := payload.(map[string]any)
 				if !ok {
 					return
 				}
-				e.Resume(token, resumeEvent)
+				e.Resume(ctx, token, resumeEvent)
 			})
 			return nil, logger.Errorf("step %s is waiting for event (await_event pause)", step.ID)
 		}
@@ -409,7 +409,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 }
 
 // Resume resumes a paused run with the given token and event.
-func (e *Engine) Resume(token string, resumeEvent map[string]any) {
+func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[string]any) {
 	logger.Debug("Resume called for token %s with event: %+v", token, resumeEvent)
 	e.mu.Lock()
 	paused, ok := e.waiting[token]
@@ -428,7 +428,7 @@ func (e *Engine) Resume(token string, resumeEvent map[string]any) {
 	}
 	logger.Debug("Outputs map before resume for token %s: %+v", token, paused.StepCtx.Outputs)
 	// Continue execution from next step
-	ctx := context.WithValue(context.Background(), runIDKey, paused.RunID)
+	ctx = context.WithValue(ctx, runIDKey, paused.RunID)
 	outputs, err := e.executeStepsWithPersistence(ctx, paused.Flow, paused.StepCtx, paused.StepIdx+1, paused.RunID)
 	// Merge outputs from before and after resume
 	allOutputs := make(map[string]any)
@@ -710,16 +710,16 @@ func (e *Engine) GetRunByID(ctx context.Context, id uuid.UUID) (*model.Run, erro
 	return run, nil
 }
 
-// ListMCPServers returns all MCP servers from the registry, including their names.
+// ListMCPServers returns all MCP servers from the registry, using the provided context.
 type MCPServerWithName struct {
 	Name   string
 	Config *config.MCPServerConfig
 }
 
-func (e *Engine) ListMCPServers() ([]*MCPServerWithName, error) {
+func (e *Engine) ListMCPServers(ctx context.Context) ([]*MCPServerWithName, error) {
 	localReg := registry.NewLocalRegistry("registry/index.json")
 	regMgr := registry.NewRegistryManager(localReg)
-	tools, err := regMgr.ListAllServers(context.Background(), registry.ListOptions{})
+	tools, err := regMgr.ListAllServers(ctx, registry.ListOptions{})
 	if err != nil {
 		return nil, err
 	}

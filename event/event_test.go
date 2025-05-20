@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ func TestPublishSubscribeNoop(t *testing.T) {
 				success = false
 			}
 		}()
-		b.Subscribe("topic", func(payload any) {})
+		b.Subscribe(context.Background(), "topic", func(payload any) {})
 	}()
 	if !success {
 		t.Errorf("Subscribe panicked")
@@ -37,7 +38,7 @@ func TestPublishSubscribeNoop(t *testing.T) {
 func TestEventBus_RoundTrip(t *testing.T) {
 	b := NewInProcEventBus()
 	received := make(chan any, 1)
-	b.Subscribe("topic", func(payload any) {
+	b.Subscribe(context.Background(), "topic", func(payload any) {
 		received <- payload
 	})
 	if err := b.Publish("topic", 42); err != nil {

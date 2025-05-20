@@ -1,6 +1,7 @@
 package blob
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,7 +27,7 @@ func NewFilesystemBlobStore(dir string) (*FilesystemBlobStore, error) {
 }
 
 // Put stores the blob as a file in the directory. Returns a file:// URL.
-func (f *FilesystemBlobStore) Put(data []byte, mime, filename string) (string, error) {
+func (f *FilesystemBlobStore) Put(ctx context.Context, data []byte, mime, filename string) (string, error) {
 	if filename == "" {
 		filename = fmt.Sprintf("blob-%d", time.Now().UnixNano())
 	}
@@ -43,7 +44,7 @@ func (f *FilesystemBlobStore) Put(data []byte, mime, filename string) (string, e
 }
 
 // Get retrieves the blob from the file:// URL.
-func (f *FilesystemBlobStore) Get(url string) ([]byte, error) {
+func (f *FilesystemBlobStore) Get(ctx context.Context, url string) ([]byte, error) {
 	const prefix = "file://"
 	if !strings.HasPrefix(url, prefix) {
 		return nil, logger.Errorf("invalid file URL: %s", url)
