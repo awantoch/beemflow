@@ -59,6 +59,102 @@ steps:
 
 ---
 
+# Real-World BeemFlow YAML Examples
+
+### 1. Hello World
+A minimal flow that prints a message.
+```yaml
+name: hello
+on: cli.manual
+steps:
+  - id: greet
+    use: core.echo
+    with:
+      text: "Hello, BeemFlow!"
+```
+
+### 2. Fetch and Summarize a URL
+Fetches a web page and summarizes it with GPT-4o.
+```yaml
+name: fetch_and_summarize
+on: cli.manual
+vars:
+  URL: "https://en.wikipedia.org/wiki/Artificial_intelligence"
+steps:
+  - id: fetch
+    use: http.fetch
+    with:
+      url: "{{.vars.URL}}"
+  - id: summarize
+    use: openai.chat_completion
+    with:
+      model: "gpt-4o"
+      messages:
+        - role: system
+          content: "Summarize the following text in 3 bullet points."
+        - role: user
+          content: "{{.outputs.fetch.body}}"
+  - id: print
+    use: core.echo
+    with:
+      text: "{{.outputs.summarize.choices[0].message.content}}"
+```
+
+### 3. Slack Notification
+Sends a message to a Slack channel using a secret token.
+```yaml
+name: notify_ops
+on: cli.manual
+steps:
+  - id: notify
+    use: slack.chat.postMessage
+    with:
+      channel: "#ops"
+      text: "All systems go!"
+      token: "{{.secrets.SLACK_TOKEN}}"
+```
+
+### 4. Parallel Steps
+Runs two steps in parallel.
+```yaml
+name: parallel_example
+on: cli.manual
+steps:
+  - id: parallel_block
+    parallel: true
+    steps:
+      - id: step1
+        use: core.echo
+        with:
+          text: "This runs in parallel (1)"
+      - id: step2
+        use: core.echo
+        with:
+          text: "This runs in parallel (2)"
+```
+
+### 5. Await Event (Human-in-the-Loop)
+Waits for an external approval before continuing.
+```yaml
+name: await_approval
+on: cli.manual
+steps:
+  - id: await_approval
+    await_event:
+      source: airtable
+      match:
+        record_id: "{{airtable_row.id}}"
+        field: Status
+        equals: Approved
+      timeout: 24h
+  - id: notify
+    use: core.echo
+    with:
+      text: "Approval received!"
+```
+
+---
+
 # BeemFlow Protocol & Specification
 
 ---
