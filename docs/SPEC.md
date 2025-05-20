@@ -2,7 +2,21 @@
 
 ---
 
-This document is the **canonical, LLM-ingestible specification** for BeemFlow. It is fully self-contained: all YAML grammar, config, API, and extension patterns are included below.
+> **The canonical, LLM-ingestible spec for BeemFlow.**
+> All YAML grammar, config, API, and extension patterns in one place.
+
+---
+
+## Quick Reference (Cheat Sheet)
+
+- **Flow file:** Single YAML, versioned, text-first, LLM-friendly
+- **Triggers:** `on: cli.manual`, `on: schedule.cron`, etc.
+- **Steps:** Each step = tool call, logic, or wait
+- **Templating:** `{{.outputs.step.field}}`, `{{.vars.NAME}}`, helpers
+- **Parallelism:** `parallel: true` with nested `steps:`
+- **Waits:** `await_event`, `wait`, durable and resumable
+- **Registry:** Local, MCP, remote, GitHub—all tools in one namespace
+- **API:** CLI, HTTP, MCP—same protocol, same flows
 
 ---
 
@@ -12,7 +26,7 @@ BeemFlow is a text-first, open protocol and runtime for AI-powered, event-driven
 
 ---
 
-## 2. YAML File Grammar
+## 2. YAML Flow Grammar
 
 A BeemFlow flow is defined in a single YAML file:
 
@@ -22,7 +36,7 @@ version:    string                       # optional semver
 on:         list|object                  # triggers
 vars:       map[string]                  # optional constants / secret refs
 steps:      array of step objects        # required
-catch:      array of step objects        # optional global error flow (ordered list)
+catch:      array of step objects        # optional global error flow
 ```
 
 ### Example Flow
@@ -41,11 +55,15 @@ steps:
       text: "{{.outputs.greet.text}}"
 ```
 
+**Why it's powerful:**
+- All logic is in YAML—versioned, diffable, LLM-friendly.
+- Steps can reference outputs, vars, secrets, and helpers.
+
 ---
 
-## 3. Step Definition Keys
+## 3. Step Definition
 
-Each step in `steps:` supports the following keys:
+Each step in `steps:` supports:
 
 ```yaml
 - id: string (required)
@@ -71,24 +89,20 @@ Each step in `steps:` supports the following keys:
 ## 4. Tool Registry & Resolution
 
 Tools are auto-discovered and prioritized as follows:
-1. **Local manifests**: configured via `.beemflow/registry.json` or created with `flow mcp install <registry>:<tool>`
-2. **MCP servers**: `mcp://server/tool` (auto-discovered at runtime)
-3. **Remote registries**: e.g. `https://hub.beemflow.com/index.json`
-4. **GitHub shorthand**: `github:owner/repo[/path][@ref]`
-
-All tools are exposed in a single, LLM-native registry for use in flows, CLI, HTTP, MCP, or LLMs.
+1. **Local manifests:** `.beemflow/registry.json` or `flow mcp install <registry>:<tool>`
+2. **MCP servers:** `mcp://server/tool` (auto-discovered at runtime)
+3. **Remote registries:** e.g. `https://hub.beemflow.com/index.json`
+4. **GitHub shorthand:** `github:owner/repo[/path][@ref]`
 
 **Registry Resolution Order:**
-1. If the `BEEMFLOW_REGISTRY` environment variable is set, it is used.
-2. If `registry/index.json` exists, it is used.
-3. Otherwise, the public hub at `https://hub.beemflow.com/index.json` is used.
+1. `$BEEMFLOW_REGISTRY` env var
+2. `registry/index.json` (if exists)
+3. Public hub at `https://hub.beemflow.com/index.json`
 
-### 4a. Registry Namespacing & Ambiguity
-
-- When multiple registries are enabled, all tool/server names are qualified as `<registry>:<name>` (e.g., `smithery:airtable`, `local:mytool`).
-- CLI and API output always includes a `REGISTRY` column.
-- If a name is ambiguous (exists in more than one registry), the user must specify the qualified name.
-- If only one match exists, the unqualified name is accepted for convenience.
+**Namespacing & Ambiguity:**
+- All tool/server names can be qualified as `<registry>:<name>` (e.g., `smithery:airtable`).
+- If ambiguous, user must specify the qualified name.
+- CLI/API output always includes a `REGISTRY` column.
 
 ---
 
@@ -116,7 +130,6 @@ All endpoints accept/return JSON.
 
 ### Example: Run a Flow (HTTP)
 
-**Request:**
 ```http
 POST /runs
 Content-Type: application/json
@@ -126,56 +139,8 @@ Content-Type: application/json
   "event": {}
 }
 ```
-**Response:**
-```json
-{
-  "run_id": "b1e2...",
-  "status": "STARTED"
-}
-```
-
-### Example: Get Run Status (HTTP)
-
-**Request:**
-```http
-GET /runs/b1e2...
-```
-**Response:**
-```json
-{
-  "id": "b1e2...",
-  "flow_name": "hello",
-  "status": "SUCCEEDED",
-  "outputs": { "print": { "text": "Hello, BeemFlow!" } }
-}
-```
-
-### Example: List Tools (HTTP)
-
-**Request:**
-```http
-GET /tools
-```
-**Response:**
-```json
-[
-  { "name": "core.echo", "description": "Echo text", ... },
-  { "name": "http.fetch", "description": "Fetch a URL", ... }
-]
-```
-
-### Example: Graph Flow (HTTP)
-
-**Request:**
-```http
-GET /graph?flow=hello
-```
-**Response:**
-```mermaid
-%% Mermaid graph
-flowchart TD
-  greet --> print
-```
+**What happens?**
+- Starts a new run of the `hello` flow. Returns a run ID and status.
 
 ---
 
@@ -200,25 +165,22 @@ Each tool is described by a JSON-Schema manifest:
 ```
 
 **Manifest Default Injection:**
-BeemFlow automatically injects any `default` values from the manifest's parameters into the request body for missing fields. This means you can omit defaulted fields in your YAML flows, and the runtime will fill them in, making flows DRY and ergonomic.
+- BeemFlow injects any `default` values from the manifest's parameters into the request body for missing fields. This keeps flows DRY and ergonomic.
 
 ---
 
-## 7. Configuration (flow.config.json)
+## 7. Configuration (`flow.config.json`)
 
 The runtime is configured via a JSON file. All fields in `config.Config` are supported. See [flow_config.schema.json](flow_config.schema.json) for the full schema.
 
-### Example Configuration
-
-#### Memory (default)
+### Example: Memory (default)
 ```jsonc
 {
   "storage": { "driver": "sqlite", "dsn": "beemflow.db" }
-  // no "event" block → in-mem bus
 }
 ```
 
-#### NATS
+### Example: NATS
 ```jsonc
 {
   "event": {
@@ -228,12 +190,12 @@ The runtime is configured via a JSON file. All fields in `config.Config` are sup
 }
 ```
 
-> **Event Bus**
-> • driver=`memory` (default, in-process)
-> • driver=`nats` (requires `url`)
-> • unknown drivers error out
+> **Event Bus:**
+> - `driver: memory` (default, in-process)
+> - `driver: nats` (requires `url`)
+> - Unknown drivers error out
 
-BeemFlow always loads the built-in curated registry and Smithery (if SMITHERY_API_KEY is set); you don't need to specify these in your config.
+BeemFlow always loads the built-in curated registry and Smithery (if `SMITHERY_API_KEY` is set); you don't need to specify these in your config.
 
 ---
 
@@ -249,7 +211,7 @@ type Adapter interface {
 }
 ```
 
-HTTP, OpenAI, MCP, and custom adapters are all supported.
+- HTTP, OpenAI, MCP, and custom adapters are all supported.
 
 ---
 
@@ -257,7 +219,7 @@ HTTP, OpenAI, MCP, and custom adapters are all supported.
 
 Flows can pause on `await_event` and resume via `POST /resume/{token}` (HMAC-signed). State is persisted in the configured storage backend.
 
-### Example Await Event Step
+### Example: Await Event Step
 
 ```yaml
 - id: await_approval
@@ -273,6 +235,10 @@ Flows can pause on `await_event` and resume via `POST /resume/{token}` (HMAC-sig
   with:
     text: "Approval received!"
 ```
+
+**Why it's powerful:**
+- Enables human-in-the-loop, webhook, or external event-driven automations.
+- Flows are durable and resumable.
 
 ---
 
@@ -291,7 +257,7 @@ steps:
     with:
       channel: "#ops"
       text:    "All systems go!"
-      token:   "{{secrets.SLACK_TOKEN}}"
+      token:   "{{.secrets.SLACK_TOKEN}}"
 ```
 
 ---
@@ -343,12 +309,12 @@ steps:
 
 ## 12. Extensibility Patterns
 
-- **Add a local tool:** Use `flow mcp install <registry>:<tool>` or add entries to `.beemflow/registry.json`.
-- **Add an MCP server:** Use `flow mcp install <registry>:<server>` or configure in `.beemflow/registry.json`.
+- **Add a local tool:** `flow mcp install <registry>:<tool>` or add entries to `.beemflow/registry.json`.
+- **Add an MCP server:** `flow mcp install <registry>:<server>` or configure in `.beemflow/registry.json`.
 - **Add a remote tool:** Reference a remote registry or GitHub manifest.
 - **Write a custom adapter:** Implement the Adapter interface in Go.
 - **Extend Event Bus:** Add fields to `event` config (e.g. `clusterID`, `clientID`, TLS options) and wire them into `NewEventBusFromConfig`.
-- **Environment Overrides:** Future: support env vars like `BEEMFLOW_EVENT_DRIVER` to override config at runtime.
+- **Environment Overrides:** (Future) Support env vars like `BEEMFLOW_EVENT_DRIVER` to override config at runtime.
 
 ---
 
@@ -380,3 +346,10 @@ MIT. Use it, remix it, ship it.
 ## 16. Integration Patterns
 
 - MCP, HTTP, and custom adapters are all supported and interoperable.
+
+---
+
+**Next Steps:**
+- See [README.md](../README.md) for real-world examples and onboarding.
+- Try writing your own flow or tool manifest.
+- Join the community: [Discord](https://discord.gg/beemflow)
