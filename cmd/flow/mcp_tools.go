@@ -11,6 +11,11 @@ import (
 	mcp "github.com/metoro-io/mcp-golang"
 )
 
+// Define a named struct for describe tool arguments
+type DescribeArgs struct {
+	Type string `json:"type"`
+}
+
 // buildMCPToolRegistrations returns all tool registrations for the MCP server.
 func buildMCPToolRegistrations() []mcpserver.ToolRegistration {
 	svc := api.NewFlowService()
@@ -98,9 +103,20 @@ func buildMCPToolRegistrations() []mcpserver.ToolRegistration {
 			}
 			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
 		}},
-		// Describe tool for discovery
-		{ID: registry.InterfaceIDDescribe, Desc: registry.InterfaceDescMetadata, Handler: func(ctx context.Context, _ mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
-			b, err := json.Marshal(registry.AllInterfaces())
+		// Replace the describe handler to use DescribeArgs
+		{ID: registry.InterfaceIDDescribe, Desc: registry.InterfaceDescMetadata, Handler: func(ctx context.Context, args DescribeArgs) (*mcp.ToolResponse, error) {
+			all := registry.AllInterfaces()
+			var filtered []registry.InterfaceMeta
+			if args.Type == "" {
+				filtered = all
+			} else {
+				for _, m := range all {
+					if string(m.Type) == args.Type {
+						filtered = append(filtered, m)
+					}
+				}
+			}
+			b, err := json.Marshal(filtered)
 			if err != nil {
 				return nil, err
 			}

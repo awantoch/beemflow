@@ -804,4 +804,40 @@ steps: []`
 	}
 }
 
+func TestMCPServer_DescribeTool_TypeFiltering(t *testing.T) {
+	client, cancel := startMCPServer(t)
+	defer cancel()
+	ctx := context.Background()
+
+	types := []string{"mcp", "http", "cli", ""}
+	for _, typ := range types {
+		params := struct{ Type string }{typ}
+		resp, err := client.CallTool(ctx, "describe", params)
+		if err != nil {
+			t.Fatalf("describe failed for type %q: %v", typ, err)
+		}
+		if resp == nil || len(resp.Content) == 0 {
+			t.Fatalf("Expected non-nil response from describe for type %q", typ)
+		}
+		var contentMap map[string]interface{}
+		b, _ := json.Marshal(resp.Content[0])
+		if err := json.Unmarshal(b, &contentMap); err != nil {
+			t.Fatalf("failed to marshal content: %v", err)
+		}
+		textVal, ok := contentMap["text"].(string)
+		if !ok {
+			t.Fatalf("expected 'text' field in content map, got: %v", contentMap)
+		}
+		var out []map[string]interface{}
+		if err := json.Unmarshal([]byte(textVal), &out); err != nil {
+			t.Fatalf("failed to unmarshal describe JSON: %v", err)
+		}
+		for _, entry := range out {
+			if typ != "" && entry["type"] != typ {
+				t.Errorf("describe returned entry with type %v, expected %v", entry["type"], typ)
+			}
+		}
+	}
+}
+
 // Add more tests for other handlers and edge cases as needed
