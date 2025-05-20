@@ -55,6 +55,7 @@ func NewRootCmd() *cobra.Command {
 		newAssistCmd(),
 		newMCPCmd(),
 		newMetadataCmd(),
+		newSpecCmd(),
 	)
 	// Register all CLI commands for metadata discovery
 	cliMetas := collectCobra(rootCmd)

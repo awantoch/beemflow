@@ -18,6 +18,7 @@ func TestHTTPMetadataComplete(t *testing.T) {
 		InterfaceIDGetToolManifest,
 		InterfaceIDPublishEvent,
 		InterfaceIDMetadata,
+		InterfaceIDSpec,
 	}
 	found := make(map[string]bool)
 	for _, m := range AllInterfaces() {
@@ -44,6 +45,7 @@ func TestMCPMetadataComplete(t *testing.T) {
 		InterfaceIDPublishEvent,
 		InterfaceIDResumeRun,
 		InterfaceIDDescribe,
+		InterfaceIDSpec,
 	}
 	found := make(map[string]bool)
 	for _, m := range AllInterfaces() {
@@ -77,6 +79,7 @@ func TestCoreOperationsParity(t *testing.T) {
 		{"listTools", InterfaceIDListTools, InterfaceIDListTools},
 		{"getToolManifest", InterfaceIDGetToolManifest, InterfaceIDGetToolManifest},
 		{"publishEvent", InterfaceIDPublishEvent, InterfaceIDPublishEvent},
+		{"spec", InterfaceIDSpec, InterfaceIDSpec},
 	}
 	httpSet := make(map[string]bool)
 	mcpSet := make(map[string]bool)

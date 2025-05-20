@@ -30,6 +30,7 @@ const (
 	InterfaceIDPublishEvent    = "publishEvent"
 	InterfaceIDDescribe        = "describe"
 	InterfaceIDMetadata        = "metadata"
+	InterfaceIDSpec            = "spec"
 )
 
 // Well-known interface descriptions to avoid typos and drift
@@ -52,6 +53,7 @@ const (
 	InterfaceDescMetadata        = "List all CLI/HTTP/MCP interfaces"
 	InterfaceDescStaticAssets    = "Serve static assets"
 	InterfaceDescHealthCheck     = "Health check"
+	InterfaceDescSpec            = "Get BeemFlow protocol spec"
 )
 
 // InterfaceMeta holds metadata for a CLI command, HTTP route, or MCP tool.
@@ -128,5 +130,10 @@ func init() {
 	}
 	for _, id := range mcpOnly {
 		RegisterInterface(InterfaceMeta{ID: id, Type: MCP})
+	}
+
+	// Register spec endpoint/tool/command for all interface types
+	for _, typ := range []InterfaceType{CLI, HTTP, MCP} {
+		RegisterInterface(InterfaceMeta{ID: InterfaceIDSpec, Type: typ, Use: InterfaceIDSpec, Description: InterfaceDescSpec})
 	}
 }

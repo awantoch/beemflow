@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/awantoch/beemflow/api"
+	"github.com/awantoch/beemflow/docs"
 	mcpserver "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/google/uuid"
@@ -26,6 +27,10 @@ func buildMCPToolRegistrations() []mcpserver.ToolRegistration {
 		Handler  any
 	}
 	defs := []toolDef{
+		// SPEC tool: returns the full BeemFlow protocol SPEC
+		{ID: "spec", Desc: "BeemFlow Protocol & Specification", Handler: func(ctx context.Context, args mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
+			return mcp.NewToolResponse(mcp.NewTextContent(docs.BeemflowSpec)), nil
+		}},
 		{ID: registry.InterfaceIDListFlows, Desc: registry.InterfaceDescListFlows, Handler: func(ctx context.Context, args mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
 			flows, err := svc.ListFlows(ctx)
 			if err != nil {

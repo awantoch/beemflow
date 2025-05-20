@@ -15,6 +15,7 @@ import (
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/docs"
 	beemengine "github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/logger"
@@ -180,6 +181,7 @@ func StartServer(cfg *config.Config) error {
 		{ID: registry.InterfaceIDListFlows, Type: registry.HTTP, Use: http.MethodGet, Path: "/flows", Description: registry.InterfaceDescListFlows},
 		{ID: registry.InterfaceIDGetFlowSpec, Type: registry.HTTP, Use: http.MethodGet, Path: "/flows/{name}", Description: registry.InterfaceDescGetFlowSpec},
 		{ID: registry.InterfaceIDPublishEvent, Type: registry.HTTP, Use: http.MethodPost, Path: "/events", Description: registry.InterfaceDescPublishEvent},
+		{ID: registry.InterfaceIDSpec, Type: registry.HTTP, Use: http.MethodGet, Path: "/spec", Description: "Get BeemFlow protocol spec"},
 	}
 	for _, m := range httpMetas {
 		registry.RegisterInterface(m)
@@ -287,6 +289,10 @@ func StartServer(cfg *config.Config) error {
 	mux.HandleFunc("/flows", flowsHandler)
 	mux.HandleFunc("/flows/", flowSpecHandler)
 	mux.HandleFunc("/events", eventsHandler)
+	mux.HandleFunc("/spec", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/markdown")
+		_, _ = w.Write([]byte(docs.BeemflowSpec))
+	})
 	mux.Handle("/metrics", promhttp.Handler())
 
 	addr := ":8080"
