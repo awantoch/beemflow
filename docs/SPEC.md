@@ -1,3 +1,64 @@
+# BeemFlow LLM Agent Quick Start
+
+> **How to use BeemFlow as an LLM agent:**
+>
+> 1. **List Capabilities:** Call `describe` to see all available tools and commands.
+> 2. **Fetch the Protocol Spec:** Call `spec` to get the full YAML grammar, config, and API reference.
+> 3. **Act on User Intent:**
+>    - If the user asks for a new flow, generate a complete YAML using the spec and template below.
+>    - If the user wants to run or list flows, use `listFlows`, `startRun`, etc.
+>    - Always show the YAML or result, and ask if the user wants to install/run/customize it.
+> 4. **Don't ask for permission to fetch the spec or describe—just do it.**
+
+---
+
+## Example MCP Tool Metadata
+
+```json
+[
+  { "id": "spec", "type": "mcp", "description": "BeemFlow Protocol & Specification" },
+  { "id": "listFlows", "type": "mcp", "description": "List all flows" },
+  { "id": "startRun", "type": "mcp", "description": "Start a new run" },
+  ...
+]
+```
+
+---
+
+## YAML Flow Template
+
+```yaml
+name: <flow-name>
+on: cli.manual
+vars:
+  URL: "https://example.com"
+steps:
+  - id: fetch
+    use: http.fetch
+    with:
+      url: "{{.vars.URL}}"
+  - id: summarize
+    use: openai.chat_completion
+    with:
+      model: "gpt-4o"
+      messages:
+        - role: system
+          content: "Summarize the following text."
+        - role: user
+          content: "{{.outputs.fetch.body}}"
+```
+
+---
+
+## Next-Step Rubric for LLMs
+
+> **When the user asks for a flow:**
+> - Write a complete YAML.
+> - Don't ask for more info unless absolutely necessary.
+> - Always include a `vars:` block if the flow uses variables.
+
+---
+
 # BeemFlow Protocol & Specification
 
 ---
