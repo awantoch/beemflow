@@ -1,280 +1,642 @@
-# BeemFlow 🚀
+# BeemFlow
+
+> **GitHub Actions for every business process — text-first, AI-native, open-source.**
+
+BeemFlow is a **workflow runtime, protocol, and global tool registry** for the age of LLM co-workers.
+Write a single YAML file → run it locally, over REST, or through the Model Context Protocol (MCP). The same spec powers the BeemFlow agency, SaaS, and acquisition flywheel—now you can build on it too.
 
 ---
 
-# Table of Contents
-- [BeemFlow 🚀](#beemflow-)
-- [Table of Contents](#table-of-contents)
-  - [What is BeemFlow?](#what-is-beemflow)
-  - [Quickstart](#quickstart)
-  - [Core Concepts](#core-concepts)
-  - [Protocol-Agnostic Interface](#protocol-agnostic-interface)
-  - [Real-World Examples](#real-world-examples)
-    - [Hello World](#hello-world)
-    - [Fetch and Summarize](#fetch-and-summarize)
-    - [Parallel OpenAI (Fanout/Fanin)](#parallel-openai-fanoutfanin)
+## Table of Contents
+- [BeemFlow](#beemflow)
+  - [Table of Contents](#table-of-contents)
+  - [Why BeemFlow?](#why-beemflow)
+  - [Getting Started: BeemFlow by Example](#getting-started-beemflow-by-example)
+    - [🟢 Example 1: Hello, World!](#-example-1-hello-world)
+    - [🌐 Example 2: Fetch \& Summarize (LLM + HTTP)](#-example-2-fetch--summarize-llm--http)
+  - [Workflow Gallery (Real-World Scenarios)](#workflow-gallery-real-world-scenarios)
+    - [⚡ Parallel LLMs (Fan-out and Combine)](#-parallel-llms-fan-out-and-combine)
+    - [🧑‍💼 Human-in-the-Loop Approval (MCP + Twilio SMS)](#-human-in-the-loop-approval-mcp--twilio-sms)
+    - [🚀 Marketing Agent (LLM + Socials + Slack Approval)](#-marketing-agent-llm--socials--slack-approval)
+    - [1. "CFO in a Box" – Daily 1-Slide Cash Report](#1-cfo-in-a-box--daily-1-slide-cash-report)
+    - [2. E-Commerce Autopilot – Dynamic Pricing \& Ads](#2-e-commerce-autopilot--dynamic-pricing--ads)
+    - [3. Invoice Chaser – Recover Aged AR in \< 24 h](#3-invoice-chaser--recover-aged-ar-in--24-h)
+  - [Anatomy of a Flow](#anatomy-of-a-flow)
+  - [Registry \& Tool Resolution](#registry--tool-resolution)
+  - [CLI • HTTP • MCP — One Brain](#cli--http--mcp--one-brain)
   - [Extending BeemFlow](#extending-beemflow)
-  - [Project Layout](#project-layout)
-  - [FAQ](#faq)
-  - [Contributing \& Community](#contributing--community)
-  - [Full Protocol \& Spec](#full-protocol--spec)
-  - [Beemflow MCP Registry Integration](#beemflow-mcp-registry-integration)
-    - [Multi-Registry Support](#multi-registry-support)
-    - [Namespacing and Registry-Qualified Names](#namespacing-and-registry-qualified-names)
-    - [Configuration](#configuration)
-    - [CLI Usage](#cli-usage)
-    - [Adding More Registries](#adding-more-registries)
-    - [Migration Notes](#migration-notes)
-  - [Registries: Curated vs Local](#registries-curated-vs-local)
+  - [Architecture](#architecture)
+  - [Security \& Secrets](#security--secrets)
+  - [Roadmap](#roadmap)
+  - [Contributing](#contributing)
+  - [License](#license)
 
 ---
 
-## What is BeemFlow?
+## Why BeemFlow?
 
-BeemFlow is an open protocol and runtime for AI-powered, event-driven automations. It provides a **protocol-agnostic, consistent interface** for flows and tools—CLI, HTTP, and MCP clients all speak the same language. Whether you're running a flow, discovering tools, or integrating with LLMs, you use the same concepts and API surface everywhere.
-
-- **Text-first:** Write, share, and run workflows in YAML.
-- **Interoperable:** Local, HTTP, and MCP tools are all available in a single, LLM-native registry.
-- **Composable:** Chain tools, orchestrate workflows, and expose flows as tools for LLMs and clients.
-- **Extensible:** Add new tools or adapters with zero boilerplate.
-
-**Registry Resolution:** By default, BeemFlow uses `registry/index.json` if present. If not, it falls back to the public hub at `https://hub.beemflow.com/index.json`. You can override this with the `BEEMFLOW_REGISTRY` environment variable.
-
----
-
-## Quickstart
-
-1. **Clone the repo:**
-   ```bash
-   git clone https://github.com/awantoch/beemflow.git
-   cd beemflow
-   ```
-2. **Run an example flow:**
-   ```bash
-   flow run hello
-   # or add your OPENAI_API_KEY to .env and try another example:
-   flow run fetch_and_summarize
-   flow run parallel_openai
-   ```
-3. **Switch to NATS event bus:**
-   ```bash
-   cat <<EOF > flow.config.json
-   { "event": { "driver":"nats", "url":"nats://..." } }
-   EOF
-   flow run yourflow  # now uses your NATS server
-   ```
-4. **Visualize a flow locally:**  
-   ```bash
-   flow graph <flow_file>
-   ```
-   This outputs the flow as Mermaid syntax (engineered for easy sharing).
-5. **Run HTTP server with interactive UI:**  
-   ```bash
-   flow serve --port 8080
-   ```
-   Then open `http://localhost:8080` to select and visualize flows interactively.
+| Legacy "No-Code" | **BeemFlow** |
+|------------------|--------------|
+| Drag-and-drop UIs that break at scale | **Plain-text YAML** — diff-able, version-controlled, LLM-parseable |
+| Opaque SaaS black boxes | **Open runtime** + plug-in adapters |
+| Human glue work | **LLM prompts are first-class** – AI is the default worker |
+| Multiple brittle dashboards | **One spec → one run → one audit trail** |
+| Vendor lock-in | **Protocol-agnostic**: CLI, REST, MCP, library |
 
 ---
 
-## Core Concepts
+## Getting Started: BeemFlow by Example
 
-- **Flows:** YAML files that define event-driven automations as a sequence of steps.
-- **Steps:** Each step calls a tool (local, HTTP, or MCP) with inputs and produces outputs.
-- **Adapters:** Pluggable integrations for HTTP APIs, LLMs, MCP servers, and custom logic.
-- **Registry:** All tools—local manifests, MCP endpoints, remote registries—are auto-discovered and available in a single, LLM-native registry.
-- **Protocol-Agnostic Interface:** Manage flows and tools the same way via CLI, HTTP, or MCP. Everything is interoperable and consistent.
+**From "Hello, World!" to real-world automations. Each example is a real, runnable YAML file.**
 
 ---
 
-## Protocol-Agnostic Interface
+### 🟢 Example 1: Hello, World!
 
-BeemFlow exposes a **consistent, protocol-agnostic interface** for running, managing, and introspecting flows and tools. Whether you use the CLI, HTTP API, or MCP protocol, you:
-- List, run, and inspect flows
-- Resume paused flows (durable waits)
-- Validate and test flows
-- Discover and call tools (from any source)
-- Interact with the assistant for LLM-driven flow authoring
+**What it does:** Runs two steps, each echoing a message. Shows how outputs can be reused.
 
-**See the [Full Protocol & Spec](docs/beemflow_spec.md) for canonical details, endpoints, and request/response formats.**
-
----
-
-## Real-World Examples
-
-### Hello World
 ```yaml
+# hello.flow.yaml
 name: hello
 on: cli.manual
 steps:
   - id: greet
     use: core.echo
     with:
-      text: "Hello, BeemFlow!"
-  - id: print
+      text: "Hello, world, I'm BeemFlow!"
+  - id: greet_again
     use: core.echo
     with:
-      text: "{{.outputs.greet.text}}"
+      text: "Aaand once more: {{.greet.text}}"
 ```
-Run it:
 ```bash
-flow run hello
+flow run hello.flow.yaml
 ```
+**Why it's powerful:**
+- Shows how easy it is to pass data between steps.
+- Demonstrates BeemFlow's text-first, LLM-friendly approach.
 
-### Fetch and Summarize
+**What happens?**
+- BeemFlow runs each step in order, passing outputs between them. You'll see both greetings printed.
+
+---
+
+### 🌐 Example 2: Fetch & Summarize (LLM + HTTP)
+
+**What it does:** Fetches a web page, summarizes it with an LLM, and prints the result.
+
 ```yaml
+# summarize.flow.yaml
 name: fetch_and_summarize
 on: cli.manual
+vars:
+  fetch_url: "https://en.wikipedia.org/wiki/Artificial_intelligence"
 steps:
-  - id: fetch
+  - id: fetch_page
     use: http.fetch
     with:
-      url: "https://en.wikipedia.org/api/rest_v1/page/summary/Artificial_intelligence"
+      url: "{{.vars.fetch_url}}"
   - id: summarize
     use: openai.chat_completion
     with:
       model: "gpt-4o"
       messages:
         - role: system
-          content: "Summarize the following text in 3 bullet points."
+          content: "Summarize the following web page in 3 bullets."
         - role: user
-          content: "{{.outputs.fetch.body}}"
+          content: "{{.fetch_page.body}}"
   - id: print
     use: core.echo
     with:
-      text: "{{.outputs.summarize.choices[0].message.content}}"
+      text: "Summary: {{(index .summarize.choices 0).message.content}}"
 ```
-Run it:
 ```bash
-flow run fetch_and_summarize
+flow run summarize.flow.yaml
 ```
+**Why it's powerful:**
+- Mixes HTTP, LLMs, and templating in one YAML.
+- Shows how to use variables and step outputs.
 
-### Parallel OpenAI (Fanout/Fanin)
+**What happens?**
+- BeemFlow fetches a web page, asks an LLM to summarize it, and prints the summary.
+
+---
+
+**Next Steps:**
+- Try editing these flows or adding your own steps.
+- Explore the Workflow Gallery below for more advanced, real-world automations.
+- See [SPEC.md](./docs/SPEC.md) for the full grammar.
+
+---
+
+## Workflow Gallery (Real-World Scenarios)
+
+Explore real-world automations, from parallel LLMs to human-in-the-loop and multi-channel marketing agents. Each example is detailed and ready to run.
+
+---
+
+### ⚡ Parallel LLMs (Fan-out and Combine)
+
+**What it does:** Runs two LLM prompts in parallel, then combines their answers.
+
 ```yaml
-name: parallel_openai
+# parallel.flow.yaml
+name: parallel_facts
 on: cli.manual
+vars:
+  prompt1: "Give me a fun fact about the Moon."
+  prompt2: "Give me a fun fact about the Ocean."
 steps:
   - id: fanout
     parallel: true
     steps:
-      - id: chat1
+      - id: moon_fact
         use: openai.chat_completion
         with:
-          model: "gpt-3.5-turbo"
+          model: "gpt-4o"
           messages:
             - role: user
-              content: "Prompt 1"
-      - id: chat2
+              content: "{{.vars.prompt1}}"
+      - id: ocean_fact
         use: openai.chat_completion
         with:
-          model: "gpt-3.5-turbo"
+          model: "gpt-4o"
           messages:
             - role: user
-              content: "Prompt 2"
+              content: "{{.vars.prompt2}}"
   - id: combine
     depends_on: [fanout]
     use: core.echo
     with:
       text: |
-        Combined responses:\n
-        - chat1: {{.outputs.fanout.chat1.choices[0].message.content}}
-        - chat2: {{.outputs.fanout.chat2.choices[0].message.content}}
+        🌕 Moon: {{(index .outputs.fanout.moon_fact.choices 0).message.content}}
+        🌊 Ocean: {{(index .outputs.fanout.ocean_fact.choices 0).message.content}}
 ```
-Run it:
 ```bash
-flow run parallel_openai
+flow run parallel.flow.yaml
 ```
+**Why it's powerful:**
+- Effortless parallelism, LLM orchestration, and output composition.
+- Shows how to use `parallel: true` and combine outputs.
+
+**What happens?**
+- BeemFlow runs two LLM prompts in parallel, then combines and prints their answers.
+
+---
+
+### 🧑‍💼 Human-in-the-Loop Approval (MCP + Twilio SMS)
+
+**What it does:** Drafts a message, sends it for human approval via SMS (using an MCP tool), and acts on the reply.
+
+```yaml
+# human_approval.flow.yaml
+name: human_approval
+on: cli.manual
+vars:
+  phone_number: "+15551234567"  # <-- Replace with your test number
+  approval_token: "demo-approval-123"
+steps:
+  - id: draft_message
+    use: openai.chat_completion
+    with:
+      model: "gpt-4o"
+      messages:
+        - role: system
+          content: "Draft a short, friendly reminder for a team meeting at 3pm."
+  - id: send_sms
+    use: mcp://twilio/send_sms
+    with:
+      to: "{{.vars.phone_number}}"
+      body: |
+        {{(index .draft_message.choices 0).message.content}}
+        Reply YES to approve, NO to reject.
+      token: "{{.vars.approval_token}}"
+  - id: wait_for_approval
+    await_event:
+      source: twilio
+      match:
+        token: "{{.vars.approval_token}}"
+      timeout: 1h
+  - id: check_approval
+    if: "{{.event.body | toLower | trim == 'yes'}}"
+    use: core.echo
+    with:
+      text: "✅ Approved! Message sent."
+  - id: check_rejection
+    if: "{{.event.body | toLower | trim == 'no'}}"
+    use: core.echo
+    with:
+      text: "❌ Rejected by human."
+```
+```bash
+flow run human_approval.flow.yaml
+```
+**Why it's powerful:**
+- Brings in external tools (MCP), durable waits, and human-in-the-loop automation.
+- Shows how to use `await_event` and conditional logic.
+
+**What happens?**
+- The flow sends an SMS for approval.
+- It pauses until a reply is received (via webhook or manual event).
+- When the human replies, the flow resumes and prints the result.
+
+---
+
+### 🚀 Marketing Agent (LLM + Socials + Slack Approval)
+
+**What it does:**
+- Takes a feature update as input.
+- Uses LLM(s) to generate content for Twitter, LinkedIn, and a blog post.
+- Sends the drafts to a Slack channel for team review/approval.
+- Waits for Slack feedback/approval before posting to the socials (simulated as echo steps for safety, but can be swapped for real posting tools).
+
+```yaml
+# marketing_agent.flow.yaml
+name: marketing_agent
+on: cli.manual
+vars:
+  feature_update: "BeemFlow now supports human-in-the-loop approvals via SMS and Slack!"
+  approval_token: "approved!"
+  slack_channel: "#marketing"
+steps:
+  - id: generate_content
+    parallel: true
+    steps:
+      - id: tweet
+        use: openai.chat_completion
+        with:
+          model: "gpt-4o"
+          messages:
+            - role: system
+              content: "Write a catchy tweet announcing this product update: '{{.vars.feature_update}}'"
+      - id: linkedin
+        use: openai.chat_completion
+        with:
+          model: "gpt-4o"
+          messages:
+            - role: system
+              content: "Write a LinkedIn post (max 300 words) for this update: '{{.vars.feature_update}}'"
+      - id: blog
+        use: openai.chat_completion
+        with:
+          model: "gpt-4o"
+          messages:
+            - role: system
+              content: "Write a short blog post (max 500 words) about: '{{.vars.feature_update}}'"
+  - id: send_to_slack
+    use: mcp://slack/chat.postMessage
+    with:
+      channel: "{{.vars.slack_channel}}"
+      text: |
+        :mega: *Feature Update Drafts for Review*
+        *Tweet:* {{(index .outputs.generate_content.tweet.choices 0).message.content}}
+        *LinkedIn:* {{(index .outputs.generate_content.linkedin.choices 0).message.content}}
+        *Blog:* {{(index .outputs.generate_content.blog.choices 0).message.content}}
+        
+        Reply with 'approve' to post, or 'edit: ...' to suggest changes.
+      token: "{{.vars.approval_token}}"
+  - id: wait_for_slack_approval
+    await_event:
+      source: slack
+      match:
+        token: "{{.vars.approval_token}}"
+      timeout: 2h
+  - id: handle_edits
+    if: "{{.event.text | toLower | hasPrefix 'edit:'}}"
+    use: core.echo
+    with:
+      text: "Edits requested: {{.event.text}} (flow would branch to editing here)"
+  - id: post_to_socials
+    if: "{{.event.text | toLower | trim == 'approve'}}"
+    parallel: true
+    steps:
+      - id: post_tweet
+        use: core.echo  # Replace with mcp://twitter/post for real posting
+        with:
+          text: "[POSTED to Twitter]: {{(index .outputs.generate_content.tweet.choices 0).message.content}}"
+      - id: post_linkedin
+        use: core.echo  # Replace with mcp://linkedin/post for real posting
+        with:
+          text: "[POSTED to LinkedIn]: {{(index .outputs.generate_content.linkedin.choices 0).message.content}}"
+      - id: post_blog
+        use: core.echo  # Replace with mcp://blog/post for real posting
+        with:
+          text: "[POSTED to Blog]: {{(index .outputs.generate_content.blog.choices 0).message.content}}"
+```
+```bash
+flow run marketing_agent.flow.yaml
+```
+**Why it's powerful:**
+- Orchestrates multiple LLMs, parallel content generation, and human-in-the-loop review across channels.
+- Shows how to combine parallelism, templating, and event-driven waits in a real-world marketing workflow.
+
+**What happens?**
+- The flow generates content for each channel in parallel.
+- It sends all drafts to Slack for review.
+- It waits for a human to reply 'approve' or 'edit: ...'.
+- If approved, it posts to all channels (simulated here with echo steps).
+- If edits are requested, it echoes the request (could branch to a revision flow).
+
+---
+
+### 1. "CFO in a Box" – Daily 1-Slide Cash Report
+
+**What it does:**
+- Pulls balances from Stripe and QuickBooks.
+- Analyzes and summarizes cash/AR with an LLM.
+- Converts the summary to a PowerPoint slide.
+- Sends the slide to Slack.
+
+```yaml
+name: cfo_daily_cash
+on: schedule.cron
+cron: "0 7 * * *"          # 07:00 every day
+
+vars:
+  ALERT_THRESHOLD: 20000
+
+steps:
+  - id: pull_stripe
+    use: stripe.balance.retrieve
+    with: { api_key: "{{.secrets.STRIPE_KEY}}" }
+
+  - id: pull_qbo
+    use: quickbooks.reports.balanceSheet
+    with: { token: "{{.secrets.QBO_TOKEN}}" }
+
+  - id: analyze
+    use: openai.chat_completion
+    with:
+      model: gpt-4o
+      messages:
+        - role: system
+          content: |
+            Combine the Stripe and QuickBooks JSON below.
+            1. Report total cash & AR.
+            2. If cash < ${{vars.ALERT_THRESHOLD}}, add ⚠️.
+            3. Format as a single PowerPoint slide in Markdown.
+        - role: user
+          content: |
+            Stripe: {{.outputs.pull_stripe}}
+            QuickBooks: {{.outputs.pull_qbo}}
+
+  - id: ppt
+    use: cloudconvert.md_to_pptx
+    with:
+      markdown: "{{.outputs.analyze.choices[0].message.content}}"
+
+  - id: send
+    use: slack.files.upload
+    with:
+      token: "{{.secrets.SLACK_TOKEN}}"
+      channels: ["#finance"]
+      file: "{{.outputs.ppt.file_url}}"
+      title: "Daily Cash Snapshot"
+```
+```bash
+flow run cfo_daily_cash.flow.yaml
+```
+**Why it's powerful:**
+- Shows multi-source data, LLM analysis, file conversion, and Slack integration in one flow.
+
+**What happens?**
+- Pulls balances, analyzes, generates a slide, and sends it to Slack—automatically, every morning.
+
+---
+
+### 2. E-Commerce Autopilot – Dynamic Pricing & Ads
+
+**What it does:**
+- Scrapes competitor prices.
+- Updates Shopify product prices based on margin and competitor data.
+- Adjusts Google Ads campaigns based on price changes.
+
+```yaml
+name: ecommerce_autopilot
+on: schedule.interval
+every: "1h"
+
+vars:
+  MIN_MARGIN_PCT: 20
+
+steps:
+  - id: scrape_prices
+    use: browserless.scrape
+    with:
+      url: "https://competitor.com/product/{{.event.sku}}"
+      selector: ".price"
+      format: json
+
+  - id: update_shopify
+    use: shopify.product.updatePrice
+    with:
+      api_key: "{{.secrets.SHOPIFY_KEY}}"
+      product_id: "{{.event.product_id}}"
+      new_price: |
+        {{ math.max(
+             event.cost * (1 + vars.MIN_MARGIN_PCT/100),
+             outputs.scrape_prices.price * 0.98
+           ) }}
+
+  - id: adjust_ads
+    use: googleads.campaigns.update
+    with:
+      token: "{{.secrets.GADS_TOKEN}}"
+      campaign_id: "{{.event.campaign_id}}"
+      target_roas: |
+        {{ 1.3 if outputs.update_shopify.changed else 1.1 }}
+```
+```bash
+flow run ecommerce_autopilot.flow.yaml
+```
+**Why it's powerful:**
+- Shows event-driven automation, dynamic pricing, and multi-system orchestration.
+
+**What happens?**
+- Scrapes competitor prices, updates your store, and tunes ads—on autopilot, every hour.
+
+---
+
+### 3. Invoice Chaser – Recover Aged AR in < 24 h
+
+**What it does:**
+- Fetches overdue invoices from QuickBooks.
+- Sends reminder emails and waits 24h.
+- Checks if paid; if not, escalates with a Twilio SMS.
+
+```yaml
+name: invoice_chaser
+on: schedule.cron
+cron: "0 9 * * 1-5"  # every weekday 09:00
+
+steps:
+  - id: fetch_overdue
+    use: quickbooks.reports.aging
+    with: { token: "{{.secrets.QBO_TOKEN}}" }
+
+  - id: foreach_invoice
+    foreach: "{{.outputs.fetch_overdue.invoices}}"
+    as: inv
+    do:
+      - id: email_first
+        use: postmark.email.send
+        with:
+          api_key: "{{.secrets.EMAIL_KEY}}"
+          to: "{{.inv.customer_email}}"
+          template: "overdue_reminder"
+          vars: { days: "{{.inv.days_overdue}}", amount: "{{.inv.balance}}" }
+
+      - id: wait_24h
+        wait: { hours: 24 }
+
+      - id: check_paid
+        use: quickbooks.invoice.get
+        with: { id: "{{.inv.id}}", token: "{{.secrets.QBO_TOKEN}}" }
+
+      - id: escalate
+        if: "{{.outputs.check_paid.status != 'Paid'}}"
+        use: twilio.sms.send
+        with:
+          sid: "{{.secrets.TWILIO_SID}}"
+          auth: "{{.secrets.TWILIO_AUTH}}"
+          to: "{{.inv.customer_phone}}"
+          body: "Friendly nudge: Invoice #{{.inv.id}} is now {{.inv.days_overdue+1}} days overdue."
+```
+```bash
+flow run invoice_chaser.flow.yaml
+```
+**Why it's powerful:**
+- Shows foreach loops, waits, conditional logic, and escalation.
+
+**What happens?**
+- Chases overdue invoices, escalates if unpaid, and automates the whole AR follow-up process.
+
+---
+
+**Next Steps:**
+- Try running or editing any of these flows.
+- Build your own automations by remixing steps.
+- See [SPEC.md](./docs/SPEC.md) for the full YAML grammar and advanced features.
+
+---
+
+## Anatomy of a Flow
+
+```yaml
+name: fetch_and_summarize
+on: cli.manual
+vars:
+  TOPIC: "Artificial_intelligence"
+steps:
+  - id: fetch
+    use: http.fetch
+    with: { url: "https://en.wikipedia.org/wiki/{{.vars.TOPIC}}" }
+
+  - id: summarize
+    use: openai.chat_completion
+    with:
+      model: gpt-4o
+      messages:
+        - role: system
+          content: "Summarize the following text in 3 bullets."
+        - role: user
+          content: "{{.outputs.fetch.body}}"
+
+  - id: announce
+    use: slack.chat.postMessage
+    with:
+      channel: "#ai-updates"
+      text: "{{.outputs.summarize.choices[0].message.content}}"
+```
+
+✨ **Templating:** `{{…}}` gives you outputs, vars, secrets, helper funcs.
+⏳ **Durable waits:** `await_event` pauses until external approval / webhook.
+⚡ **Parallelism & retries:** `parallel: true` blocks and `retry:` back-offs.
+🔄 **Error handling:** `catch:` block processes failures.
+
+Full grammar ➜ [SPEC.md](./docs/SPEC.md).
+
+---
+
+## Registry & Tool Resolution
+
+Priority:
+
+1. `$BEEMFLOW_REGISTRY`
+2. `registry/index.json`
+3. `https://hub.beemflow.com/index.json`
+
+Tools can be qualified (`smithery:airtable`) when ambiguous.
+
+---
+
+## CLI • HTTP • MCP — One Brain
+
+| Action        | CLI                 | HTTP            | MCP            |
+|---------------|---------------------|-----------------|----------------|
+| Validate flow | `flow lint file`    | `POST /validate`| `validateFlow` |
+| Run flow      | `flow run hello`    | `POST /runs`    | `startRun`     |
+| Status        | `flow status <id>`  | `GET /runs/{id}`| `getRun`       |
+| Graph         | `flow graph file`   | `GET /graph`    | `graphFlow`    |
 
 ---
 
 ## Extending BeemFlow
 
-- **Add a local tool:** Use `flow mcp install <registry>:<tool>` or add entries to `.beemflow/registry.json`.
-- **Add an MCP server:** Use `flow mcp install <registry>:<server>` or configure in `.beemflow/registry.json`.
-- **Add a remote tool:** Reference a remote registry or GitHub manifest.
-- **Write a custom adapter:** Implement the `Adapter` interface in Go.
-
-All tools are auto-discovered and available in the registry, ready for use in flows, CLI, HTTP, MCP, or LLMs.
+- **Add a tool**: `flow mcp install registry:tool` or edit `.beemflow/registry.json`.
+- **Custom adapter**: implement the `Adapter` interface in your own code.
+- **Swap event bus**: set `"event.driver": "nats"` in `flow.config.json` or via `BEEMFLOW_EVENT_DRIVER=nats`.
+- **LLM autopilot**: POST `/assistant/chat` with system prompt in [SPEC.md](./SPEC.md#14).
 
 ---
 
-## Project Layout
+## Architecture
 
-```
-my-beemflow/
-├── flows/                 # .flow.yaml files
-├── .beemflow/             # local registry and runtime state
-├── flow.config.json       # backend & registry settings
-└── README.md              # 👈 You're here
-```
+- Router & planner (DAG builder)
+- Executor (persistent state, retries, awaits)
+- Event bus (memory, NATS, Temporal future)
+- Registry & adapters
 
 ---
 
-## FAQ
+## Security & Secrets
 
-**Q: What's the difference between local, HTTP, and MCP tools?**
-A: All are available in the same registry and can be used interchangeably in flows. Local tools are static manifests, HTTP tools are described by endpoint, and MCP tools are auto-discovered from MCP servers.
-
-**Q: How do I override or extend the registry?**
-A: Add a local manifest or MCP server config. You can shadow, extend, or remix tools without forking or duplicating JSON.
-
-**Q: Can I host my own registry?**
-A: Yes! Anyone can host a registry (even on a static website). BeemFlow comes with a default open registry out of the box, but you can add or override as needed.
-
-**Q: How do I swap from memory to NATS for the event bus?**
-A: Just add an `event` block to your `flow.config.json`:
-```jsonc
-{
-  "event": {
-    "driver": "nats",
-    "url": "nats://user:pass@your-nats-host:4222"
-  }
-}
-```
+- Secrets from env, Vault, or MCP store: `{{.secrets.NAME}}`.
+- HMAC-signed resume tokens for durable waits.
+- SOC 2 Type II in progress; ISO 27001 roadmap next.
 
 ---
 
-## Contributing & Community
+## Roadmap
 
-BeemFlow is 100% open. We need YOU:
-- Shape the spec
-- Build adapters & UIs
-- Share and remix flows
-- Launch a SaaS or plugin on top
-
-🌐 GitHub: https://github.com/awantoch/beemflow  
-💬 Discord: https://discord.gg/your-invite  
-📚 Docs: https://beemflow.com/docs
+- VS Code extension (YAML + Mermaid preview).
+- Flow template gallery (`flow init payroll` etc.).
+- Cron & Temporal adapters.
+- Hot-reload adapters without downtime.
+- OpenTelemetry metrics & traces.
+- On-chain event bus (experimental).
 
 ---
 
-## Full Protocol & Spec
+## Contributing
 
-For the canonical, LLM-ingestible protocol, YAML grammar, API endpoints, and advanced examples, see:
-
-👉 [docs/beemflow_spec.md](docs/beemflow_spec.md)
-
-# Beemflow MCP Registry Integration
-
-## Multi-Registry Support
-
-Beemflow now supports multiple MCP registries (e.g., Smithery, local/unified) via a unified interface. You can:
-- Search, list, and install MCP servers from all configured registries.
-- Add new registries via environment variables or config.
-
-## Namespacing and Registry-Qualified Names
-
-When multiple registries are enabled, tool/server names are qualified by their registry:
-- Format: `<registry>:<name>` (e.g., `smithery:airtable`, `local:mytool`)
-- All CLI and API output includes a `REGISTRY` column.
-- If a name is ambiguous (exists in more than one registry), you must specify the qualified name.
-- If only one match exists, you can use the unqualified name for convenience.
-
-### Example CLI Output
-
+```bash
+git clone https://github.com/beemflow/beemflow
+make dev
 ```
-flow mcp list
 
-REGISTRY   NAME         DESCRIPTION         KIND      ENDPOINT
-smithery   airtable     Airtable MCP API   mcp_server  ...
-local      mytool       My Local Tool      mcp_server  ...
-```
+- **Code**: Go 1.22+, linted, tested.
+- **Docs**: PRs welcome — every example is CI-verified.
+- **Community**: Join <https://discord.gg/beemflow>.
+
+---
+
+## License
+
+MIT — use it, remix it, ship it.
+Commercial cloud & SLA on the way.
+
+---
+
+> "We're doing to Zapier what GitHub did to FTP—text-based, versioned, and supercharged by AI labor."
+> Docs at <https://beemflow.com/docs> • Twitter: [@BeemFlow](https://twitter.com/beemflow)

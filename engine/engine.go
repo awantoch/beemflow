@@ -616,7 +616,7 @@ type StepContext struct {
 
 // CronScheduler is a stub for cron-based triggers.
 type CronScheduler struct {
-	// Extend this struct to support cron-based triggers (see beemflow_spec.md for ideas).
+	// Extend this struct to support cron-based triggers (see SPEC.md for ideas).
 }
 
 func NewCronScheduler() *CronScheduler {

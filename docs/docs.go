@@ -6,5 +6,5 @@ import _ "embed"
 //
 // This is the canonical, up-to-date protocol and config spec, including event bus config and schema references.
 //
-//go:embed beemflow_spec.md
+//go:embed SPEC.md
 var BeemflowSpec string
