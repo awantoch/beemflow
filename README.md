@@ -18,9 +18,9 @@ Write a single YAML file → run it locally, over REST, or through the Model Con
     - [⚡ Parallel LLMs (Fan-out and Combine)](#-parallel-llms-fan-out-and-combine)
     - [🧑‍💼 Human-in-the-Loop Approval (MCP + Twilio SMS)](#-human-in-the-loop-approval-mcp--twilio-sms)
     - [🚀 Marketing Agent (LLM + Socials + Slack Approval)](#-marketing-agent-llm--socials--slack-approval)
-    - [1. "CFO in a Box" – Daily 1-Slide Cash Report](#1-cfo-in-a-box--daily-1-slide-cash-report)
-    - [2. E-Commerce Autopilot – Dynamic Pricing \& Ads](#2-e-commerce-autopilot--dynamic-pricing--ads)
-    - [3. Invoice Chaser – Recover Aged AR in \< 24 h](#3-invoice-chaser--recover-aged-ar-in--24-h)
+    - [💼 "CFO in a Box" – Daily 1-Slide Cash Report](#-cfo-in-a-box--daily-1-slide-cash-report)
+    - [🛒 E-Commerce Autopilot – Dynamic Pricing \& Ads](#-e-commerce-autopilot--dynamic-pricing--ads)
+    - [📬 Invoice Chaser – Recover Aged AR in \< 24 h](#-invoice-chaser--recover-aged-ar-in--24-h)
   - [Anatomy of a Flow](#anatomy-of-a-flow)
   - [Registry \& Tool Resolution](#registry--tool-resolution)
   - [CLI • HTTP • MCP — One Brain](#cli--http--mcp--one-brain)
@@ -246,7 +246,7 @@ flow run human_approval.flow.yaml
 
 **What it does:**
 - Takes a feature update as input.
-- Uses LLM(s) to generate content for Twitter, LinkedIn, and a blog post.
+- Uses LLM(s) to generate content for X, LinkedIn, and a blog post.
 - Sends the drafts to a Slack channel for team review/approval.
 - Waits for Slack feedback/approval before posting to the socials (simulated as echo steps for safety, but can be swapped for real posting tools).
 
@@ -310,16 +310,16 @@ steps:
     if: "{{.event.text | toLower | trim == 'approve'}}"
     parallel: true
     steps:
-      - id: post_tweet
-        use: core.echo  # Replace with mcp://twitter/post for real posting
+      - id: x_post
+        use: mcp://x/post
         with:
-          text: "[POSTED to Twitter]: {{(index .outputs.generate_content.tweet.choices 0).message.content}}"
+          text: "[POSTED to X]: {{(index .outputs.generate_content.tweet.choices 0).message.content}}"
       - id: post_linkedin
-        use: core.echo  # Replace with mcp://linkedin/post for real posting
+        use: mcp://linkedin/post
         with:
           text: "[POSTED to LinkedIn]: {{(index .outputs.generate_content.linkedin.choices 0).message.content}}"
       - id: post_blog
-        use: core.echo  # Replace with mcp://blog/post for real posting
+        use: mcp://blog/post
         with:
           text: "[POSTED to Blog]: {{(index .outputs.generate_content.blog.choices 0).message.content}}"
 ```
@@ -339,7 +339,7 @@ flow run marketing_agent.flow.yaml
 
 ---
 
-### 1. "CFO in a Box" – Daily 1-Slide Cash Report
+### 💼 "CFO in a Box" – Daily 1-Slide Cash Report
 
 **What it does:**
 - Pulls balances from Stripe and QuickBooks.
@@ -404,7 +404,7 @@ flow run cfo_daily_cash.flow.yaml
 
 ---
 
-### 2. E-Commerce Autopilot – Dynamic Pricing & Ads
+### 🛒 E-Commerce Autopilot – Dynamic Pricing & Ads
 
 **What it does:**
 - Scrapes competitor prices.
@@ -457,7 +457,7 @@ flow run ecommerce_autopilot.flow.yaml
 
 ---
 
-### 3. Invoice Chaser – Recover Aged AR in < 24 h
+### 📬 Invoice Chaser – Recover Aged AR in < 24 h
 
 **What it does:**
 - Fetches overdue invoices from QuickBooks.
@@ -639,4 +639,4 @@ Commercial cloud & SLA on the way.
 ---
 
 > "We're doing to Zapier what GitHub did to FTP—text-based, versioned, and supercharged by AI labor."
-> Docs at <https://beemflow.com/docs> • Twitter: [@BeemFlow](https://twitter.com/beemflow)
+> Docs at <https://beemflow.com/docs> • X: [@BeemFlow](https://X.com/beemflow)
