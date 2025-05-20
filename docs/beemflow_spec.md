@@ -110,6 +110,7 @@ BeemFlow exposes a consistent interface for all operations:
 | Get tool manifest | (n/a)                        | `GET /tools/{name}`          | (not exposed)      |
 | Inline run        | (n/a)                        | `POST /runs/inline`          | `flow.execute`     |
 | Assistant         | (n/a)                        | `POST /assistant/chat`       | `beemflow.assistant`|
+| Metadata          | (n/a)                        | `GET /metadata`              | `describe`         |
 
 All endpoints accept/return JSON.
 

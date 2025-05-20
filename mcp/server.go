@@ -97,3 +97,9 @@ type PublishEventArgs struct {
 	Topic   string         `json:"topic"`
 	Payload map[string]any `json:"payload"`
 }
+
+// ResumeRunArgs are the arguments for the resumeRun MCP tool.
+type ResumeRunArgs struct {
+	Token string         `json:"token"`
+	Event map[string]any `json:"event"`
+}

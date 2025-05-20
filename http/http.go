@@ -19,6 +19,7 @@ import (
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/templater"
 	"github.com/google/uuid"
@@ -163,12 +164,39 @@ func (rw *responseWriter) WriteHeader(code int) {
 
 func StartServer(cfg *config.Config) error {
 	initTracerFromConfig(cfg)
+	// Register HTTP interfaces for metadata discovery
+	httpMetas := []registry.InterfaceMeta{
+		{ID: registry.InterfaceIDListRuns, Type: registry.HTTP, Use: http.MethodGet, Path: "/runs", Description: registry.InterfaceDescListRuns},
+		{ID: registry.InterfaceIDStartRun, Type: registry.HTTP, Use: http.MethodPost, Path: "/runs", Description: registry.InterfaceDescStartRun},
+		{ID: registry.InterfaceIDGetRun, Type: registry.HTTP, Use: http.MethodGet, Path: "/runs/{id}", Description: registry.InterfaceDescGetRun},
+		{ID: registry.InterfaceIDResumeRun, Type: registry.HTTP, Use: http.MethodPost, Path: "/resume/{token}", Description: registry.InterfaceDescResumeRun},
+		{ID: registry.InterfaceIDGraphFlow, Type: registry.HTTP, Use: http.MethodGet, Path: "/graph", Description: registry.InterfaceDescGraphFlow},
+		{ID: registry.InterfaceIDValidateFlow, Type: registry.HTTP, Use: http.MethodPost, Path: "/validate", Description: registry.InterfaceDescValidateFlow},
+		{ID: registry.InterfaceIDTestFlow, Type: registry.HTTP, Use: http.MethodPost, Path: "/test", Description: registry.InterfaceDescTestFlow},
+		{ID: registry.InterfaceIDAssistantChat, Type: registry.HTTP, Use: http.MethodPost, Path: "/assistant/chat", Description: registry.InterfaceDescAssistantChat},
+		{ID: registry.InterfaceIDInlineRun, Type: registry.HTTP, Use: http.MethodPost, Path: "/runs/inline", Description: registry.InterfaceDescInlineRun},
+		{ID: registry.InterfaceIDListTools, Type: registry.HTTP, Use: http.MethodGet, Path: "/tools", Description: registry.InterfaceDescListTools},
+		{ID: registry.InterfaceIDGetToolManifest, Type: registry.HTTP, Use: http.MethodGet, Path: "/tools/{name}", Description: registry.InterfaceDescGetToolManifest},
+		{ID: registry.InterfaceIDListFlowsHTTP, Type: registry.HTTP, Use: http.MethodGet, Path: "/flows", Description: registry.InterfaceDescListFlowsHTTP},
+		{ID: registry.InterfaceIDGetFlowSpec, Type: registry.HTTP, Use: http.MethodGet, Path: "/flows/{name}", Description: registry.InterfaceDescGetFlowSpec},
+		{ID: registry.InterfaceIDPublishEventHTTP, Type: registry.HTTP, Use: http.MethodPost, Path: "/events", Description: registry.InterfaceDescPublishEventHTTP},
+	}
+	for _, m := range httpMetas {
+		registry.RegisterInterface(m)
+	}
 	// Serve static files (e.g., index.html) from project root at '/'
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.Dir("."))) // serve index.html and other static assets
+	// Serve static files
+	registry.RegisterRoute(mux, "GET", "/", registry.InterfaceDescStaticAssets, http.FileServer(http.Dir(".")).ServeHTTP)
+
+	// Metadata discovery endpoint
+	registry.RegisterRoute(mux, "GET", "/metadata", registry.InterfaceDescMetadata, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(registry.AllInterfaces())
+	})
 
 	// Health check endpoint
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	registry.RegisterRoute(mux, "GET", "/healthz", registry.InterfaceDescHealthCheck, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))

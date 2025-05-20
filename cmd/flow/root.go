@@ -11,6 +11,7 @@ import (
 	_ "github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/registry"
 )
 
 var (
@@ -53,6 +54,26 @@ func NewRootCmd() *cobra.Command {
 		newToolCmd(),
 		newAssistCmd(),
 		newMCPCmd(),
+		newMetadataCmd(),
 	)
+	// Register all CLI commands for metadata discovery
+	cliMetas := collectCobra(rootCmd)
+	for _, m := range cliMetas {
+		registry.RegisterInterface(m)
+	}
 	return rootCmd
+}
+
+// collectCobra recursively collects metadata for Cobra commands.
+func collectCobra(cmd *cobra.Command) []registry.InterfaceMeta {
+	metas := []registry.InterfaceMeta{{
+		ID:          cmd.CommandPath(),
+		Type:        registry.CLI,
+		Use:         cmd.Use,
+		Description: cmd.Short,
+	}}
+	for _, sub := range cmd.Commands() {
+		metas = append(metas, collectCobra(sub)...)
+	}
+	return metas
 }
