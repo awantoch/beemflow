@@ -220,7 +220,7 @@ func TestLoadAndRegisterTool(t *testing.T) {
 
 func TestRegistry_MergeAndLocalWrite(t *testing.T) {
 	curatedPath := "curated_registry.json"
-	localPath := "local_registry.json"
+	localPath := "registry.json"
 	defer os.Remove(curatedPath)
 	defer os.Remove(localPath)
 
@@ -239,7 +239,7 @@ func TestRegistry_MergeAndLocalWrite(t *testing.T) {
 	_ = os.WriteFile(localPath, mustJSON(localEntries), 0644)
 
 	// Simulate config
-	osErr := os.WriteFile("flow.config.json", []byte(`{"registries":[{"type":"local","path":"local_registry.json"}]}`), 0644)
+	osErr := os.WriteFile("flow.config.json", []byte(`{"registries":[{"type":"local","path":"registry.json"}]}`), 0644)
 	if osErr != nil {
 		t.Fatalf("os.WriteFile failed: %v", osErr)
 	}

@@ -71,7 +71,7 @@ Each step in `steps:` supports the following keys:
 ## 4. Tool Registry & Resolution
 
 Tools are auto-discovered and prioritized as follows:
-1. **Local manifests**: `tools/<name>.json`
+1. **Local manifests**: configured via `.beemflow/registry.json` or created with `flow mcp install <registry>:<tool>`
 2. **MCP servers**: `mcp://server/tool` (auto-discovered at runtime)
 3. **Remote registries**: e.g. `https://hub.beemflow.com/index.json`
 4. **GitHub shorthand**: `github:owner/repo[/path][@ref]`
@@ -343,8 +343,8 @@ steps:
 
 ## 12. Extensibility Patterns
 
-- **Add a local tool:** Drop a manifest in `tools/`.
-- **Add an MCP server:** Add config in `mcp_servers/` and reference in config.
+- **Add a local tool:** Use `flow mcp install <registry>:<tool>` or add entries to `.beemflow/registry.json`.
+- **Add an MCP server:** Use `flow mcp install <registry>:<server>` or configure in `.beemflow/registry.json`.
 - **Add a remote tool:** Reference a remote registry or GitHub manifest.
 - **Write a custom adapter:** Implement the Adapter interface in Go.
 - **Extend Event Bus:** Add fields to `event` config (e.g. `clusterID`, `clientID`, TLS options) and wire them into `NewEventBusFromConfig`.

@@ -53,7 +53,7 @@ type PausedRun struct {
 // NewDefaultAdapterRegistry creates and returns a default adapter registry with core and registry tools.
 //
 // - Loads the curated registry (repo-managed, read-only) from registry/index.json.
-// - Loads the local registry (user-writable) from config (registries[].path) or .beemflow/local_registry.json.
+// - Loads the local registry (user-writable) from config (registries[].path) or .beemflow/registry.json.
 // - Merges both, with local entries taking precedence over curated ones.
 // - Any tool installed via the CLI is written to the local registry file.
 // - This is future-proofed for remote/community registries.

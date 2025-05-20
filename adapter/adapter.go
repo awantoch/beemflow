@@ -46,7 +46,7 @@ func (r *Registry) Get(id string) (Adapter, bool) {
 // Add helper to append a tool to the local registry file
 //
 // This function ensures that any tool installed via the CLI is written to the local registry file.
-// The path is determined from config (registries[].path) or defaults to .beemflow/local_registry.json.
+// The path is determined from config (registries[].path) or defaults to .beemflow/registry.json.
 // This is future-proofed for remote/community registries.
 func appendToLocalRegistry(entry registry.RegistryEntry, path string) error {
 	var entries []registry.RegistryEntry

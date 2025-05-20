@@ -188,8 +188,8 @@ flow run parallel_openai
 
 ## Extending BeemFlow
 
-- **Add a local tool:** Drop a JSON-Schema manifest in `tools/`.
-- **Add an MCP server:** Add a config in `mcp_servers/` and reference it in your config file.
+- **Add a local tool:** Use `flow mcp install <registry>:<tool>` or add entries to `.beemflow/registry.json`.
+- **Add an MCP server:** Use `flow mcp install <registry>:<server>` or configure in `.beemflow/registry.json`.
 - **Add a remote tool:** Reference a remote registry or GitHub manifest.
 - **Write a custom adapter:** Implement the `Adapter` interface in Go.
 
@@ -202,9 +202,7 @@ All tools are auto-discovered and available in the registry, ready for use in fl
 ```
 my-beemflow/
 ├── flows/                 # .flow.yaml files
-├── tools/                 # JSON-Schema tool manifests
-├── adapters/              # custom adapter implementations
-├── mcp_servers/           # MCP server configs
+├── .beemflow/             # local registry and runtime state
 ├── flow.config.json       # backend & registry settings
 └── README.md              # 👈 You're here
 ```
@@ -353,7 +351,7 @@ To add more registry integrations, implement the `MCPRegistry` interface in `reg
 BeemFlow supports two types of registries:
 
 - **Curated registry**: A read-only, repo-managed set of tools, always loaded from `registry/index.json`. This is the default set of tools provided by BeemFlow and can be split into a community repo in the future.
-- **Local registry**: A user-writable registry, by default at `.beemflow/local_registry.json`, where any tool installed via the CLI is saved. This allows you to extend or override the curated set with your own tools.
+- **Local registry**: A user-writable registry, by default at `.beemflow/registry.json`, where any tool installed via the CLI is saved. This allows you to extend or override the curated set with your own tools.
 
 ### How it works
 - On startup, BeemFlow loads both the curated and local registries.

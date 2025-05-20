@@ -20,14 +20,14 @@ import (
 //   "storage": { "driver": "sqlite", "dsn": ".beemflow/flow.db" },
 //   "blob": { "driver": "filesystem", "bucket": "", "directory": ".beemflow/files" },
 //   "registries": [
-//     { "type": "local", "path": ".beemflow/local_registry.json" }
+//     { "type": "local", "path": ".beemflow/registry.json" }
 //   ],
 //   "http": { "host": "localhost", "port": 8080 },
 //   "log": { "level": "info" }
 // }
 //
 // - The curated registry (repo-managed, read-only) is always loaded from registry/index.json.
-// - The local registry (user-writable) is loaded from the path in registries[].path, defaulting to .beemflow/local_registry.json.
+// - The local registry (user-writable) is loaded from the path in registries[].path, defaulting to .beemflow/registry.json.
 // - When listing/using tools, local entries take precedence over curated ones.
 // - Any tool installed via the CLI is written to the local registry file.
 // - All config roots are under .beemflow/ by default.
@@ -37,13 +37,13 @@ import (
 // See docs for more details.
 
 // RegistryConfig is the base type for all registry configs.
-// For local registries, set type: "local" and path: ".beemflow/local_registry.json" (default).
+// For local registries, set type: "local" and path: ".beemflow/registry.json" (default).
 // For Smithery, set type: "smithery" and url: "https://registry.smithery.ai/servers" (default).
 // For other remote registries, set type: "remote" and url: the base URL of the registry.
 type RegistryConfig struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`
-	Path string `json:"path,omitempty"` // For local registries, path to the registry file (default: .beemflow/local_registry.json)
+	Path string `json:"path,omitempty"` // For local registries, path to the registry file (default: .beemflow/registry.json)
 	// Add other common fields here
 }
 

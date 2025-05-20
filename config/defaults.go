@@ -7,7 +7,7 @@ const (
 	// DefaultBlobDir is the default directory for filesystem blobs.
 	DefaultBlobDir = DefaultConfigDir + "/files"
 	// DefaultLocalRegistryPath is the default path for the local registry file.
-	DefaultLocalRegistryPath = DefaultConfigDir + "/local_registry.json"
+	DefaultLocalRegistryPath = DefaultConfigDir + "/registry.json"
 	// DefaultSQLiteDSN is the default data source name for SQLite storage.
 	DefaultSQLiteDSN = DefaultConfigDir + "/flow.db"
 	// DefaultFlowsDir is the default directory for flow YAMLs.

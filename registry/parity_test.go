@@ -16,7 +16,7 @@ func TestHTTPMetadataComplete(t *testing.T) {
 		InterfaceIDInlineRun,
 		InterfaceIDListTools,
 		InterfaceIDGetToolManifest,
-		InterfaceIDPublishEventHTTP,
+		InterfaceIDPublishEvent,
 		InterfaceIDMetadata,
 	}
 	found := make(map[string]bool)
@@ -76,7 +76,7 @@ func TestCoreOperationsParity(t *testing.T) {
 		{"inlineRun", InterfaceIDInlineRun, InterfaceIDInlineRun},
 		{"listTools", InterfaceIDListTools, InterfaceIDListTools},
 		{"getToolManifest", InterfaceIDGetToolManifest, InterfaceIDGetToolManifest},
-		{"publishEvent", InterfaceIDPublishEventHTTP, InterfaceIDPublishEvent},
+		{"publishEvent", InterfaceIDPublishEvent, InterfaceIDPublishEvent},
 	}
 	httpSet := make(map[string]bool)
 	mcpSet := make(map[string]bool)
