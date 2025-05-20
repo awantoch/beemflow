@@ -3,11 +3,11 @@ package main
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/awantoch/beemflow/adapter"
+	"github.com/awantoch/beemflow/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -28,9 +28,9 @@ func newAssistCmd() *cobra.Command {
 			} else {
 				// Interactive REPL mode
 				scanner := bufio.NewScanner(os.Stdin)
-				fmt.Println("BeemFlow Assistant (type 'exit' to quit)")
+				logger.User("BeemFlow Assistant (type 'exit' to quit)")
 				for {
-					fmt.Print("user> ")
+					logger.User("user> ")
 					if !scanner.Scan() {
 						break
 					}
@@ -42,14 +42,14 @@ func newAssistCmd() *cobra.Command {
 					// Call assistant after each message
 					draft, errors, err := adapter.Execute(ctx, messages)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "Assistant error: %v\n", err)
+						logger.Error("Assistant error: %v", err)
 						continue
 					}
-					fmt.Println("\n--- Draft Flow ---\n" + draft)
+					logger.User("\n--- Draft Flow ---\n%s", draft)
 					if len(errors) > 0 {
-						fmt.Println("\n--- Validation Errors ---")
+						logger.User("\n--- Validation Errors ---")
 						for _, e := range errors {
-							fmt.Println("-", e)
+							logger.User("- %v", e)
 						}
 					}
 				}
@@ -70,14 +70,14 @@ func newAssistCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Printf("Draft written to %s\n", output)
+				logger.User("Draft written to %s", output)
 			} else {
-				fmt.Println("\n--- Draft Flow ---\n" + draft)
+				logger.User("\n--- Draft Flow ---\n%s", draft)
 			}
 			if len(errors) > 0 {
-				fmt.Println("\n--- Validation Errors ---")
+				logger.User("\n--- Validation Errors ---")
 				for _, e := range errors {
-					fmt.Println("-", e)
+					logger.User("- %v", e)
 				}
 			}
 			return nil

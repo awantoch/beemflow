@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
-	"text/tabwriter"
 
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/logger"
@@ -38,8 +36,6 @@ func newToolCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
-				defer w.Flush()
 				// Header
 				logger.User("NAME\tKIND\tDESCRIPTION\tENDPOINT")
 				for _, t := range tools {

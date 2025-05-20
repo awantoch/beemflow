@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"text/tabwriter"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/spf13/cobra"
 )
@@ -42,12 +42,10 @@ func newMCPCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
-				fmt.Fprintln(w, "NAME\tDESCRIPTION\tENDPOINT")
+				logger.User("NAME\tDESCRIPTION\tENDPOINT")
 				for _, s := range entries {
-					fmt.Fprintf(w, "%s\t%s\t%s\n", s.Name, s.Description, s.Endpoint)
+					logger.User("%s\t%s\t%s", s.Name, s.Description, s.Endpoint)
 				}
-				w.Flush()
 				return nil
 			},
 		},
@@ -98,7 +96,7 @@ func newMCPCmd() *cobra.Command {
 				if err := os.WriteFile(*configFile, out, 0644); err != nil {
 					return fmt.Errorf("failed to write %s: %w", *configFile, err)
 				}
-				fmt.Fprintf(os.Stdout, "Installed MCP server %s to %s (mcpServers)\n", qn, *configFile)
+				logger.User("Installed MCP server %s to %s (mcpServers)", qn, *configFile)
 				return nil
 			},
 		},
@@ -112,24 +110,19 @@ func newMCPCmd() *cobra.Command {
 					return err
 				}
 				ctx := context.Background()
-				// Initialize tab writer
-				w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
-				fmt.Fprintln(w, "REGISTRY\tNAME\tDESCRIPTION\tKIND\tENDPOINT")
-				// List installed servers from config
+				logger.User("REGISTRY\tNAME\tDESCRIPTION\tKIND\tENDPOINT")
 				if cfg != nil && cfg.MCPServers != nil {
 					for name, spec := range cfg.MCPServers {
-						fmt.Fprintf(w, "config\t%s\t%s\t%s\t%s\n", name, "", spec.Transport, spec.Endpoint)
+						logger.User("config\t%s\t%s\t%s\t%s", name, "", spec.Transport, spec.Endpoint)
 					}
 				}
-				// List curated servers from local registry
 				localMgr := registry.NewLocalRegistry("")
 				servers, err := localMgr.ListMCPServers(ctx, registry.ListOptions{PageSize: 100})
 				if err == nil {
 					for _, s := range servers {
-						fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", s.Registry, s.Name, s.Description, s.Kind, s.Endpoint)
+						logger.User("%s\t%s\t%s\t%s\t%s", s.Registry, s.Name, s.Description, s.Kind, s.Endpoint)
 					}
 				}
-				w.Flush()
 				return nil
 			},
 		},

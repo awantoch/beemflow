@@ -25,8 +25,8 @@ func newServeCmd() *cobra.Command {
 			}
 			err := beemhttp.StartServer(addr)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to start server: %v\n", err)
-				os.Exit(1)
+				logger.Error("Failed to start server: %v", err)
+				exit(1)
 			}
 		},
 	}

@@ -136,6 +136,7 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 				if err != nil {
 					return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
 				}
+				// TODO: Replace os.Stderr with a logger-aware writer for subprocess error output
 				cmd.Stderr = os.Stderr
 				if err := cmd.Start(); err != nil {
 					return nil, fmt.Errorf("failed to start MCP server %s: %w", host, err)
