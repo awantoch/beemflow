@@ -4,11 +4,11 @@ vars:
   fetch_url: "https://raw.githubusercontent.com/awantoch/beemflow/refs/heads/main/README.md"
 steps:
   - id: fetch_page
-    use: http
+    use: http.fetch
     with:
       url: "{{.vars.fetch_url}}"
   - id: summarize
-    use: openai
+    use: openai.chat_completion
     with:
       model: "gpt-4o"
       messages:

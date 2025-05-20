@@ -47,7 +47,14 @@ func NewMCPCommand(info config.MCPServerConfig) *exec.Cmd {
 	cmd := exec.Command(info.Command, info.Args...)
 	cmd.Env = os.Environ()
 	for k, v := range info.Env {
-		if v == "$env" {
+		// Support "$env:VARNAME" placeholders
+		if strings.HasPrefix(v, "$env:") {
+			envKey := strings.TrimPrefix(v, "$env:")
+			if val := os.Getenv(envKey); val != "" {
+				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, val))
+			}
+		} else if v == "$env" {
+			// Legacy behavior: use the key as the env var name
 			if val := os.Getenv(k); val != "" {
 				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, val))
 			}

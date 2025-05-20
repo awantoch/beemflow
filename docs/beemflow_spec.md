@@ -325,7 +325,7 @@ steps:
     with:
       url: "https://en.wikipedia.org/api/rest_v1/page/summary/Artificial_intelligence"
   - id: summarize
-    use: openai
+    use: openai.chat_completion
     with:
       model: "gpt-4o"
       messages:

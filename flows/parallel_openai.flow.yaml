@@ -8,14 +8,14 @@ steps:
     parallel: true
     steps:
       - id: chat1
-        use: openai
+        use: openai.chat_completion
         with:
           model: "gpt-3.5-turbo"
           messages:
             - role: user
               content: "{{.vars.prompt1}}"
       - id: chat2
-        use: openai
+        use: openai.chat_completion
         with:
           model: "gpt-3.5-turbo"
           messages:

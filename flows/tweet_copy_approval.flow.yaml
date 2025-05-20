@@ -4,7 +4,7 @@ on:
 
 steps:
   - id: generate_copy
-    use: openai
+    use: openai.chat_completion
     with:
       model: "gpt-4o"
       messages:

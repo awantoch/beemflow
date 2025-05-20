@@ -109,8 +109,14 @@ func injectDefaults(params map[string]any, inputs map[string]any) {
 
 // Execute calls the manifest's endpoint with JSON inputs and returns parsed JSON output.
 func (a *HTTPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
-	if a.ToolManifest == nil || a.ToolManifest.Endpoint == "" {
-		return nil, logger.Errorf("no endpoint for tool %s", a.AdapterID)
+	// Fallback to generic HTTP fetch if no endpoint is defined (e.g., http.fetch)
+	if a.ToolManifest == nil {
+		return nil, logger.Errorf("no manifest for tool %s", a.AdapterID)
+	}
+	if a.ToolManifest.Endpoint == "" {
+		// Use HTTPFetchAdapter for endpoints without a static manifest-endpoint
+		var fetchAdapter HTTPFetchAdapter
+		return fetchAdapter.Execute(ctx, inputs)
 	}
 	// Inject manifest defaults for missing fields
 	if a.ToolManifest.Parameters != nil {

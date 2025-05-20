@@ -8,14 +8,14 @@ steps:
     parallel: true
     steps:
       - id: chat1
-        use: anthropic
+        use: anthropic.chat_completion
         with:
           model: "claude-3-7-sonnet-20250219"
           messages:
             - role: user
               content: "{{.vars.prompt1}}"
       - id: chat2
-        use: anthropic
+        use: anthropic.chat_completion
         with:
           model: "claude-3-7-sonnet-20250219"
           messages:
