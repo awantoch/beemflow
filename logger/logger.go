@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -19,6 +20,8 @@ var (
 	loggerMode      = "production"
 	loggerModeMutex sync.RWMutex
 )
+
+const requestIDKey = "request_id"
 
 func init() {
 	userLogger = log.New(userWriter, "", 0)
@@ -133,4 +136,58 @@ func (w *LoggerWriter) Write(p []byte) (n int, err error) {
 		}
 	}
 	return len(p), nil
+}
+
+// WithRequestID returns a new context with the given request ID.
+func WithRequestID(ctx context.Context, reqID string) context.Context {
+	return context.WithValue(ctx, requestIDKey, reqID)
+}
+
+// RequestIDFromContext extracts the request ID from context, if present.
+func RequestIDFromContext(ctx context.Context) (string, bool) {
+	v := ctx.Value(requestIDKey)
+	if s, ok := v.(string); ok {
+		return s, true
+	}
+	return "", false
+}
+
+// InfoCtx logs an info message with context, including request ID if present.
+func InfoCtx(ctx context.Context, msg string, fields ...any) {
+	if internalLogger != nil {
+		if reqID, ok := RequestIDFromContext(ctx); ok {
+			fields = append(fields, "request_id", reqID)
+		}
+		internalLogger.Infow(msg, fields...)
+	}
+}
+
+// WarnCtx logs a warning message with context, including request ID if present.
+func WarnCtx(ctx context.Context, msg string, fields ...any) {
+	if internalLogger != nil {
+		if reqID, ok := RequestIDFromContext(ctx); ok {
+			fields = append(fields, "request_id", reqID)
+		}
+		internalLogger.Warnw(msg, fields...)
+	}
+}
+
+// ErrorCtx logs an error message with context, including request ID if present.
+func ErrorCtx(ctx context.Context, msg string, fields ...any) {
+	if internalLogger != nil {
+		if reqID, ok := RequestIDFromContext(ctx); ok {
+			fields = append(fields, "request_id", reqID)
+		}
+		internalLogger.Errorw(msg, fields...)
+	}
+}
+
+// DebugCtx logs a debug message with context, including request ID if present.
+func DebugCtx(ctx context.Context, msg string, fields ...any) {
+	if internalLogger != nil {
+		if reqID, ok := RequestIDFromContext(ctx); ok {
+			fields = append(fields, "request_id", reqID)
+		}
+		internalLogger.Debugw(msg, fields...)
+	}
 }

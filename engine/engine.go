@@ -50,14 +50,14 @@ type PausedRun struct {
 	RunID   uuid.UUID
 }
 
-// newDefaultAdapterRegistry creates and returns a default adapter registry with core and registry tools.
+// NewDefaultAdapterRegistry creates and returns a default adapter registry with core and registry tools.
 //
 // - Loads the curated registry (repo-managed, read-only) from registry/index.json.
 // - Loads the local registry (user-writable) from config (registries[].path) or .beemflow/local_registry.json.
 // - Merges both, with local entries taking precedence over curated ones.
 // - Any tool installed via the CLI is written to the local registry file.
 // - This is future-proofed for remote/community registries.
-func newDefaultAdapterRegistry(ctx context.Context) *adapter.Registry {
+func NewDefaultAdapterRegistry(ctx context.Context) *adapter.Registry {
 	reg := adapter.NewRegistry()
 	reg.Register(&adapter.CoreAdapter{})
 	reg.Register(adapter.NewMCPAdapter())
@@ -109,7 +109,7 @@ func newDefaultAdapterRegistry(ctx context.Context) *adapter.Registry {
 // NewEngineWithBlobStore creates a new Engine with a custom BlobStore.
 func NewEngineWithBlobStore(ctx context.Context, blobStore blob.BlobStore) *Engine {
 	return &Engine{
-		Adapters:         newDefaultAdapterRegistry(ctx),
+		Adapters:         NewDefaultAdapterRegistry(ctx),
 		Templater:        templater.NewTemplater(),
 		EventBus:         event.NewInProcEventBus(),
 		BlobStore:        blobStore,
@@ -119,18 +119,26 @@ func NewEngineWithBlobStore(ctx context.Context, blobStore blob.BlobStore) *Engi
 	}
 }
 
-// NewEngine creates a new Engine with the default BlobStore (filesystem, zero config).
-func NewEngine(ctx context.Context) *Engine {
-	// Default BlobStore
-	bs, err := blob.NewDefaultBlobStore(ctx, nil)
-	if err != nil {
-		logger.Warn("Failed to create default blob store: %v, using in-memory fallback", err)
-		bs = nil
+// NewEngine creates a new Engine with all dependencies injected.
+func NewEngine(
+	adapters *adapter.Registry,
+	templater *templater.Templater,
+	eventBus event.EventBus,
+	blobStore blob.BlobStore,
+	storage storage.Storage,
+) *Engine {
+	return &Engine{
+		Adapters:         adapters,
+		Templater:        templater,
+		EventBus:         eventBus,
+		BlobStore:        blobStore,
+		Storage:          storage,
+		waiting:          make(map[string]*PausedRun),
+		completedOutputs: make(map[string]map[string]any),
 	}
-	return NewEngineWithBlobStore(ctx, bs)
 }
 
-// NewEngineWithConfig creates a new Engine with a custom Storage backend and config-driven EventBus.
+// Deprecated: use NewEngine with explicit dependencies instead.
 func NewEngineWithConfig(ctx context.Context, store storage.Storage, cfg *config.Config) *Engine {
 	if store == nil {
 		store = storage.NewMemoryStorage()
@@ -146,56 +154,13 @@ func NewEngineWithConfig(ctx context.Context, store storage.Storage, cfg *config
 	} else {
 		bus = event.NewInProcEventBus()
 	}
-	eng := &Engine{
-		Adapters:         newDefaultAdapterRegistry(ctx),
-		Templater:        templater.NewTemplater(),
-		EventBus:         bus,
-		BlobStore:        nil, // or set to a default if needed
-		Storage:          store,
-		waiting:          make(map[string]*PausedRun),
-		completedOutputs: make(map[string]map[string]any),
-	}
-	// Load paused runs from storage (generic)
-	if store != nil {
-		paused, err := store.LoadPausedRuns()
-		if err == nil {
-			for token, v := range paused {
-				// Try to coerce to the expected struct (PausedRunPersist)
-				var persist struct {
-					Flow    *model.Flow    `json:"flow"`
-					StepIdx int            `json:"step_idx"`
-					StepCtx map[string]any `json:"step_ctx"`
-					Outputs map[string]any `json:"outputs"`
-					Token   string         `json:"token"`
-					RunID   string         `json:"run_id"`
-				}
-				b, _ := json.Marshal(v)
-				_ = json.Unmarshal(b, &persist)
-				pr := &PausedRun{
-					Flow:    persist.Flow,
-					StepIdx: persist.StepIdx,
-					StepCtx: &StepContext{},
-					Outputs: persist.Outputs,
-					Token:   token,
-				}
-				b2, _ := json.Marshal(persist.StepCtx)
-				_ = json.Unmarshal(b2, pr.StepCtx)
-				if persist.RunID != "" {
-					pr.RunID, _ = uuid.Parse(persist.RunID)
-				}
-				eng.waiting[token] = pr
-				// Re-subscribe to event bus
-				eng.EventBus.Subscribe(ctx, "resume:"+token, func(payload any) {
-					resumeEvent, ok := payload.(map[string]any)
-					if !ok {
-						return
-					}
-					eng.Resume(ctx, token, resumeEvent)
-				})
-			}
-		}
-	}
-	return eng
+	return NewEngine(
+		NewDefaultAdapterRegistry(ctx),
+		templater.NewTemplater(),
+		bus,
+		nil, // or set to a default if needed
+		store,
+	)
 }
 
 // NewEngineWithStorage creates a new Engine with a custom Storage backend.
@@ -256,7 +221,7 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 		StartedAt: time.Now(),
 	}
 	if err := e.Storage.SaveRun(ctx, run); err != nil {
-		logger.Error("SaveRun failed: %v", err)
+		logger.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
 	}
 
 	outputs, err := e.executeStepsWithPersistence(ctx, flow, stepCtx, 0, runID)
@@ -280,7 +245,7 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 		EndedAt:   ptrTime(time.Now()),
 	}
 	if err := e.Storage.SaveRun(ctx, run); err != nil {
-		logger.Error("SaveRun failed: %v", err)
+		logger.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
 	}
 
 	if err != nil && len(flow.Catch) > 0 {
@@ -458,7 +423,7 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 			EndedAt:   ptrTime(time.Now()),
 		}
 		if err := e.Storage.SaveRun(ctx, run); err != nil {
-			logger.Error("SaveRun failed: %v", err)
+			logger.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
 		}
 	}
 }
@@ -768,4 +733,21 @@ func (e *Engine) renderValue(val any, data map[string]any) (any, error) {
 	default:
 		return val, nil
 	}
+}
+
+// NewDefaultEngine creates a new Engine with default dependencies (adapter registry, templater, in-process event bus, default blob store, in-memory storage).
+func NewDefaultEngine(ctx context.Context) *Engine {
+	// Default BlobStore
+	bs, err := blob.NewDefaultBlobStore(ctx, nil)
+	if err != nil {
+		logger.WarnCtx(ctx, "Failed to create default blob store: %v, using nil fallback", "error", err)
+		bs = nil
+	}
+	return NewEngine(
+		NewDefaultAdapterRegistry(ctx),
+		templater.NewTemplater(),
+		event.NewInProcEventBus(),
+		bs,
+		storage.NewMemoryStorage(),
+	)
 }

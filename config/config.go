@@ -68,6 +68,14 @@ func ParseRegistryConfig(reg RegistryConfig) (any, error) {
 	}
 }
 
+// TracingConfig controls OpenTelemetry tracing exporter and options.
+type TracingConfig struct {
+	Exporter    string `json:"exporter,omitempty"`    // "stdout", "jaeger", "otlp"
+	Endpoint    string `json:"endpoint,omitempty"`    // Jaeger/OTLP endpoint URL
+	ServiceName string `json:"serviceName,omitempty"` // Service name for traces
+	// Add more fields as needed (sampling, etc.)
+}
+
 type Config struct {
 	Storage    StorageConfig              `json:"storage"`
 	Blob       *BlobConfig                `json:"blob,omitempty"`
@@ -78,6 +86,7 @@ type Config struct {
 	Log        *LogConfig                 `json:"log,omitempty"`
 	FlowsDir   string                     `json:"flowsDir,omitempty"`
 	MCPServers map[string]MCPServerConfig `json:"mcpServers,omitempty"`
+	Tracing    *TracingConfig             `json:"tracing,omitempty"`
 }
 
 type StorageConfig struct {
@@ -415,4 +424,19 @@ func UpsertMCPServer(cfg *Config, name string, spec MCPServerConfig) {
 		cfg.MCPServers = map[string]MCPServerConfig{}
 	}
 	cfg.MCPServers[name] = spec
+}
+
+// Validate checks the config for required fields and sensible values.
+func (c *Config) Validate() error {
+	if c.Storage.Driver == "" {
+		return fmt.Errorf("config: storage.driver is required")
+	}
+	if c.Storage.DSN == "" {
+		return fmt.Errorf("config: storage.dsn is required")
+	}
+	if c.HTTP != nil && c.HTTP.Port == 0 {
+		return fmt.Errorf("config: http.port must be set and nonzero")
+	}
+	// Add more validation as needed (blob, event, etc.)
+	return nil
 }

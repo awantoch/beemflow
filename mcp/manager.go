@@ -70,7 +70,7 @@ func EnsureMCPServersWithTimeout(ctx context.Context, flow *model.Flow, cfg *con
 		missingVars := []string{}
 		for k := range info.Env {
 			val := os.Getenv(k)
-			logger.Info("MCP server '%s' expects env %s", server, k)
+			logger.InfoCtx(ctx, "MCP server expects env", "server", server, "env_var", k)
 			if val == "" {
 				missingVars = append(missingVars, k)
 			}
@@ -81,17 +81,17 @@ func EnsureMCPServersWithTimeout(ctx context.Context, flow *model.Flow, cfg *con
 		if info.Command == "" {
 			return logger.Errorf("MCP server '%s' config is missing 'command' (stdio only supported; HTTP fallback is disabled)", server)
 		}
-		logger.Info("Spawning MCP server '%s' (stdio) with command: %s %v", server, info.Command, info.Args)
+		logger.InfoCtx(ctx, "Spawning MCP server (stdio)", "server", server, "command", info.Command, "args", info.Args)
 		cmd := NewMCPCommand(info)
 		// If info.StdoutProtocol is true, do not redirect stdout (protocol communication)
 		cmd.Stderr = &logger.LoggerWriter{Fn: logger.Error, Prefix: "[MCP " + server + " ERR] "}
 		if err := cmd.Start(); err != nil {
-			logger.Error("Failed to start MCP server %s: %v", server, err)
-			logger.Error("Command: %s %v", info.Command, info.Args)
-			logger.Error("Env: %v", cmd.Env)
+			logger.ErrorCtx(ctx, "Failed to start MCP server", "server", server, "error", err)
+			logger.ErrorCtx(ctx, "Command", "command", info.Command, "args", info.Args)
+			logger.ErrorCtx(ctx, "Env", "env", cmd.Env)
 			return logger.Errorf("failed to start MCP server %s: %v", server, err)
 		}
-		logger.Debug("MCP server '%s' (stdio) started", server)
+		logger.DebugCtx(ctx, "MCP server (stdio) started", "server", server)
 		// Wait for MCP server to be ready (HTTP only for now)
 		if info.Endpoint != "" {
 			if err := waitForMCP(ctx, info.Endpoint, timeout); err != nil {

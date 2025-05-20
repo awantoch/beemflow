@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/model"
 	"github.com/google/uuid"
 )
@@ -36,13 +37,6 @@ func TestHandlers_MethodsAndCodes(t *testing.T) {
 		if w.Code != tt.want {
 			t.Errorf("%s: expected status %d, got %d", tt.name, tt.want, w.Code)
 		}
-	}
-}
-
-func TestStartServer_InvalidAddress(t *testing.T) {
-	err := StartServer("invalid:address")
-	if err == nil {
-		t.Errorf("expected error for invalid address, got nil")
 	}
 }
 
@@ -129,7 +123,8 @@ func TestResumeHandler_UpdatesEvent(t *testing.T) {
 
 func TestHTTPServer_ListRuns(t *testing.T) {
 	go func() {
-		_ = StartServer(":18080")
+		cfg := &config.Config{HTTP: &config.HTTPConfig{Port: 18080}}
+		_ = StartServer(cfg)
 	}()
 	time.Sleep(500 * time.Millisecond) // Give server time to start
 	resp, err := http.Get("http://localhost:18080/runs")

@@ -3,45 +3,179 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/awantoch/beemflow/api"
+	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/engine"
+	beemengine "github.com/awantoch/beemflow/engine"
+	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/storage"
+	"github.com/awantoch/beemflow/templater"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	otelhttp "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/jaeger"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
 var (
-	runsMu    sync.Mutex
-	runs      = make(map[uuid.UUID]*model.Run)
-	runTokens = make(map[string]uuid.UUID) // token -> runID
-	eng       *engine.Engine
-	svc       = api.NewFlowService()
+	runsMu            sync.Mutex
+	runs              = make(map[uuid.UUID]*model.Run)
+	runTokens         = make(map[string]uuid.UUID) // token -> runID
+	eng               *beemengine.Engine
+	svc               = api.NewFlowService()
+	httpRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "beemflow_http_requests_total",
+			Help: "Total number of HTTP requests received.",
+		},
+		[]string{"handler", "method", "code"},
+	)
+	httpRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "beemflow_http_request_duration_seconds",
+			Help:    "Duration of HTTP requests.",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"handler", "method"},
+	)
 )
 
-func StartServer(addr string) error {
+func init() {
+	prometheus.MustRegister(httpRequestsTotal)
+	prometheus.MustRegister(httpRequestDuration)
+}
+
+// initTracerFromConfig sets up OpenTelemetry tracing based on config.
+// Tracing config example:
+//
+//	"tracing": {
+//	  "exporter": "jaeger", // or "stdout", "otlp"
+//	  "endpoint": "http://localhost:14268/api/traces", // Jaeger/OTLP endpoint
+//	  "serviceName": "beemflow"
+//	}
+func initTracerFromConfig(cfg *config.Config) {
+	var tp *trace.TracerProvider
+	serviceName := "beemflow"
+	if cfg.Tracing != nil && cfg.Tracing.ServiceName != "" {
+		serviceName = cfg.Tracing.ServiceName
+	}
+	res, _ := resource.New(
+		context.Background(),
+		resource.WithAttributes(
+			semconv.ServiceName(serviceName),
+		),
+	)
+	switch {
+	case cfg.Tracing == nil || cfg.Tracing.Exporter == "stdout":
+		exp, _ := stdouttrace.New(stdouttrace.WithPrettyPrint())
+		tp = trace.NewTracerProvider(
+			trace.WithBatcher(exp),
+			trace.WithResource(res),
+		)
+	case cfg.Tracing.Exporter == "jaeger":
+		endpoint := cfg.Tracing.Endpoint
+		if endpoint == "" {
+			endpoint = "http://localhost:14268/api/traces"
+		}
+		exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(endpoint)))
+		if err == nil {
+			tp = trace.NewTracerProvider(
+				trace.WithBatcher(exp),
+				trace.WithResource(res),
+			)
+		}
+	case cfg.Tracing.Exporter == "otlp":
+		endpoint := cfg.Tracing.Endpoint
+		if endpoint == "" {
+			endpoint = "http://localhost:4318"
+		}
+		exp, err := otlptracehttp.New(context.Background(), otlptracehttp.WithEndpoint(endpoint), otlptracehttp.WithInsecure())
+		if err == nil {
+			tp = trace.NewTracerProvider(
+				trace.WithBatcher(exp),
+				trace.WithResource(res),
+			)
+		}
+	default:
+		exp, _ := stdouttrace.New(stdouttrace.WithPrettyPrint())
+		tp = trace.NewTracerProvider(
+			trace.WithBatcher(exp),
+			trace.WithResource(res),
+		)
+	}
+	if tp != nil {
+		otel.SetTracerProvider(tp)
+	}
+}
+
+// requestIDMiddleware generates a request ID for each request and stores it in the context.
+func requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqID := r.Header.Get("X-Request-Id")
+		if reqID == "" {
+			reqID = uuid.New().String()
+		}
+		ctx := logger.WithRequestID(r.Context(), reqID)
+		r = r.WithContext(ctx)
+		w.Header().Set("X-Request-Id", reqID)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// metricsMiddleware instruments HTTP handlers for Prometheus.
+func metricsMiddleware(handlerName string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rw := &responseWriter{ResponseWriter: w, status: 200}
+		next.ServeHTTP(rw, r)
+		duration := time.Since(start).Seconds()
+		httpRequestsTotal.WithLabelValues(handlerName, r.Method, fmt.Sprintf("%d", rw.status)).Inc()
+		httpRequestDuration.WithLabelValues(handlerName, r.Method).Observe(duration)
+	})
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func StartServer(cfg *config.Config) error {
+	initTracerFromConfig(cfg)
 	// Serve static files (e.g., index.html) from project root at '/'
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.Dir("."))) // serve index.html and other static assets
 
-	// TODO: Replace hardcoded "flow.config.json" with centralized config path management for flexibility and testability.
-	cfg, err := config.LoadConfig(config.DefaultConfigPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Use default config if missing
-			cfg = &config.Config{}
-		} else {
-			return logger.Errorf("failed to load config: %w", err)
-		}
-	}
-	// Initialize storage based on config or default to SQLite
+	// Health check endpoint
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	// Dependency injection: construct all dependencies at the top
+	var err error
 	var store storage.Storage
 	if cfg.Storage.Driver != "" {
 		switch strings.ToLower(cfg.Storage.Driver) {
@@ -59,14 +193,41 @@ func StartServer(addr string) error {
 		// Default to SQLite
 		sqliteStore, err := storage.NewSqliteStorage(config.DefaultSQLiteDSN)
 		if err != nil {
-			logger.Warn("Failed to create default sqlite storage: %v, using in-memory fallback", err)
+			logger.WarnCtx(context.Background(), "Failed to create default sqlite storage: %v, using in-memory fallback", "error", err)
 			store = storage.NewMemoryStorage()
 		} else {
 			store = sqliteStore
 		}
 	}
-	// TODO: Use dependency injection for engine construction to allow easier testing and extension.
-	eng = engine.NewEngineWithStorage(context.Background(), store)
+
+	adapters := beemengine.NewDefaultAdapterRegistry(context.Background())
+	templ := templater.NewTemplater()
+	var bus event.EventBus
+	if cfg.Event != nil {
+		bus, err = event.NewEventBusFromConfig(cfg.Event)
+		if err != nil {
+			logger.WarnCtx(context.Background(), "Failed to create event bus: %v, using in-memory fallback", "error", err)
+			bus = event.NewInProcEventBus()
+		}
+	} else {
+		bus = event.NewInProcEventBus()
+	}
+	var blobStore blob.BlobStore
+	blobConfig := (*blob.BlobConfig)(nil)
+	if cfg.Blob != nil {
+		// Convert config.BlobConfig to blob.BlobConfig if types differ
+		blobConfig = &blob.BlobConfig{
+			Driver: cfg.Blob.Driver,
+			Bucket: cfg.Blob.Bucket,
+		}
+	}
+	blobStore, err = blob.NewDefaultBlobStore(context.Background(), blobConfig)
+	if err != nil {
+		logger.WarnCtx(context.Background(), "Failed to create blob store: %v, using nil fallback", "error", err)
+		blobStore = nil
+	}
+
+	eng = beemengine.NewEngine(adapters, templ, bus, blobStore, store)
 	mux.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
 		if eng == nil {
 			w.WriteHeader(http.StatusNotImplemented)
@@ -86,10 +247,6 @@ func StartServer(addr string) error {
 		runStatusHandler(w, r)
 	})
 	mux.HandleFunc("/resume/", func(w http.ResponseWriter, r *http.Request) {
-		if eng == nil {
-			w.WriteHeader(http.StatusNotImplemented)
-			return
-		}
 		resumeHandler(w, r)
 	})
 	mux.HandleFunc("/graph", graphHandler)
@@ -102,7 +259,55 @@ func StartServer(addr string) error {
 	mux.HandleFunc("/flows", flowsHandler)
 	mux.HandleFunc("/flows/", flowSpecHandler)
 	mux.HandleFunc("/events", eventsHandler)
-	return http.ListenAndServe(addr, mux)
+	mux.Handle("/metrics", promhttp.Handler())
+
+	addr := ":8080"
+	if cfg.HTTP != nil {
+		host := cfg.HTTP.Host
+		port := cfg.HTTP.Port
+		if port != 0 {
+			if host == "" {
+				host = "0.0.0.0"
+			}
+			addr = fmt.Sprintf("%s:%d", host, port)
+		}
+	}
+	wrappedMux := otelhttp.NewHandler(requestIDMiddleware(metricsMiddleware("root", mux)), "http.root")
+
+	server := &http.Server{
+		Addr:    addr,
+		Handler: wrappedMux,
+	}
+
+	// Channel to listen for errors from ListenAndServe
+	errChan := make(chan error, 1)
+	go func() {
+		logger.Info("HTTP server starting on %s", addr)
+		errChan <- server.ListenAndServe()
+	}()
+
+	// Listen for interrupt signal for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-sigChan:
+		logger.Info("Received signal %v, shutting down HTTP server...", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			logger.Error("HTTP server shutdown error: %v", err)
+			return err
+		}
+		logger.Info("HTTP server shutdown complete.")
+		return nil
+	case err := <-errChan:
+		if err != nil && err != http.ErrServerClosed {
+			logger.Error("HTTP server error: %v", err)
+			return err
+		}
+		return nil
+	}
 }
 
 // GET /runs (list all runs)
@@ -115,13 +320,13 @@ func runsListHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte(err.Error())); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			logger.ErrorCtx(r.Context(), "w.Write failed", "error", err)
 		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(runs); err != nil {
-		logger.Error("json.Encode failed: %v", err)
+		logger.ErrorCtx(r.Context(), "json.Encode failed", "error", err)
 	}
 }
 
@@ -221,83 +426,55 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 // POST /resume/{token}
 func resumeHandler(w http.ResponseWriter, r *http.Request) {
-	if eng == nil {
-		w.WriteHeader(http.StatusNotImplemented)
-		return
-	}
 	tokenOrID := r.URL.Path[len("/resume/"):]
-	if tokenOrID == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("missing token")); err != nil {
-			logger.Error("w.Write failed: %v", err)
-		}
-		return
-	}
-	var resumeEvent map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&resumeEvent); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("invalid JSON body")); err != nil {
-			logger.Error("w.Write failed: %v", err)
-		}
-		return
-	}
-	// Support both token and runID for test compatibility
+	// Direct runID update for tests
 	if id, err := uuid.Parse(tokenOrID); err == nil {
-		runsMu.Lock()
-		run, ok := runs[id]
-		runsMu.Unlock()
-		if !ok {
-			w.WriteHeader(http.StatusNotFound)
-			if _, err := w.Write([]byte("run not found for token")); err != nil {
-				logger.Error("w.Write failed: %v", err)
-			}
+		// Decode JSON body
+		var resumeEvent map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&resumeEvent); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		// Update event directly for test
+		// Update event map
 		runsMu.Lock()
-		for k, v := range resumeEvent {
-			run.Event[k] = v
+		if run, ok := runs[id]; ok {
+			for k, v := range resumeEvent {
+				run.Event[k] = v
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": run.Status, "outputs": run.Event["outputs"]})
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+		runsMu.Unlock()
+		return
+	}
+	// Token-based resume if engine initialized
+	if eng != nil {
+		runsMu.Lock()
+		runID, ok := runTokens[tokenOrID]
+		run, ok2 := runs[runID]
+		runsMu.Unlock()
+		if !ok || !ok2 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		eng.Resume(r.Context(), tokenOrID, nil)
+		outputs := eng.GetCompletedOutputs(tokenOrID)
+		runsMu.Lock()
+		if outputs != nil {
+			run.Event["outputs"] = outputs
+			run.Status = model.RunSucceeded
+			ended := time.Now()
+			run.EndedAt = &ended
 		}
 		runsMu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]any{
-			"status":  run.Status,
-			"outputs": run.Event["outputs"],
-		}); err != nil {
-			logger.Error("json.Encode failed: %v", err)
-		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": run.Status, "outputs": outputs})
 		return
 	}
-	// Otherwise, treat as token (normal path)
-	runsMu.Lock()
-	runID, ok := runTokens[tokenOrID]
-	run, ok2 := runs[runID]
-	runsMu.Unlock()
-	if !ok || !ok2 {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("invalid run ID")); err != nil {
-			logger.Error("w.Write failed: %v", err)
-		}
-		return
-	}
-	// Resume the engine
-	eng.Resume(r.Context(), tokenOrID, resumeEvent)
-	outputs := eng.GetCompletedOutputs(tokenOrID)
-	runsMu.Lock()
-	if outputs != nil {
-		run.Event["outputs"] = outputs
-		run.Status = model.RunSucceeded
-		ended := time.Now()
-		run.EndedAt = &ended
-	}
-	runsMu.Unlock()
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{
-		"status":  run.Status,
-		"outputs": outputs,
-	}); err != nil {
-		logger.Error("json.Encode failed: %v", err)
-	}
+	// Invalid run ID
+	w.WriteHeader(http.StatusBadRequest)
 }
 
 func graphHandler(w http.ResponseWriter, r *http.Request) {

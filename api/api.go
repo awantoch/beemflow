@@ -26,14 +26,14 @@ func getStoreFromConfig(cfg *config.Config) (storage.Storage, error) {
 		case "sqlite":
 			store, err := storage.NewSqliteStorage(cfg.Storage.DSN)
 			if err != nil {
-				logger.Warn("Failed to create sqlite storage: %v, using in-memory fallback", err)
+				logger.WarnCtx(context.Background(), "Failed to create sqlite storage: %v, using in-memory fallback", "error", err)
 				return storage.NewMemoryStorage(), nil
 			}
 			return store, nil
 		case "postgres":
 			store, err := storage.NewPostgresStorage(cfg.Storage.DSN)
 			if err != nil {
-				logger.Warn("Failed to create postgres storage: %v, using in-memory fallback", err)
+				logger.WarnCtx(context.Background(), "Failed to create postgres storage: %v, using in-memory fallback", "error", err)
 				return storage.NewMemoryStorage(), nil
 			}
 			return store, nil
@@ -44,7 +44,7 @@ func getStoreFromConfig(cfg *config.Config) (storage.Storage, error) {
 	// Default to SQLite
 	store, err := storage.NewSqliteStorage(config.DefaultSQLiteDSN)
 	if err != nil {
-		logger.Warn("Failed to create default sqlite storage: %v, using in-memory fallback", err)
+		logger.WarnCtx(context.Background(), "Failed to create default sqlite storage: %v, using in-memory fallback", "error", err)
 		return storage.NewMemoryStorage(), nil
 	}
 	return store, nil
@@ -295,7 +295,7 @@ func RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.
 
 // ListTools returns all registered tool manifests (name, description, kind, etc).
 func ListTools(ctx context.Context) ([]map[string]any, error) {
-	eng := engine.NewEngine(ctx)
+	eng := engine.NewDefaultEngine(ctx)
 	adapters := eng.Adapters.All()
 	var tools []map[string]any
 	for _, a := range adapters {

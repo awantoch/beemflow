@@ -83,7 +83,7 @@ func newRunCmd() *cobra.Command {
 					store = sqliteStore
 				}
 			}
-			eng := engine.NewEngine(cmd.Context())
+			eng := engine.NewDefaultEngine(cmd.Context())
 			defer eng.Close()
 			eng.Storage = store
 			outputs, err := eng.Execute(cmd.Context(), flow, event)

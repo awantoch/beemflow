@@ -21,14 +21,14 @@ func TestMain(m *testing.M) {
 }
 
 func TestNewEngine(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	if e == nil {
 		t.Error("expected NewEngine not nil")
 	}
 }
 
 func TestExecuteNoop(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	_, err := e.Execute(context.Background(), &model.Flow{}, map[string]any{})
 	if err != nil {
 		t.Errorf("Execute returned error: %v", err)
@@ -43,7 +43,7 @@ func TestNewCronScheduler(t *testing.T) {
 }
 
 func TestExecute_NilFlow(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	_, err := e.Execute(context.Background(), nil, map[string]any{})
 	if err != nil {
 		t.Errorf("expected nil error for nil flow, got %v", err)
@@ -51,7 +51,7 @@ func TestExecute_NilFlow(t *testing.T) {
 }
 
 func TestExecute_NilEvent(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	f := &model.Flow{Name: "test", Steps: []model.Step{}}
 	_, err := e.Execute(context.Background(), f, nil)
 	if err != nil {
@@ -60,7 +60,7 @@ func TestExecute_NilEvent(t *testing.T) {
 }
 
 func TestExecute_MinimalValidFlow(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	f := &model.Flow{Name: "test", Steps: []model.Step{{ID: "s1", Use: "core.echo"}}}
 	_, err := e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
 	if err != nil {
@@ -69,7 +69,7 @@ func TestExecute_MinimalValidFlow(t *testing.T) {
 }
 
 func TestExecute_AllStepTypes(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	f := &model.Flow{Name: "all_types", Steps: []model.Step{
 		{
 			ID:         "s1",
@@ -93,7 +93,7 @@ func TestExecute_AllStepTypes(t *testing.T) {
 }
 
 func TestExecute_Concurrency(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	f := &model.Flow{Name: "concurrent", Steps: []model.Step{{ID: "s1", Use: "core.echo"}}}
 	done := make(chan bool, 2)
 	go func() {
@@ -118,7 +118,7 @@ func TestAwaitEventResume_RoundTrip(t *testing.T) {
 	if err := yaml.Unmarshal(f, &flow); err != nil {
 		t.Fatalf("failed to unmarshal flow: %v", err)
 	}
-	engine := NewEngine(context.Background())
+	engine := NewDefaultEngine(context.Background())
 	// Start the flow with input and token
 	startEvent := map[string]any{"input": "hello world", "token": "abc123"}
 	outputs, err := engine.Execute(context.Background(), &flow, startEvent)
@@ -159,7 +159,7 @@ func TestExecute_CatchBlock(t *testing.T) {
 			{ID: "catch2", Use: "core.echo", With: map[string]interface{}{"text": "second!"}},
 		},
 	}
-	eng := NewEngine(context.Background())
+	eng := NewDefaultEngine(context.Background())
 	outputs, err := eng.Execute(context.Background(), flow, nil)
 	if err == nil {
 		t.Errorf("expected error from fail step")
@@ -173,7 +173,7 @@ func TestExecute_CatchBlock(t *testing.T) {
 }
 
 func TestExecute_AdapterErrorPropagation(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	f := &model.Flow{
 		Name:  "adapter_error",
 		Steps: []model.Step{{ID: "s1", Use: "core.echo"}},
@@ -189,7 +189,7 @@ func TestExecute_AdapterErrorPropagation(t *testing.T) {
 }
 
 func TestExecute_ParallelForeachEdgeCases(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	// Parallel with empty list
 	f := &model.Flow{
 		Name: "parallel_empty",
@@ -229,7 +229,7 @@ func TestExecute_ParallelForeachEdgeCases(t *testing.T) {
 }
 
 func TestExecute_SecretsInjection(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	f := &model.Flow{
 		Name:  "secrets_injection",
 		Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "{{secrets \"MY_SECRET\"}}"}}},
@@ -415,7 +415,7 @@ func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
 }
 
 func TestInMemoryFallback_ListAndGetRun(t *testing.T) {
-	e := NewEngine(context.Background())
+	e := NewDefaultEngine(context.Background())
 	flow := &model.Flow{Name: "inmem", Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "hi"}}}}
 	outputs, err := e.Execute(context.Background(), flow, map[string]any{"foo": "bar"})
 	if err != nil {
@@ -440,7 +440,7 @@ func TestInMemoryFallback_ListAndGetRun(t *testing.T) {
 		t.Fatalf("expected outputs for s1, got: %v", outputs)
 	}
 	// Simulate restart (new engine, no persistence)
-	e2 := NewEngine(context.Background())
+	e2 := NewDefaultEngine(context.Background())
 	runs2, err := e2.ListRuns(context.Background())
 	if err != nil {
 		t.Fatalf("ListRuns error after restart: %v", err)
