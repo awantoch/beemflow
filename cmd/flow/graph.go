@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/awantoch/beemflow/graphviz"
+	"github.com/awantoch/beemflow/graph"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/parser"
 	"github.com/spf13/cobra"
@@ -23,7 +23,7 @@ func newGraphCmd() *cobra.Command {
 				logger.Error("YAML parse error: %v\n", err)
 				os.Exit(1)
 			}
-			diagram, err := graphviz.ExportMermaid(flow)
+			diagram, err := graph.ExportMermaid(flow)
 			if err != nil {
 				logger.Error("Graph export error: %v\n", err)
 				os.Exit(2)

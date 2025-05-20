@@ -10,7 +10,7 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
-	"github.com/awantoch/beemflow/graphviz"
+	"github.com/awantoch/beemflow/graph"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/parser"
@@ -120,7 +120,7 @@ func GraphFlow(ctx context.Context, name string) (string, error) {
 		}
 		return "", err
 	}
-	return graphviz.ExportMermaid(flow)
+	return graph.ExportMermaid(flow)
 }
 
 // StartRun starts a new run for the given flow and event.

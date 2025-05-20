@@ -63,6 +63,16 @@ BeemFlow is an open protocol and runtime for AI-powered, event-driven automation
    EOF
    flow run yourflow  # now uses your NATS server
    ```
+4. **Visualize a flow locally:**  
+   ```bash
+   flow graph <flow_file>
+   ```
+   This outputs the flow as Mermaid syntax (engineered for easy sharing).
+5. **Run HTTP server with interactive UI:**  
+   ```bash
+   flow serve --port 8080
+   ```
+   Then open `http://localhost:8080` to select and visualize flows interactively.
 
 ---
 

@@ -26,6 +26,10 @@ var (
 )
 
 func StartServer(addr string) error {
+	// Serve static files (e.g., index.html) from project root at '/'
+	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.Dir("."))) // serve index.html and other static assets
+
 	// TODO: Replace hardcoded "flow.config.json" with centralized config path management for flexibility and testability.
 	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil {
@@ -62,7 +66,6 @@ func StartServer(addr string) error {
 	}
 	// TODO: Use dependency injection for engine construction to allow easier testing and extension.
 	eng = engine.NewEngineWithStorage(store)
-	mux := http.NewServeMux()
 	mux.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
 		if eng == nil {
 			w.WriteHeader(http.StatusNotImplemented)
