@@ -725,92 +725,64 @@ console.log(yaml.dump(flow));
 
 ### Rust
 ```rust
-use serde::{Serialize, Deserialize};
-use serde_yaml;
-use std::collections::HashMap;
 use reqwest::blocking::Client;
+use serde_json::json;
+use serde_yaml::to_string;
+use std::error::Error;
 
-#[derive(Serialize, Deserialize)]
-struct Flow {
-    name: String,
-    on: String,
-    vars: Option<HashMap<String, serde_yaml::Value>>,
-    steps: Vec<Step>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Step {
-    id: String,
-    #[serde(rename = "use")]
-    use_: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    with: Option<HashMap<String, serde_yaml::Value>>,
-}
-
-fn main() {
-    let mut vars = HashMap::new();
-    vars.insert("URL".into(), serde_yaml::Value::String("https://en.wikipedia.org/wiki/Artificial_intelligence".into()));
-
-    let flow = Flow {
-        name: "fetch_and_summarize".into(),
-        on:   "cli.manual".into(),
-        vars: Some(vars),
-        steps: vec![
-            Step {
-                id:   "fetch".into(),
-                use_: "http.fetch".into(),
-                with: Some({
-                    let mut m = HashMap::new();
-                    m.insert("url".into(), serde_yaml::Value::String("{{ URL }}"))
-                }),
+fn main() -> Result<(), Box<dyn Error>> {
+    let flow = json!({
+        "name": "fetch_and_summarize",
+        "on":   "cli.manual",
+        "vars": { "URL": "https://en.wikipedia.org/wiki/Artificial_intelligence" },
+        "steps": [
+            {
+                "id":  "fetch",
+                "use": "http.fetch",
+                "with": { "url": "{{ URL }}" }
             },
-            Step {
-                id:   "summarize".into(),
-                use_: "openai.chat_completion".into(),
-                with: Some({
-                    let mut m = HashMap::new();
-                    m.insert("model".into(), serde_yaml::Value::String("gpt-4o".into()));
-                    m.insert("messages".into(), serde_yaml::Value::Sequence(vec![
-                        serde_yaml::Value::Mapping({
-                            let mut sys = serde_yaml::Mapping::new();
-                            sys.insert(serde_yaml::Value::String("role".into()), serde_yaml::Value::String("system".into()));
-                            sys.insert(serde_yaml::Value::String("content".into()), serde_yaml::Value::String("Summarize in 3 bullets.".into()));
-                            sys
-                        }),
-                        serde_yaml::Value::Mapping({
-                            let mut user = serde_yaml::Mapping::new();
-                            user.insert(serde_yaml::Value::String("role".into()), serde_yaml::Value::String("user".into()));
-                            user.insert(serde_yaml::Value::String("content".into()), serde_yaml::Value::String("{{ outputs.fetch.body }}".into()));
-                            user
-                        }),
-                    ]));
-                    m
-                }),
+            {
+                "id":  "summarize",
+                "use": "openai.chat_completion",
+                "with": {
+                    "model": "gpt-4o",
+                    "messages": [
+                        { "role": "system", "content": "Summarize in 3 bullets." },
+                        { "role": "user",   "content": "{{ outputs.fetch.body }}" }
+                    ]
+                }
             },
-            Step {
-                id:   "print".into(),
-                use_: "core.echo".into(),
-                with: Some({
-                    let mut m = HashMap::new();
-                    m.insert("text".into(), serde_yaml::Value::String("{{ summarize.choices.0.message.content }}".into()));
-                    m
-                }),
-            },
-        ],
-    };
+            {
+                "id":  "print",
+                "use": "core.echo",
+                "with": { "text": "{{ summarize.choices.0.message.content }}" }
+            }
+        ]
+    });
 
-    println!("{}", serde_yaml::to_string(&flow).unwrap());
+    // Print flow as YAML
+    println!("{}", to_string(&flow)?);
 
-    // --- Run the flow via HTTP ---
+    // Fire off the run
     let client = Client::new();
-    let body = serde_json::json!({ "flow": flow, "event": {} });
-    let res = client.post("http://localhost:3333/runs")
-        .json(&body)
-        .send()
-        .unwrap();
-    println!("{}", res.text().unwrap());
+    let resp = client
+        .post("http://localhost:3333/runs")
+        .json(&json!({ "flow": flow, "event": {} }))
+        .send()?;
+    println!("{}", resp.text()?);
+
+    Ok(())
 }
 ```
+
+> **Dependencies:**
+> ```toml
+> [dependencies]
+> reqwest        = { version = "0.11", features = ["blocking", "json"] }
+> serde          = { version = "1.0", features = ["derive"] }
+> serde_json     = "1.0"
+> serde_yaml     = "0.9"
+> ```
 
 ### Python
 ```python
