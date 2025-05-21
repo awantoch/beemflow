@@ -179,35 +179,32 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	if len(flow.Steps) == 0 {
 		return outputs, nil
 	}
-	secrets := map[string]string{}
-	for _, env := range os.Environ() {
-		if eq := strings.Index(env, "="); eq != -1 {
-			k := env[:eq]
-			v := env[eq+1:]
-			secrets[k] = v
+	// Collect env secrets and merge with event-supplied secrets
+	secretsMap := map[string]any{}
+	for _, envKV := range os.Environ() {
+		if eq := strings.Index(envKV, "="); eq != -1 {
+			k := envKV[:eq]
+			v := envKV[eq+1:]
+			secretsMap[k] = v
 		}
 	}
-	// Register a 'secrets' helper for this execution
-	secretsCopy := secrets
 	if event != nil {
 		if s, ok := event["secrets"].(map[string]any); ok {
 			for k, v := range s {
-				if str, ok := v.(string); ok {
-					secretsCopy[k] = str
+				if _, ok2 := v.(string); ok2 {
+					secretsMap[k] = v
 				}
 			}
 		}
 	}
-	e.Templater.RegisterHelpers(map[string]any{
-		"secrets": func(key string) string {
-			return secretsCopy[key]
-		},
-	})
+	// Register a 'secrets' helper for this execution
+	// With pongo2, secrets are available as a map in the context: {{ secrets.MY_SECRET }}
+	// No need to register helpers; context flattening will expose secrets as top-level keys if needed.
 	stepCtx := &StepContext{
 		Event:   event,
 		Vars:    flow.Vars,
 		Outputs: outputs,
-		Secrets: secretsCopy,
+		Secrets: secretsMap,
 	}
 
 	// Create and persist the run
@@ -299,6 +296,8 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				"outputs": stepCtx.Outputs,
 				"secrets": stepCtx.Secrets,
 			}
+			// DEBUG: Log full context before rendering
+			logger.Debug("About to render template for step %s: data = %#v", step.ID, data)
 			renderedToken, err := e.Templater.Render(tokenRaw, data)
 			if err != nil {
 				return nil, logger.Errorf("failed to render token template: %w", err)
@@ -400,8 +399,13 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 	for k, v := range paused.StepCtx.Outputs {
 		allOutputs[k] = v
 	}
-	for k, v := range outputs {
-		allOutputs[k] = v
+	if outputs != nil {
+		for k, v := range outputs {
+			allOutputs[k] = v
+		}
+	} else if len(allOutputs) == 0 {
+		// If both are nil/empty, ensure we store at least an empty map
+		allOutputs = map[string]any{}
 	}
 	logger.Debug("Outputs map after resume for token %s: %+v", token, allOutputs)
 	e.mu.Lock()
@@ -564,6 +568,22 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		for id, out := range stepCtx.Outputs {
 			data[id] = out
 		}
+		// --- FLATTEN VARS INTO TOP-LEVEL CONTEXT ---
+		if stepCtx.Vars != nil {
+			for key, val := range stepCtx.Vars {
+				data[key] = val
+			}
+		}
+		// DEBUG: Log context keys and important values
+		varsKeys := []string{}
+		if vars, ok := data["vars"].(map[string]any); ok {
+			for key := range vars {
+				varsKeys = append(varsKeys, key)
+			}
+		}
+		logger.Debug("Template context keys: %v, vars keys: %v, vars: %+v", keys(data), varsKeys, data["vars"])
+		// DEBUG: Log full context before rendering
+		logger.Debug("About to render template for step %s: data = %#v", stepID, data)
 		rendered, err := e.renderValue(v, data)
 		if err != nil {
 			return logger.Errorf("template error in step %s: %w", stepID, err)
@@ -606,12 +626,12 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	return nil
 }
 
-// StepContext holds context for step execution (event, vars, outputs, etc.)
+// StepContext holds context for step execution (event, vars, outputs, secrets)
 type StepContext struct {
 	Event   map[string]any
 	Vars    map[string]any
 	Outputs map[string]any
-	Secrets map[string]string
+	Secrets map[string]any
 }
 
 // CronScheduler is a stub for cron-based triggers.
@@ -750,4 +770,13 @@ func NewDefaultEngine(ctx context.Context) *Engine {
 		bs,
 		storage.NewMemoryStorage(),
 	)
+}
+
+// Helper to get map keys for debug logging
+func keys(m map[string]any) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

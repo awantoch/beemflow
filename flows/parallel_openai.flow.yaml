@@ -13,19 +13,19 @@ steps:
           model: "gpt-3.5-turbo"
           messages:
             - role: user
-              content: "{{.vars.prompt1}}"
+              content: "{{ prompt1 }}"
       - id: chat2
         use: openai.chat_completion
         with:
           model: "gpt-3.5-turbo"
           messages:
             - role: user
-              content: "{{.vars.prompt2}}"
+              content: "{{ prompt2 }}"
   - id: combine
     depends_on: [fanout]
     use: core.echo
     with:
       text: |
         Combined responses:
-        - chat1: {{ (index .outputs.fanout.chat1.choices 0).message.content }}
-        - chat2: {{ (index .outputs.fanout.chat2.choices 0).message.content }} 
+        - chat1: {{ chat1.choices.0.message.content }}
+        - chat2: {{ chat2.choices.0.message.content }} 

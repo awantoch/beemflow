@@ -6,17 +6,17 @@ steps:
   - id: fetch_page
     use: http.fetch
     with:
-      url: "{{.vars.fetch_url}}"
+      url: "{{ fetch_url }}"
   - id: summarize
     use: openai.chat_completion
     with:
       model: "gpt-4o"
       messages:
         - role: system
-          content: "You are a concise assistant. Summarize the following web page in a simple paragraph."
+          content: "Summarize the following web page in 3 bullets."
         - role: user
-          content: "{{.fetch_page.body}}"
+          content: "{{ fetch_page.body }}"
   - id: print
     use: core.echo
     with:
-      text: "Summary: {{ (index .summarize.choices 0).message.content }}"
+      text: "Summary: {{ summarize.choices.0.message.content }}"

@@ -438,7 +438,7 @@ steps:
     await_event:
       source: test
       match:
-        token: "{{.event.token}}"
+        token: "{{ event.token }}"
   - id: s2
     use: core.echo
     with:

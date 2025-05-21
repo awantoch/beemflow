@@ -1,152 +1,107 @@
 package templater
 
 import (
-	"bytes"
-	"encoding/base64"
 	"fmt"
-	"reflect"
-	"strings"
-	"text/template"
 	"time"
 
-	"github.com/Masterminds/sprig/v3"
+	"encoding/base64"
+
 	"github.com/awantoch/beemflow/logger"
+	pongo2 "github.com/flosch/pongo2/v6"
 )
 
-// Templater provides template rendering with helper functions for BeemFlow flows.
-type Templater struct {
-	helperFuncs template.FuncMap
-	// You can register custom helpers using RegisterHelpers. Example:
-	//   t.RegisterHelpers(template.FuncMap{"myfunc": func(x string) string { return ... }})
-}
+// Templater provides template rendering with Jinja2-style (pongo2) for BeemFlow flows.
+type Templater struct{}
 
-// NewTemplater creates a new Templater with built-in helper functions.
+// NewTemplater creates a new Templater and registers built-in filters.
 func NewTemplater() *Templater {
-	t := &Templater{
-		helperFuncs: sprig.TxtFuncMap(),
-	}
-	t.RegisterHelpers(template.FuncMap{
-		"eq": func(a any, b any) bool {
-			return reflect.DeepEqual(a, b)
-		},
-		"ne": func(a any, b any) bool {
-			return !reflect.DeepEqual(a, b)
-		},
-		"list": func(args ...any) []any { return args },
-		"join": func(arr []any, sep string) string {
-			var s []string
-			for _, v := range arr {
-				s = append(s, toString(v))
-			}
-			return strings.Join(s, sep)
-		},
-		"length": func(arr []any) int { return len(arr) },
-		"base64": func(s string) string {
-			return base64.StdEncoding.EncodeToString([]byte(s))
-		},
-		"map": func(arr []any, field string) []any {
-			var out []any
-			for _, v := range arr {
-				m, ok := v.(map[string]any)
-				if !ok {
-					continue
-				}
-				if f, ok := m[field]; ok {
-					out = append(out, f)
-				}
-			}
-			return out
-		},
-		"now": func() string {
-			return time.Now().Format(time.RFC3339)
-		},
-		"duration": func(v any, unit string) string {
-			var n int64
-			switch x := v.(type) {
-			case int:
-				n = int64(x)
-			case int64:
-				n = x
-			case float64:
-				n = int64(x)
-			default:
-				return ""
-			}
-			var suffix string
-			switch unit {
-			case "days", "day", "d":
-				suffix = "d"
-			case "hours", "hour", "h":
-				suffix = "h"
-			case "minutes", "minute", "min", "m":
-				suffix = "m"
-			case "seconds", "second", "sec", "s":
-				suffix = "s"
-			default:
-				suffix = unit
-			}
-			return fmt.Sprintf("%d%s", n, suffix)
-		},
-	})
-	return t
+	// Register built-in filters only once
+	registerBuiltinFilters()
+	return &Templater{}
 }
 
-func toString(v any) string {
-	switch x := v.(type) {
-	case string:
-		return x
-	case fmt.Stringer:
-		return x.String()
-	default:
-		return fmt.Sprintf("%v", x)
-	}
-}
-
+// Render renders a template string with the provided data using pongo2.
 func (t *Templater) Render(tmpl string, data map[string]any) (string, error) {
-	const maxIterations = 5
-	prev := tmpl
-	for i := 0; i < maxIterations; i++ {
-		tpl := template.New("").Option("missingkey=error")
-		if t.helperFuncs != nil {
-			tpl = tpl.Funcs(t.helperFuncs)
-		}
-		var err error
-		tpl, err = tpl.Parse(prev)
-		if err != nil {
-			if i > 0 {
-				// Runtime data may contain literal template delimiters; stop further parsing
-				return prev, nil
-			}
-			return "", err
-		}
-		if data == nil {
-			return "", logger.Errorf("template data is nil")
-		}
-		var buf bytes.Buffer
-		if err := tpl.Execute(&buf, data); err != nil {
-			return "", err
-		}
-		result := buf.String()
-		if result == prev {
-			return result, nil // stabilized
-		}
-		prev = result
+	if data == nil {
+		return "", fmt.Errorf("template data is nil")
 	}
-	return prev, nil // return after max iterations
+	ctx := flattenContext(data)
+	// DEBUG: Log template string and context keys before rendering
+	logger.Debug("Templater.Render: tmpl = %q, context keys = %v", tmpl, contextKeys(ctx))
+	pl, err := pongo2.FromString(tmpl)
+	if err != nil {
+		return "", err
+	}
+	out, err := pl.Execute(ctx)
+	if err != nil {
+		return "", err
+	}
+	return out, nil
 }
 
-func (t *Templater) RegisterHelpers(funcs interface{}) {
-	if funcs == nil {
+// RegisterFilters allows registering custom pongo2 filters.
+func (t *Templater) RegisterFilters(filters map[string]pongo2.FilterFunction) {
+	for name, fn := range filters {
+		_ = pongo2.RegisterFilter(name, fn)
+	}
+}
+
+// registerBuiltinFilters registers built-in filters for BeemFlow.
+var builtinFiltersRegistered = false
+
+func registerBuiltinFilters() {
+	if builtinFiltersRegistered {
 		return
 	}
-	switch m := funcs.(type) {
-	case template.FuncMap:
-		for k, v := range m {
-			t.helperFuncs[k] = v
+	_ = pongo2.RegisterFilter("base64", func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+		return pongo2.AsValue(base64.StdEncoding.EncodeToString([]byte(in.String()))), nil
+	})
+	_ = pongo2.RegisterFilter("now", func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+		return pongo2.AsValue(time.Now().Format(time.RFC3339)), nil
+	})
+	_ = pongo2.RegisterFilter("duration", func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+		unit := param.String()
+		var n int64
+		switch v := in.Interface().(type) {
+		case int:
+			n = int64(v)
+		case int64:
+			n = v
+		case float64:
+			n = int64(v)
+		case string:
+			fmt.Sscanf(v, "%d", &n)
 		}
-	case map[string]any:
-		for k, v := range m {
-			t.helperFuncs[k] = v
+		suffix := unit
+		switch unit {
+		case "days", "day", "d":
+			suffix = "d"
+		case "hours", "hour", "h":
+			suffix = "h"
+		case "minutes", "minute", "min", "m":
+			suffix = "m"
+		case "seconds", "second", "sec", "s":
+			suffix = "s"
 		}
+		return pongo2.AsValue(fmt.Sprintf("%d%s", n, suffix)), nil
+	})
+	builtinFiltersRegistered = true
+}
+
+// flattenContext now just converts the map for pongo2 compatibility, since vars are already flattened in the engine.
+func flattenContext(data map[string]any) pongo2.Context {
+	converted := make(pongo2.Context)
+	for k, v := range data {
+		converted[k] = v
 	}
+	return converted
+}
+
+// contextKeys returns the keys of a pongo2.Context as a []string
+func contextKeys(ctx pongo2.Context) []string {
+	var out []string
+	for k := range ctx {
+		out = append(out, k)
+	}
+	return out
 }

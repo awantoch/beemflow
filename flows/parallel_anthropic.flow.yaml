@@ -13,19 +13,19 @@ steps:
           model: "claude-3-7-sonnet-20250219"
           messages:
             - role: user
-              content: "{{.vars.prompt1}}"
+              content: "{{ prompt1 }}"
       - id: chat2
         use: anthropic.chat_completion
         with:
           model: "claude-3-7-sonnet-20250219"
           messages:
             - role: user
-              content: "{{.vars.prompt2}}"
+              content: "{{ prompt2 }}"
   - id: combine
     depends_on: [fanout]
     use: core.echo
     with:
       text: |
         Combined responses:
-        - chat1: {{ (index .outputs.fanout.chat1.content 0).text }}
-        - chat2: {{ (index .outputs.fanout.chat2.content 0).text }} 
+        - chat1: {{ chat1.content.0.text }}
+        - chat2: {{ chat2.content.0.text }} 

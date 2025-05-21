@@ -1,45 +1,11 @@
 package templater
 
 import (
-	"encoding/base64"
 	"strings"
 	"testing"
-	"text/template"
-)
 
-func helpers() template.FuncMap {
-	return template.FuncMap{
-		"join": func(arr []string, sep string) string {
-			return strings.Join(arr, sep)
-		},
-		"length": func(arr any) int {
-			switch v := arr.(type) {
-			case []string:
-				return len(v)
-			case []any:
-				return len(v)
-			default:
-				return 0
-			}
-		},
-		"base64": func(s string) string {
-			return base64.StdEncoding.EncodeToString([]byte(s))
-		},
-		"toUpper": func(s string) string {
-			return strings.ToUpper(s)
-		},
-		"map": func(arr []string, fn string) []string {
-			if fn == "toUpper" {
-				res := make([]string, len(arr))
-				for i, v := range arr {
-					res[i] = strings.ToUpper(v)
-				}
-				return res
-			}
-			return arr
-		},
-	}
-}
+	pongo2 "github.com/flosch/pongo2/v6"
+)
 
 func TestNewTemplater(t *testing.T) {
 	tpl := NewTemplater()
@@ -50,7 +16,7 @@ func TestNewTemplater(t *testing.T) {
 
 func TestRender_Simple(t *testing.T) {
 	tpl := NewTemplater()
-	out, err := tpl.Render("Hello {{.Name}}", map[string]any{"Name": "Go"})
+	out, err := tpl.Render("Hello {{ Name }}", map[string]any{"Name": "Go"})
 	if err != nil {
 		t.Errorf("Render returned error: %v", err)
 	}
@@ -67,20 +33,13 @@ func TestRender_Error(t *testing.T) {
 	}
 }
 
-func TestRegisterHelpers_NoPanic(t *testing.T) {
-	tpl := NewTemplater()
-	// Should not panic
-	tpl.RegisterHelpers(nil)
-}
-
-func TestRender_NestedAndHelpers(t *testing.T) {
+func TestRender_NestedAndFilters(t *testing.T) {
 	tpl := NewTemplater()
 	data := map[string]any{
 		"Feature": "AI Automation",
 		"Docs":    []string{"Doc1", "Doc2", "Doc3"},
 	}
-	tpl.RegisterHelpers(helpers())
-	out, err := tpl.Render(`Feature: {{.Feature}}\nDocs: {{join .Docs ", "}}\nCount: {{length .Docs}}`, data)
+	out, err := tpl.Render(`Feature: {{ Feature }}\nDocs: {{ Docs|join:", " }}\nCount: {{ Docs|length }}`, data)
 	if err != nil {
 		t.Errorf("Render returned error: %v", err)
 	}
@@ -90,25 +49,26 @@ func TestRender_NestedAndHelpers(t *testing.T) {
 	}
 }
 
-func TestRender_AllHelpers(t *testing.T) {
+func TestRender_BuiltinFilters(t *testing.T) {
 	tpl := NewTemplater()
 	data := map[string]any{
-		"arr": []string{"a", "b", "c"},
 		"val": 42,
 	}
-	tpl.RegisterHelpers(helpers())
-	out, err := tpl.Render(`Len: {{length .arr}}, Join: {{join .arr ","}}, Base64: {{base64 "hi"}}`, data)
+	out, err := tpl.Render(`Base64: {{ "hi"|base64 }}, Now: {{ ""|now }}, Duration: {{ val|duration:"h" }}`, data)
 	if err != nil {
 		t.Errorf("Render returned error: %v", err)
 	}
-	if out == "" || out == "Len: , Join: , Base64: " {
-		t.Errorf("expected helpers output, got %q", out)
+	if !strings.Contains(out, "Base64: aGk=") {
+		t.Errorf("expected base64 output, got %q", out)
+	}
+	if !strings.Contains(out, "Duration: 42h") {
+		t.Errorf("expected duration output, got %q", out)
 	}
 }
 
 func TestRender_NilData(t *testing.T) {
 	tpl := NewTemplater()
-	_, err := tpl.Render("Hello {{.Name}}", nil)
+	_, err := tpl.Render("Hello {{ Name }}", nil)
 	if err == nil {
 		t.Errorf("expected error for nil data, got nil")
 	}
@@ -116,33 +76,50 @@ func TestRender_NilData(t *testing.T) {
 
 func TestRender_MissingKey(t *testing.T) {
 	tpl := NewTemplater()
-	out, err := tpl.Render("Hello {{.Missing}}", map[string]any{"Name": "Go"})
-	if err == nil {
-		t.Errorf("expected error for missing key, got nil")
+	out, err := tpl.Render("Hello {{ Missing }}", map[string]any{"Name": "Go"})
+	if err != nil {
+		t.Errorf("unexpected error for missing key: %v", err)
 	}
-	if out != "" {
-		t.Errorf("expected empty output for missing key, got %q", out)
-	}
-}
-
-func TestRender_ErrorPropagation(t *testing.T) {
-	tpl := NewTemplater()
-	_, err := tpl.Render("{{fail}}", map[string]any{})
-	if err == nil {
-		t.Errorf("expected error for unknown helper, got nil")
+	if out != "Hello " {
+		t.Errorf("expected blank for missing key, got %q", out)
 	}
 }
 
-func TestRender_NestedHelpers(t *testing.T) {
+func TestRender_CustomFilter(t *testing.T) {
 	tpl := NewTemplater()
-	tpl.RegisterHelpers(helpers())
-	data := map[string]any{"arr": []string{"a", "b"}}
-	out, err := tpl.Render(`{{join (map .arr "toUpper") ","}}`, data)
+	tpl.RegisterFilters(map[string]pongo2.FilterFunction{
+		"repeat": func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+			n := int(param.Integer())
+			res := ""
+			for i := 0; i < n; i++ {
+				res += in.String()
+			}
+			return pongo2.AsValue(res), nil
+		},
+	})
+	out, err := tpl.Render(`{{ "ha"|repeat:3 }}!`, map[string]any{})
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
-	if out != "A,B" {
-		t.Errorf("expected 'A,B', got %q", out)
+	if out != "hahaha!" {
+		t.Errorf("expected 'hahaha!', got %q", out)
+	}
+}
+
+func TestRender_ArrayAccess(t *testing.T) {
+	tpl := NewTemplater()
+	data := map[string]any{
+		"arr": []map[string]any{
+			{"val": "a"},
+			{"val": "b"},
+		},
+	}
+	out, err := tpl.Render(`First: {{ arr.0.val }}, Second: {{ arr.1.val }}`, data)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if out != "First: a, Second: b" {
+		t.Errorf("expected 'First: a, Second: b', got %q", out)
 	}
 }
 
@@ -159,7 +136,6 @@ func TestRender_NoDelimiters(t *testing.T) {
 
 func TestRender_DeeplyNestedTemplates(t *testing.T) {
 	tpl := NewTemplater()
-	tpl.RegisterHelpers(helpers())
 	data := map[string]any{
 		"outer": map[string]any{
 			"inner": map[string]any{
@@ -167,7 +143,7 @@ func TestRender_DeeplyNestedTemplates(t *testing.T) {
 			},
 		},
 	}
-	out, err := tpl.Render("Value: {{.outer.inner.value}}", data)
+	out, err := tpl.Render("Value: {{ outer.inner.value }}", data)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -176,22 +152,65 @@ func TestRender_DeeplyNestedTemplates(t *testing.T) {
 	}
 }
 
-func TestRender_CustomHelperComplex(t *testing.T) {
+func TestRender_SecretsDotAccess(t *testing.T) {
 	tpl := NewTemplater()
-	tpl.RegisterHelpers(template.FuncMap{
-		"repeat": func(s string, n int) string {
-			res := ""
-			for i := 0; i < n; i++ {
-				res += s
-			}
-			return res
-		},
-	})
-	out, err := tpl.Render("{{repeat \"ha\" 3}}!", map[string]any{})
+	data := map[string]any{
+		"secrets": map[string]any{"MY_SECRET": "shhh"},
+	}
+	out, err := tpl.Render("{{ secrets.MY_SECRET }}", data)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
-	if out != "hahaha!" {
-		t.Errorf("expected 'hahaha!', got %q", out)
+	if out != "shhh" {
+		t.Errorf("expected 'shhh', got %q", out)
 	}
+}
+
+func TestRender_EventDotAccess(t *testing.T) {
+	tpl := NewTemplater()
+	data := map[string]any{
+		"event": map[string]any{"foo": "bar"},
+	}
+	out, err := tpl.Render("{{ event.foo }}", data)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if out != "bar" {
+		t.Errorf("expected 'bar', got %q", out)
+	}
+}
+
+func TestRender_StepOutputTopLevel(t *testing.T) {
+	tpl := NewTemplater()
+	data := map[string]any{
+		"fetch": map[string]any{"body": "hello world"},
+	}
+	out, err := tpl.Render("{{ fetch.body }}", data)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if out != "hello world" {
+		t.Errorf("expected 'hello world', got %q", out)
+	}
+}
+
+func TestRender_NestedStepOutput(t *testing.T) {
+	tpl := NewTemplater()
+	choices := []interface{}{
+		map[string]any{"message": map[string]any{"content": "summary here"}},
+	}
+	data := map[string]any{
+		"summarize": map[string]any{
+			"choices": choices,
+		},
+	}
+	// Only dot notation is supported for array access in pongo2
+	out, err := tpl.Render("{{ summarize.choices.0.message.content }}", data)
+	if err != nil {
+		t.Errorf("unexpected error (dot notation): %v", err)
+	}
+	if out != "summary here" {
+		t.Errorf("expected 'summary here' (dot notation), got %q", out)
+	}
+	// Bracket notation (choices[0]) is not supported by pongo2 and will fail to parse.
 }

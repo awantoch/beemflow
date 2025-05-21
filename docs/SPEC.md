@@ -97,7 +97,7 @@ steps:
   - id: print
     use: core.echo
     with:
-      text: "{{ (index .outputs.summarize.choices 0).message.content }}"
+      text: "{{ summarize.choices.0.message.content }}"
 ```
 
 ### 3. Slack Notification
@@ -583,7 +583,7 @@ steps:
   - id: print
     use: core.echo
     with:
-      text: "{{ (index .outputs.summarize.choices 0).message.content }}"
+      text: "{{ summarize.choices.0.message.content }}"
 ```
 
 ---

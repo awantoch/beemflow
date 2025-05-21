@@ -73,7 +73,7 @@ steps:
   - id: greet_again
     use: core.echo
     with:
-      text: "Aaand once more: {{.greet.text}}"
+      text: "Aaand once more: {{ greet.text }}"
 ```
 ```bash
 flow run hello.flow.yaml
@@ -101,7 +101,7 @@ steps:
   - id: fetch_page
     use: http.fetch
     with:
-      url: "{{.vars.fetch_url}}"
+      url: "{{ fetch_url }}"
   - id: summarize
     use: openai.chat_completion
     with:
@@ -110,11 +110,11 @@ steps:
         - role: system
           content: "Summarize the following web page in 3 bullets."
         - role: user
-          content: "{{.fetch_page.body}}"
+          content: "{{ fetch_page.body }}"
   - id: print
     use: core.echo
     with:
-      text: "Summary: {{ (index .summarize.choices 0).message.content }}"
+      text: "Summary: {{ summarize.choices.0.message.content }}"
 ```
 ```bash
 flow run summarize.flow.yaml
@@ -162,21 +162,21 @@ steps:
           model: "gpt-4o"
           messages:
             - role: user
-              content: "{{.vars.prompt1}}"
+              content: "{{ prompt1 }}"
       - id: ocean_fact
         use: openai.chat_completion
         with:
           model: "gpt-4o"
           messages:
             - role: user
-              content: "{{.vars.prompt2}}"
+              content: "{{ prompt2 }}"
   - id: combine
     depends_on: [fanout]
     use: core.echo
     with:
       text: |
-        🌕 Moon: {{ (index .outputs.fanout.moon_fact.choices 0).message.content }}
-        🌊 Ocean: {{ (index .outputs.fanout.ocean_fact.choices 0).message.content }}
+        🌕 Moon: {{ moon_fact.choices.0.message.content }}
+        🌊 Ocean: {{ ocean_fact.choices.0.message.content }}
 ```
 ```bash
 flow run parallel.flow.yaml
@@ -212,24 +212,24 @@ steps:
   - id: send_sms
     use: mcp://twilio/send_sms
     with:
-      to: "{{.vars.phone_number}}"
+      to: "{{ phone_number }}"
       body: |
-        {{(index .draft_message.choices 0).message.content}}
+        {{ draft_message.choices.0.message.content }}
         Reply YES to approve, NO to reject.
-      token: "{{.vars.approval_token}}"
+      token: "{{ approval_token }}"
   - id: wait_for_approval
     await_event:
       source: twilio
       match:
-        token: "{{.vars.approval_token}}"
+        token: "{{ approval_token }}"
       timeout: 1h
   - id: check_approval
-    if: "{{.event.body | toLower | trim == 'yes'}}"
+    if: "{{ event.body | toLower | trim == 'yes' }}"
     use: core.echo
     with:
       text: "✅ Approved! Message sent."
   - id: check_rejection
-    if: "{{.event.body | toLower | trim == 'no'}}"
+    if: "{{ event.body | toLower | trim == 'no' }}"
     use: core.echo
     with:
       text: "❌ Rejected by human."
@@ -274,60 +274,60 @@ steps:
           model: "gpt-4o"
           messages:
             - role: system
-              content: "Write a catchy tweet announcing this product update: '{{.vars.feature_update}}'"
+              content: "Write a catchy tweet announcing this product update: '{{ feature_update }}'"
       - id: linkedin
         use: openai.chat_completion
         with:
           model: "gpt-4o"
           messages:
             - role: system
-              content: "Write a LinkedIn post (max 300 words) for this update: '{{.vars.feature_update}}'"
+              content: "Write a LinkedIn post (max 300 words) for this update: '{{ feature_update }}'"
       - id: blog
         use: openai.chat_completion
         with:
           model: "gpt-4o"
           messages:
             - role: system
-              content: "Write a short blog post (max 500 words) about: '{{.vars.feature_update}}'"
+              content: "Write a short blog post (max 500 words) about: '{{ feature_update }}'"
   - id: send_to_slack
     use: mcp://slack/chat.postMessage
     with:
-      channel: "{{.vars.slack_channel}}"
+      channel: "{{ slack_channel }}"
       text: |
         :mega: *Feature Update Drafts for Review*
-        *Tweet:* {{(index .outputs.generate_content.tweet.choices 0).message.content}}
-        *LinkedIn:* {{(index .outputs.generate_content.linkedin.choices 0).message.content}}
-        *Blog:* {{(index .outputs.generate_content.blog.choices 0).message.content}}
+        *Tweet:* {{ tweet.choices.0.message.content }}
+        *LinkedIn:* {{ linkedin.choices.0.message.content }}
+        *Blog:* {{ blog.choices.0.message.content }}
         
         Reply with 'approve' to post, or 'edit: ...' to suggest changes.
-      token: "{{.vars.approval_token}}"
+      token: "{{ approval_token }}"
   - id: wait_for_slack_approval
     await_event:
       source: slack
       match:
-        token: "{{.vars.approval_token}}"
+        token: "{{ approval_token }}"
       timeout: 2h
   - id: handle_edits
-    if: "{{.event.text | toLower | hasPrefix 'edit:'}}"
+    if: "{{ event.text | toLower | hasPrefix 'edit:' }}"
     use: core.echo
     with:
-      text: "Edits requested: {{.event.text}} (flow would branch to editing here)"
+      text: "Edits requested: {{ event.text }} (flow would branch to editing here)"
   - id: post_to_socials
-    if: "{{.event.text | toLower | trim == 'approve'}}"
+    if: "{{ event.text | toLower | trim == 'approve' }}"
     parallel: true
     steps:
       - id: x_post
         use: mcp://x/post
         with:
-          text: "[POSTED to X]: {{(index .outputs.generate_content.tweet.choices 0).message.content}}"
+          text: "[POSTED to X]: {{ tweet.choices.0.message.content }}"
       - id: post_linkedin
         use: mcp://linkedin/post
         with:
-          text: "[POSTED to LinkedIn]: {{(index .outputs.generate_content.linkedin.choices 0).message.content}}"
+          text: "[POSTED to LinkedIn]: {{ linkedin.choices.0.message.content }}"
       - id: post_blog
         use: mcp://blog/post
         with:
-          text: "[POSTED to Blog]: {{(index .outputs.generate_content.blog.choices 0).message.content}}"
+          text: "[POSTED to Blog]: {{ blog.choices.0.message.content }}"
 ```
 ```bash
 flow run marketing_agent.flow.yaml
@@ -364,11 +364,11 @@ vars:
 steps:
   - id: pull_stripe
     use: stripe.balance.retrieve
-    with: { api_key: "{{.secrets.STRIPE_KEY}}" }
+    with: { api_key: "{{ secrets.STRIPE_KEY }}" }
 
   - id: pull_qbo
     use: quickbooks.reports.balanceSheet
-    with: { token: "{{.secrets.QBO_TOKEN}}" }
+    with: { token: "{{ secrets.QBO_TOKEN }}" }
 
   - id: analyze
     use: openai.chat_completion
@@ -379,24 +379,24 @@ steps:
           content: |
             Combine the Stripe and QuickBooks JSON below.
             1. Report total cash & AR.
-            2. If cash < ${{vars.ALERT_THRESHOLD}}, add ⚠️.
+            2. If cash < ${{ vars.ALERT_THRESHOLD }}, add ⚠️.
             3. Format as a single PowerPoint slide in Markdown.
         - role: user
           content: |
-            Stripe: {{.outputs.pull_stripe}}
-            QuickBooks: {{.outputs.pull_qbo}}
+            Stripe: {{ pull_stripe }}
+            QuickBooks: {{ pull_qbo }}
 
   - id: ppt
     use: cloudconvert.md_to_pptx
     with:
-      markdown: "{{.outputs.analyze.choices[0].message.content}}"
+      markdown: "{{ analyze.choices.0.message.content }}"
 
   - id: send
     use: slack.files.upload
     with:
-      token: "{{.secrets.SLACK_TOKEN}}"
+      token: "{{ secrets.SLACK_TOKEN }}"
       channels: ["#finance"]
-      file: "{{.outputs.ppt.file_url}}"
+      file: "{{ ppt.file_url }}"
       title: "Daily Cash Snapshot"
 ```
 ```bash
@@ -429,15 +429,15 @@ steps:
   - id: scrape_prices
     use: browserless.scrape
     with:
-      url: "https://competitor.com/product/{{.event.sku}}"
+      url: "https://competitor.com/product/{{ event.sku }}"
       selector: ".price"
       format: json
 
   - id: update_shopify
     use: shopify.product.updatePrice
     with:
-      api_key: "{{.secrets.SHOPIFY_KEY}}"
-      product_id: "{{.event.product_id}}"
+      api_key: "{{ secrets.SHOPIFY_KEY }}"
+      product_id: "{{ event.product_id }}"
       new_price: |
         {{ math.max(
              event.cost * (1 + vars.MIN_MARGIN_PCT/100),
@@ -447,8 +447,8 @@ steps:
   - id: adjust_ads
     use: googleads.campaigns.update
     with:
-      token: "{{.secrets.GADS_TOKEN}}"
-      campaign_id: "{{.event.campaign_id}}"
+      token: "{{ secrets.GADS_TOKEN }}"
+      campaign_id: "{{ event.campaign_id }}"
       target_roas: |
         {{ 1.3 if outputs.update_shopify.changed else 1.1 }}
 ```
@@ -478,35 +478,35 @@ cron: "0 9 * * 1-5"  # every weekday 09:00
 steps:
   - id: fetch_overdue
     use: quickbooks.reports.aging
-    with: { token: "{{.secrets.QBO_TOKEN}}" }
+    with: { token: "{{ secrets.QBO_TOKEN }}" }
 
   - id: foreach_invoice
-    foreach: "{{.outputs.fetch_overdue.invoices}}"
+    foreach: "{{ fetch_overdue.invoices }}"
     as: inv
     do:
       - id: email_first
         use: postmark.email.send
         with:
-          api_key: "{{.secrets.EMAIL_KEY}}"
-          to: "{{.inv.customer_email}}"
+          api_key: "{{ secrets.EMAIL_KEY }}"
+          to: "{{ inv.customer_email }}"
           template: "overdue_reminder"
-          vars: { days: "{{.inv.days_overdue}}", amount: "{{.inv.balance}}" }
+          vars: { days: "{{ inv.days_overdue }}", amount: "{{ inv.balance }}" }
 
       - id: wait_24h
         wait: { hours: 24 }
 
       - id: check_paid
         use: quickbooks.invoice.get
-        with: { id: "{{.inv.id}}", token: "{{.secrets.QBO_TOKEN}}" }
+        with: { id: "{{ inv.id }}", token: "{{ secrets.QBO_TOKEN }}" }
 
       - id: escalate
-        if: "{{.outputs.check_paid.status != 'Paid'}}"
+        if: "{{ outputs.check_paid.status != 'Paid' }}"
         use: twilio.sms.send
         with:
-          sid: "{{.secrets.TWILIO_SID}}"
-          auth: "{{.secrets.TWILIO_AUTH}}"
-          to: "{{.inv.customer_phone}}"
-          body: "Friendly nudge: Invoice #{{.inv.id}} is now {{.inv.days_overdue+1}} days overdue."
+          sid: "{{ secrets.TWILIO_SID }}"
+          auth: "{{ secrets.TWILIO_AUTH }}"
+          to: "{{ inv.customer_phone }}"
+          body: "Friendly nudge: Invoice #{{ inv.id }} is now {{ inv.days_overdue+1 }} days overdue."
 ```
 ```bash
 flow run invoice_chaser.flow.yaml
@@ -536,7 +536,7 @@ vars:
 steps:
   - id: fetch
     use: http.fetch
-    with: { url: "https://en.wikipedia.org/wiki/{{.vars.TOPIC}}" }
+    with: { url: "https://en.wikipedia.org/wiki/{{ TOPIC }}" }
 
   - id: summarize
     use: openai.chat_completion
@@ -546,13 +546,13 @@ steps:
         - role: system
           content: "Summarize the following text in 3 bullets."
         - role: user
-          content: "{{.outputs.fetch.body}}"
+          content: "{{ outputs.fetch.body }}"
 
   - id: announce
     use: slack.chat.postMessage
     with:
       channel: "#ai-updates"
-      text: "{{.outputs.summarize.choices[0].message.content}}"
+      text: "{{ summarize.choices.0.message.content }}"
 ```
 
 ✨ **Templating:** `{{…}}` gives you outputs, vars, secrets, helper funcs.
@@ -584,7 +584,7 @@ steps:
   - id: fetch
     use: http.fetch
     with:
-      url: "{{.vars.URL}}"
+      url: "{{ URL }}"
   - id: summarize
     use: openai.chat_completion
     with:
@@ -593,11 +593,11 @@ steps:
         - role: system
           content: "Summarize the following text in 3 bullet points."
         - role: user
-          content: "{{.outputs.fetch.body}}"
+          content: "{{ outputs.fetch.body }}"
   - id: print
     use: core.echo
     with:
-      text: "{{ (index .outputs.summarize.choices 0).message.content }}"
+      text: "{{ summarize.choices.0.message.content }}"
 ```
 
 ### Go
@@ -625,7 +625,7 @@ func main() {
         ID:  "fetch",
         Use: "http.fetch",
         With: map[string]interface{}{
-          "url": "{{.vars.URL}}",
+          "url": "{{ URL }}",
         },
       },
       {
@@ -635,7 +635,7 @@ func main() {
           "model": "gpt-4o",
           "messages": []interface{}{
             map[string]interface{}{ "role": "system", "content": "Summarize in 3 bullets." },
-            map[string]interface{}{ "role": "user",   "content": "{{.outputs.fetch.body}}" },
+            map[string]interface{}{ "role": "user",   "content": "{{ outputs.fetch.body }}" },
           },
         },
       },
@@ -643,7 +643,7 @@ func main() {
         ID:  "print",
         Use: "core.echo",
         With: map[string]interface{}{
-          "text": "{{ (index .outputs.summarize.choices 0).message.content }}",
+          "text": "{{ summarize.choices.0.message.content }}",
         },
       },
     },
@@ -693,17 +693,17 @@ const flow: Flow = {
     URL: "https://en.wikipedia.org/wiki/Artificial_intelligence",
   },
   steps: [
-    { id: "fetch",     use: "http.fetch",           with: { url: "{{.vars.URL}}" } },
+    { id: "fetch",     use: "http.fetch",           with: { url: "{{ URL }}" } },
     { id: "summarize", use: "openai.chat_completion", with: {
         model: "gpt-4o",
         messages: [
           { role: "system", content: "Summarize in 3 bullets." },
-          { role: "user",   content: "{{.outputs.fetch.body}}" },
+          { role: "user",   content: "{{ outputs.fetch.body }}" },
         ],
       },
     },
     { id: "print", use: "core.echo", with: {
-        text: "{{ (index .outputs.summarize.choices 0).message.content }}",
+        text: "{{ summarize.choices.0.message.content }}",
       },
     },
   ],
@@ -761,11 +761,41 @@ fn main() {
                 use_: "http.fetch".into(),
                 with: Some({
                     let mut m = HashMap::new();
-                    m.insert("url".into(), serde_yaml::Value::String("{{.vars.URL}}".into()));
+                    m.insert("url".into(), serde_yaml::Value::String("{{ URL }}"))
+                }),
+            },
+            Step {
+                id:   "summarize".into(),
+                use_: "openai.chat_completion".into(),
+                with: Some({
+                    let mut m = HashMap::new();
+                    m.insert("model".into(), serde_yaml::Value::String("gpt-4o".into()));
+                    m.insert("messages".into(), serde_yaml::Value::Sequence(vec![
+                        serde_yaml::Value::Mapping({
+                            let mut sys = serde_yaml::Mapping::new();
+                            sys.insert(serde_yaml::Value::String("role".into()), serde_yaml::Value::String("system".into()));
+                            sys.insert(serde_yaml::Value::String("content".into()), serde_yaml::Value::String("Summarize in 3 bullets.".into()));
+                            sys
+                        }),
+                        serde_yaml::Value::Mapping({
+                            let mut user = serde_yaml::Mapping::new();
+                            user.insert(serde_yaml::Value::String("role".into()), serde_yaml::Value::String("user".into()));
+                            user.insert(serde_yaml::Value::String("content".into()), serde_yaml::Value::String("{{ outputs.fetch.body }}".into()));
+                            user
+                        }),
+                    ]));
                     m
                 }),
             },
-            // ... add summarize and print steps ...
+            Step {
+                id:   "print".into(),
+                use_: "core.echo".into(),
+                with: Some({
+                    let mut m = HashMap::new();
+                    m.insert("text".into(), serde_yaml::Value::String("{{ summarize.choices.0.message.content }}".into()));
+                    m
+                }),
+            },
         ],
     };
 
@@ -807,12 +837,12 @@ flow = Flow(
     on="cli.manual",
     vars={"URL": "https://en.wikipedia.org/wiki/Artificial_intelligence"},
     steps=[
-        Step("fetch",     "http.fetch",           {"url": "{{.vars.URL}}"}),
+        Step("fetch",     "http.fetch",           {"url": "{{ URL }}"}),
         Step("summarize", "openai.chat_completion", {"model": "gpt-4o", "messages":[
             {"role":"system","content":"Summarize in 3 bullets."},
-            {"role":"user",  "content":"{{.outputs.fetch.body}}" },
+            {"role":"user",   "content":"{{ outputs.fetch.body }}" },
         ]}),
-        Step("print",     "core.echo",            {"text":"{{ (index .outputs.summarize.choices 0).message.content }}"}),
+        Step("print",     "core.echo",            {"text":"{{ summarize.choices.0.message.content }}"}),
     ]
 )
 
@@ -878,7 +908,7 @@ Tools can be qualified (`smithery:airtable`) when ambiguous.
 
 ## Security & Secrets
 
-- Secrets from env, Vault, or MCP store: `{{.secrets.NAME}}`.
+- Secrets from env, Vault, or MCP store: `{{ secrets.NAME }}`.
 - HMAC-signed resume tokens for durable waits.
 - SOC 2 Type II in progress; ISO 27001 roadmap next.
 

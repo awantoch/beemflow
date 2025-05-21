@@ -135,9 +135,15 @@ func TestAwaitEventResume_RoundTrip(t *testing.T) {
 		t.Errorf("Publish failed: %v", err)
 	}
 	// Wait briefly to allow resume goroutine to complete
-	time.Sleep(100 * time.Millisecond)
-	// After resume, the outputs should include both echo steps
-	resumedOutputs := engine.GetCompletedOutputs("abc123")
+	var resumedOutputs map[string]any
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		resumedOutputs = engine.GetCompletedOutputs("abc123")
+		if resumedOutputs != nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	t.Logf("resumed outputs: %+v", resumedOutputs)
 	if resumedOutputs == nil {
 		t.Fatalf("expected outputs after resume, got nil")
@@ -232,7 +238,7 @@ func TestExecute_SecretsInjection(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
 	f := &model.Flow{
 		Name:  "secrets_injection",
-		Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "{{secrets \"MY_SECRET\"}}"}}},
+		Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "{{ secrets.MY_SECRET }}"}}},
 	}
 	outputs, err := e.Execute(context.Background(), f, map[string]any{"secrets": map[string]any{"MY_SECRET": "shhh"}})
 	if err != nil {
@@ -241,6 +247,37 @@ func TestExecute_SecretsInjection(t *testing.T) {
 	// Expect outputs["s1"] to be a map with key "text" and value "shhh"
 	if out, ok := outputs["s1"].(map[string]any); !ok || out["text"] != "shhh" {
 		t.Errorf("expected secret injected as map output, got %v", outputs["s1"])
+	}
+}
+
+func TestExecute_SecretsDotAccess(t *testing.T) {
+	e := NewDefaultEngine(context.Background())
+	f := &model.Flow{
+		Name:  "secrets_dot_access",
+		Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "{{ secrets.MY_SECRET }}"}}},
+	}
+	outputs, err := e.Execute(context.Background(), f, map[string]any{"secrets": map[string]any{"MY_SECRET": "shhh"}})
+	if err != nil {
+		t.Errorf("expected no error for secrets dot access, got %v", err)
+	}
+	if out, ok := outputs["s1"].(map[string]any); !ok || out["text"] != "shhh" {
+		t.Errorf("expected secret injected as map output, got %v", outputs["s1"])
+	}
+}
+
+func TestExecute_ArrayAccessInTemplate(t *testing.T) {
+	e := NewDefaultEngine(context.Background())
+	f := &model.Flow{
+		Name:  "array_access",
+		Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "First: {{ event.arr.0.val }}, Second: {{ event.arr.1.val }}"}}},
+	}
+	arr := []map[string]any{{"val": "a"}, {"val": "b"}}
+	outputs, err := e.Execute(context.Background(), f, map[string]any{"arr": arr})
+	if err != nil {
+		t.Errorf("expected no error for array access, got %v", err)
+	}
+	if out, ok := outputs["s1"].(map[string]any); !ok || out["text"] != "First: a, Second: b" {
+		t.Errorf("expected array access output, got %v", outputs["s1"])
 	}
 }
 
