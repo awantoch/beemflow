@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/utils/logger"
 )
 
 // FilesystemBlobStore implements BlobStore using the local filesystem.

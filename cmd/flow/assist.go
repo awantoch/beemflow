@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/awantoch/beemflow/adapter"
-	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/utils/logger"
 	"github.com/spf13/cobra"
 )
 

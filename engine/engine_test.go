@@ -13,7 +13,7 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/storage"
-	"github.com/awantoch/beemflow/testutil"
+	"github.com/awantoch/beemflow/utils/testutil"
 )
 
 func TestMain(m *testing.M) {

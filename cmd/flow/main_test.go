@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/logger"
-	"github.com/awantoch/beemflow/testutil"
+	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils/testutil"
 )
 
 func captureOutput(f func()) string {

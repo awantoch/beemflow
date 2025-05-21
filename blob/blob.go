@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/utils/logger"
 )
 
 // BlobStore is the interface for pluggable blob storage backends.

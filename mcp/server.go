@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/utils/logger"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"

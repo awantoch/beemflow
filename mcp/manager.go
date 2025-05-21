@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/utils/logger"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 )

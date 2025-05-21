@@ -6,7 +6,7 @@ import (
 
 	"encoding/base64"
 
-	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/utils/logger"
 	pongo2 "github.com/flosch/pongo2/v6"
 )
 

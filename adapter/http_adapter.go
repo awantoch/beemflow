@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/registry"
+	"github.com/awantoch/beemflow/utils/logger"
 )
 
 // defaultClient is used for HTTP requests with a timeout to avoid hanging.

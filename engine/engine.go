@@ -13,10 +13,10 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/event"
-	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
+	"github.com/awantoch/beemflow/utils/logger"
 	"github.com/google/uuid"
 )
 

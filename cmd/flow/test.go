@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/utils/logger"
 	"github.com/spf13/cobra"
 )
 

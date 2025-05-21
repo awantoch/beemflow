@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/utils/logger"
 )
 
 // Sample config for BeemFlow registry system:

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/utils/logger"
 
 	"github.com/awantoch/beemflow/api"
 	mcpserver "github.com/awantoch/beemflow/mcp"

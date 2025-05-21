@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/utils/logger"
 	"github.com/google/uuid"
 )
 

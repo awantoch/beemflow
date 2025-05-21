@@ -7,7 +7,7 @@ import (
 
 	"github.com/awantoch/beemflow/docs"
 	"github.com/awantoch/beemflow/dsl"
-	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/utils/logger"
 )
 
 // SystemPrompt is loaded from the embedded documentation package.

@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/awantoch/beemflow/logger"
+	"github.com/awantoch/beemflow/utils/logger"
 )
 
 // TestCoreAdapter tests that CoreAdapter prints text and returns inputs.

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/awantoch/beemflow/registry"
-	"github.com/awantoch/beemflow/testutil"
+	"github.com/awantoch/beemflow/utils/testutil"
 )
 
 // dummyAdapter implements Adapter for testing

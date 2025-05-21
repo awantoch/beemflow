@@ -12,9 +12,9 @@ import (
 	"sync"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/logger"
 	mcpmanager "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"
+	"github.com/awantoch/beemflow/utils/logger"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
 )

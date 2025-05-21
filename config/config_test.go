@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/awantoch/beemflow/testutil"
+	"github.com/awantoch/beemflow/utils/testutil"
 )
 
 // TestMain ensures the mcp_servers folder is cleaned up before and after tests

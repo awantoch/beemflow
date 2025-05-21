@@ -8,9 +8,9 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/engine"
-	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/storage"
+	"github.com/awantoch/beemflow/utils/logger"
 	"github.com/spf13/cobra"
 )
 
