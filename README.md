@@ -597,78 +597,94 @@ steps:
   - id: print
     use: core.echo
     with:
-      text: "{{.outputs.summarize.choices.0.message.content}}"
+      text: "{{ (index .outputs.summarize.choices 0).message.content }}"
 ```
 
 ### Go
 ```go
-import "github.com/awantoch/beemflow/model"
+package main
 
-flow := &model.Flow{
+import (
+  "fmt"
+  "gopkg.in/yaml.v3"
+  "net/http"
+  "bytes"
+  "io/ioutil"
+  "github.com/awantoch/beemflow/model"
+)
+
+func main() {
+  flow := model.Flow{
     Name: "fetch_and_summarize",
     On:   "cli.manual",
     Vars: map[string]interface{}{
-        "URL": "https://en.wikipedia.org/wiki/Artificial_intelligence",
+      "URL": "https://en.wikipedia.org/wiki/Artificial_intelligence",
     },
     Steps: []model.Step{
-        {
-            ID:  "fetch",
-            Use: "http.fetch",
-            With: map[string]interface{}{
-                "url": "{{.vars.URL}}",
-            },
+      {
+        ID:  "fetch",
+        Use: "http.fetch",
+        With: map[string]interface{}{
+          "url": "{{.vars.URL}}",
         },
-        {
-            ID:  "summarize",
-            Use: "openai.chat_completion",
-            With: map[string]interface{}{
-                "model": "gpt-4o",
-                "messages": []interface{}{
-                    map[string]interface{}{ "role": "system", "content": "Summarize the following text in 3 bullet points." },
-                    map[string]interface{}{ "role": "user", "content": "{{.outputs.fetch.body}}" },
-                },
-            },
+      },
+      {
+        ID:  "summarize",
+        Use: "openai.chat_completion",
+        With: map[string]interface{}{
+          "model": "gpt-4o",
+          "messages": []interface{}{
+            map[string]interface{}{ "role": "system", "content": "Summarize in 3 bullets." },
+            map[string]interface{}{ "role": "user",   "content": "{{.outputs.fetch.body}}" },
+          },
         },
-        {
-            ID:  "print",
-            Use: "core.echo",
-            With: map[string]interface{}{
-                "text": "{{.outputs.summarize.choices.0.message.content}}",
-            },
+      },
+      {
+        ID:  "print",
+        Use: "core.echo",
+        With: map[string]interface{}{
+          "text": "{{ (index .outputs.summarize.choices 0).message.content }}",
         },
+      },
     },
+  }
+
+  out, err := yaml.Marshal(flow)
+  if err != nil {
+    panic(err)
+  }
+  fmt.Println(string(out))
+
+  // --- Run the flow via HTTP ---
+  // (Assume BeemFlow is running at http://localhost:8080)
+  reqBody := []byte(`{"flow": "fetch_and_summarize", "event": {}}`)
+  resp, err := http.Post("http://localhost:8080/runs", "application/json", bytes.NewBuffer(reqBody))
+  if err != nil {
+    panic(err)
+  }
+  defer resp.Body.Close()
+  body, _ := ioutil.ReadAll(resp.Body)
+  fmt.Println(string(body))
 }
 ```
 
 ### TypeScript
 ```typescript
-// types.ts
-export interface Flow {
+import * as yaml from 'js-yaml';
+import fetch from 'node-fetch';
+
+interface Flow {
   name: string;
-  on: string | object | Array<string | object>;
+  on: string | object;
   vars?: Record<string, any>;
   steps: Step[];
-  catch?: Step[];
 }
 
-export interface Step {
+interface Step {
   id: string;
-  use?: string;
-  with?: Record<string, any>;
-  depends_on?: string[];
-  parallel?: boolean;
-  if?: string;
-  foreach?: string;
-  as?: string;
-  do?: Step[];
-  steps?: Step[];
-  retry?: RetrySpec;
-  await_event?: AwaitEventSpec;
-  wait?: WaitSpec;
+  use: string;
+  with: Record<string, any>;
 }
-
-// flow.ts
-import { Flow } from './types';
 
 const flow: Flow = {
   name: "fetch_and_summarize",
@@ -677,127 +693,140 @@ const flow: Flow = {
     URL: "https://en.wikipedia.org/wiki/Artificial_intelligence",
   },
   steps: [
-    {
-      id: "fetch",
-      use: "http.fetch",
-      with: { url: "{{.vars.URL}}" },
-    },
-    {
-      id: "summarize",
-      use: "openai.chat_completion",
-      with: {
+    { id: "fetch",     use: "http.fetch",           with: { url: "{{.vars.URL}}" } },
+    { id: "summarize", use: "openai.chat_completion", with: {
         model: "gpt-4o",
         messages: [
-          { role: "system", content: "Summarize the following text in 3 bullet points." },
-          { role: "user", content: "{{.outputs.fetch.body}}" },
+          { role: "system", content: "Summarize in 3 bullets." },
+          { role: "user",   content: "{{.outputs.fetch.body}}" },
         ],
       },
     },
-    {
-      id: "print",
-      use: "core.echo",
-      with: { text: "{{.outputs.summarize.choices.0.message.content}}" },
+    { id: "print", use: "core.echo", with: {
+        text: "{{ (index .outputs.summarize.choices 0).message.content }}",
+      },
     },
   ],
 };
+
+console.log(yaml.dump(flow));
+
+// --- Run the flow via HTTP ---
+(async () => {
+  const response = await fetch('http://localhost:8080/runs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ flow: flow, event: {} }),
+  });
+  const data = await response.text();
+  console.log(data);
+})();
 ```
 
 ### Rust
 ```rust
 use serde::{Serialize, Deserialize};
+use serde_yaml;
 use std::collections::HashMap;
+use reqwest::blocking::Client;
 
 #[derive(Serialize, Deserialize)]
 struct Flow {
     name: String,
-    on: serde_yaml::Value,
+    on: String,
     vars: Option<HashMap<String, serde_yaml::Value>>,
     steps: Vec<Step>,
-    catch: Option<Vec<Step>>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct Step {
     id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    use_: Option<String>,
+    #[serde(rename = "use")]
+    use_: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     with: Option<HashMap<String, serde_yaml::Value>>,
-    // ... other fields ...
 }
 
 fn main() {
+    let mut vars = HashMap::new();
+    vars.insert("URL".into(), serde_yaml::Value::String("https://en.wikipedia.org/wiki/Artificial_intelligence".into()));
+
     let flow = Flow {
-        name: "fetch_and_summarize".to_string(),
-        on: serde_yaml::Value::String("cli.manual".to_string()),
-        vars: Some([
-            ("URL".to_string(), serde_yaml::Value::String("https://en.wikipedia.org/wiki/Artificial_intelligence".to_string())),
-        ].iter().cloned().collect()),
+        name: "fetch_and_summarize".into(),
+        on:   "cli.manual".into(),
+        vars: Some(vars),
         steps: vec![
             Step {
-                id: "fetch".to_string(),
-                use_: Some("http.fetch".to_string()),
-                with: Some([
-                    ("url".to_string(), serde_yaml::Value::String("{{.vars.URL}}".to_string())),
-                ].iter().cloned().collect()),
-                // ...
+                id:   "fetch".into(),
+                use_: "http.fetch".into(),
+                with: Some({
+                    let mut m = HashMap::new();
+                    m.insert("url".into(), serde_yaml::Value::String("{{.vars.URL}}".into()));
+                    m
+                }),
             },
-            // ... summarize and print steps ...
+            // ... add summarize and print steps ...
         ],
-        catch: None,
     };
-    // Serialize to YAML, JSON, or use in your Rust runtime!
+
+    println!("{}", serde_yaml::to_string(&flow).unwrap());
+
+    // --- Run the flow via HTTP ---
+    let client = Client::new();
+    let body = serde_json::json!({ "flow": flow, "event": {} });
+    let res = client.post("http://localhost:8080/runs")
+        .json(&body)
+        .send()
+        .unwrap();
+    println!("{}", res.text().unwrap());
 }
 ```
 
 ### Python
 ```python
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass, asdict
+from typing import Any, Dict, List, Union
+import requests
+import yaml
 
 @dataclass
 class Step:
     id: str
-    use: Optional[str] = None
-    with_: Optional[Dict[str, Any]] = field(default_factory=dict)
-    # ... other fields ...
+    use: str
+    with_: Dict[str, Any]
 
 @dataclass
 class Flow:
     name: str
     on: Union[str, dict, List[Union[str, dict]]]
-    vars: Optional[Dict[str, Any]] = field(default_factory=dict)
-    steps: List[Step] = field(default_factory=list)
-    catch: Optional[List[Step]] = field(default_factory=list)
+    vars: Dict[str, Any]
+    steps: List[Step]
 
 flow = Flow(
     name="fetch_and_summarize",
     on="cli.manual",
     vars={"URL": "https://en.wikipedia.org/wiki/Artificial_intelligence"},
     steps=[
-        Step(
-            id="fetch",
-            use="http.fetch",
-            with_={"url": "{{.vars.URL}}"},
-        ),
-        Step(
-            id="summarize",
-            use="openai.chat_completion",
-            with_={
-                "model": "gpt-4o",
-                "messages": [
-                    {"role": "system", "content": "Summarize the following text in 3 bullet points."},
-                    {"role": "user", "content": "{{.outputs.fetch.body}}"},
-                ],
-            },
-        ),
-        Step(
-            id="print",
-            use="core.echo",
-            with_={"text": "{{.outputs.summarize.choices.0.message.content}}"},
-        ),
+        Step("fetch",     "http.fetch",           {"url": "{{.vars.URL}}"}),
+        Step("summarize", "openai.chat_completion", {"model": "gpt-4o", "messages":[
+            {"role":"system","content":"Summarize in 3 bullets."},
+            {"role":"user",  "content":"{{.outputs.fetch.body}}"},
+        ]}),
+        Step("print",     "core.echo",            {"text":"{{ (index .outputs.summarize.choices 0).message.content }}"}),
     ]
 )
+
+d = asdict(flow)
+for s in d["steps"]:
+    s["with"] = s.pop("with_")
+print(yaml.dump(d))
+
+# --- Run the flow via HTTP ---
+resp = requests.post(
+    "http://localhost:8080/runs",
+    json={"flow": d, "event": {}},
+)
+print(resp.text)
 ```
 
 ---
@@ -834,7 +863,7 @@ Tools can be qualified (`smithery:airtable`) when ambiguous.
 - **Add a tool**: `flow mcp install registry:tool` or edit `.beemflow/registry.json`.
 - **Custom adapter**: implement the `Adapter` interface in your own code.
 - **Swap event bus**: set `"event.driver": "nats"` in `flow.config.json` or via `BEEMFLOW_EVENT_DRIVER=nats`.
-- **LLM autopilot**: POST `/assistant/chat` with system prompt in [SPEC.md](./SPEC.md#14).
+- **LLM autopilot**: POST `/assistant/chat` with system prompt in [SPEC.md](./docs/SPEC.md#14).
 
 ---
 
@@ -861,7 +890,6 @@ Tools can be qualified (`smithery:airtable`) when ambiguous.
 - Flow template gallery (`flow init payroll` etc.).
 - Cron & Temporal adapters.
 - Hot-reload adapters without downtime.
-- OpenTelemetry metrics & traces.
 - On-chain event bus (experimental).
 
 ---
@@ -874,7 +902,7 @@ make dev
 ```
 
 - **Code**: Go 1.22+, linted, tested.
-- **Docs**: PRs welcome — every example is CI-verified.
+- **Docs**: PRs welcome — every example is CI-verified and BeemFlow-reviewed.
 - **Community**: Join <https://discord.gg/beemflow>.
 
 ---
@@ -886,5 +914,4 @@ Commercial cloud & SLA on the way.
 
 ---
 
-> "We're doing to Zapier what GitHub did to FTP—text-based, versioned, and supercharged by AI labor."
-> Docs at <https://beemflow.com/docs> • X: [@BeemFlow](https://X.com/beemflow)
+> Docs at <https://docs.beemflow.com> • X: [@BeemFlow](https://X.com/beemflow)
