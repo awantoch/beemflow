@@ -295,7 +295,7 @@ func StartServer(cfg *config.Config) error {
 	})
 	mux.Handle("/metrics", promhttp.Handler())
 
-	addr := ":8080"
+	addr := ":3333"
 	if cfg.HTTP != nil {
 		host := cfg.HTTP.Host
 		port := cfg.HTTP.Port

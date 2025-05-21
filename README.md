@@ -656,9 +656,9 @@ func main() {
   fmt.Println(string(out))
 
   // --- Run the flow via HTTP ---
-  // (Assume BeemFlow is running at http://localhost:8080)
+  // (Assume BeemFlow is running at http://localhost:3333)
   reqBody := []byte(`{"flow": "fetch_and_summarize", "event": {}}`)
-  resp, err := http.Post("http://localhost:8080/runs", "application/json", bytes.NewBuffer(reqBody))
+  resp, err := http.Post("http://localhost:3333/runs", "application/json", bytes.NewBuffer(reqBody))
   if err != nil {
     panic(err)
   }
@@ -713,7 +713,7 @@ console.log(yaml.dump(flow));
 
 // --- Run the flow via HTTP ---
 (async () => {
-  const response = await fetch('http://localhost:8080/runs', {
+  const response = await fetch('http://localhost:3333/runs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ flow: flow, event: {} }),
@@ -774,7 +774,7 @@ fn main() {
     // --- Run the flow via HTTP ---
     let client = Client::new();
     let body = serde_json::json!({ "flow": flow, "event": {} });
-    let res = client.post("http://localhost:8080/runs")
+    let res = client.post("http://localhost:3333/runs")
         .json(&body)
         .send()
         .unwrap();
@@ -810,7 +810,7 @@ flow = Flow(
         Step("fetch",     "http.fetch",           {"url": "{{.vars.URL}}"}),
         Step("summarize", "openai.chat_completion", {"model": "gpt-4o", "messages":[
             {"role":"system","content":"Summarize in 3 bullets."},
-            {"role":"user",  "content":"{{.outputs.fetch.body}}"},
+            {"role":"user",  "content":"{{.outputs.fetch.body}}" },
         ]}),
         Step("print",     "core.echo",            {"text":"{{ (index .outputs.summarize.choices 0).message.content }}"}),
     ]
@@ -823,7 +823,7 @@ print(yaml.dump(d))
 
 # --- Run the flow via HTTP ---
 resp = requests.post(
-    "http://localhost:8080/runs",
+    "http://localhost:3333/runs",
     json={"flow": d, "event": {}},
 )
 print(resp.text)
