@@ -290,11 +290,20 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				return nil, logger.Errorf("await_event step missing token in match")
 			}
 			// Render the token template
-			data := map[string]any{
-				"event":   stepCtx.Event,
-				"vars":    stepCtx.Vars,
-				"outputs": stepCtx.Outputs,
-				"secrets": stepCtx.Secrets,
+			data := make(map[string]any)
+			data["event"] = stepCtx.Event
+			data["vars"] = stepCtx.Vars
+			data["outputs"] = stepCtx.Outputs
+			data["secrets"] = stepCtx.Secrets
+			// Flatten outputs into context for template rendering
+			for id, out := range stepCtx.Outputs {
+				data[id] = out
+			}
+			// Flatten vars into context for template rendering
+			if stepCtx.Vars != nil {
+				for key, val := range stepCtx.Vars {
+					data[key] = val
+				}
 			}
 			// DEBUG: Log full context before rendering
 			logger.Debug("About to render template for step %s: data = %#v", step.ID, data)
