@@ -9,7 +9,7 @@ import (
 type Flow struct {
 	Name    string                 `yaml:"name" json:"name"`
 	Version string                 `yaml:"version,omitempty" json:"version,omitempty"`
-	On      interface{}            `yaml:"on" json:"on"`
+	On      interface{}            `yaml:"on" json:"on,omitempty"`
 	Vars    map[string]interface{} `yaml:"vars,omitempty" json:"vars,omitempty"`
 	Steps   []Step                 `yaml:"steps" json:"steps"`
 	Catch   []Step                 `yaml:"catch,omitempty" json:"catch,omitempty"`

@@ -1,4 +1,4 @@
-package templater
+package dsl
 
 import (
 	"strings"

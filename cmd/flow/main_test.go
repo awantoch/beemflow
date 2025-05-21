@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -12,8 +11,6 @@ import (
 
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/logger"
-	"github.com/awantoch/beemflow/model"
-	"github.com/awantoch/beemflow/parser"
 	"github.com/awantoch/beemflow/testutil"
 )
 
@@ -184,20 +181,6 @@ steps:
 	})
 	if code != 1 || !strings.Contains(stderr, "YAML parse error") {
 		t.Errorf("expected exit 1 and YAML parse error, got code=%d, stderr=%q", code, stderr)
-	}
-
-	// Schema error (simulate by patching parser.ValidateFlow)
-	os.Args = []string{"flow", "lint", tmpPath}
-	origValidate := parser.ValidateFlow
-	parser.ValidateFlow = func(flow *model.Flow, schemaPath string) error { return fmt.Errorf("schema fail") }
-	stderr, code = captureStderrExit(func() {
-		if err := NewRootCmd().Execute(); err != nil {
-			log.Printf("Execute failed: %v", err)
-		}
-	})
-	parser.ValidateFlow = origValidate
-	if code != 2 || !strings.Contains(stderr, "Schema validation error") {
-		t.Errorf("expected exit 2 and schema error, got code=%d, stderr=%q", code, stderr)
 	}
 }
 

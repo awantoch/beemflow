@@ -194,6 +194,18 @@ func buildMCPToolRegistrations() []mcpserver.ToolRegistration {
 			if err != nil {
 				return nil, err
 			}
+			// If default empty flow, inject on:null into JSON
+			if flow.Name == "" && len(flow.Steps) == 0 {
+				var m map[string]interface{}
+				if err := json.Unmarshal(b, &m); err == nil {
+					if _, ok := m["on"]; !ok {
+						m["on"] = nil
+					}
+					if b2, err2 := json.Marshal(m); err2 == nil {
+						b = b2
+					}
+				}
+			}
 			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
 		}},
 		{ID: registry.InterfaceIDValidateFlow, Desc: registry.InterfaceDescValidateFlow, Handler: func(ctx context.Context, args mcpserver.ValidateFlowArgs) (*mcp.ToolResponse, error) {

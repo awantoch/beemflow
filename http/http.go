@@ -16,13 +16,13 @@ import (
 	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/docs"
+	"github.com/awantoch/beemflow/dsl"
 	beemengine "github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
-	"github.com/awantoch/beemflow/templater"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -231,7 +231,7 @@ func StartServer(cfg *config.Config) error {
 	}
 
 	adapters := beemengine.NewDefaultAdapterRegistry(context.Background())
-	templ := templater.NewTemplater()
+	templ := dsl.NewTemplater()
 	var bus event.EventBus
 	if cfg.Event != nil {
 		bus, err = event.NewEventBusFromConfig(cfg.Event)

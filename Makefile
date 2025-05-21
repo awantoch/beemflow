@@ -23,7 +23,7 @@ serve:
 	go run $(CMD_PATH) serve
 
 # install to $(GOBIN) or $GOPATH/bin
-install:
+install: build
 	go install $(CMD_PATH)
 
 # run all tests with verbose output

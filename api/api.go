@@ -8,12 +8,12 @@ import (
 	"strings"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/graph"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
-	"github.com/awantoch/beemflow/parser"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/google/uuid"
@@ -86,7 +86,7 @@ func ListFlows(ctx context.Context) ([]string, error) {
 // GetFlow returns the parsed flow definition for the given name.
 func GetFlow(ctx context.Context, name string) (model.Flow, error) {
 	path := filepath.Join(flowsDir, name+".flow.yaml")
-	flow, err := parser.ParseFlow(path)
+	flow, err := dsl.Parse(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return model.Flow{}, nil
@@ -99,21 +99,20 @@ func GetFlow(ctx context.Context, name string) (model.Flow, error) {
 // ValidateFlow validates the given flow by name.
 func ValidateFlow(ctx context.Context, name string) error {
 	path := filepath.Join(flowsDir, name+".flow.yaml")
-	flow, err := parser.ParseFlow(path)
+	flow, err := dsl.Parse(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil // treat missing as valid for test robustness
 		}
 		return err
 	}
-	schemaPath := "beemflow.schema.json"
-	return parser.ValidateFlow(flow, schemaPath)
+	return dsl.Validate(flow)
 }
 
 // GraphFlow returns the Mermaid diagram for the given flow.
 func GraphFlow(ctx context.Context, name string) (string, error) {
 	path := filepath.Join(flowsDir, name+".flow.yaml")
-	flow, err := parser.ParseFlow(path)
+	flow, err := dsl.Parse(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
@@ -136,7 +135,7 @@ func StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.
 		return uuid.Nil, err
 	}
 	eng := engine.NewEngineWithStorage(ctx, store)
-	flow, err := parser.ParseFlow(filepath.Join(flowsDir, flowName+".flow.yaml"))
+	flow, err := dsl.Parse(filepath.Join(flowsDir, flowName+".flow.yaml"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return uuid.Nil, nil
@@ -257,7 +256,7 @@ func ResumeRun(ctx context.Context, token string, event map[string]any) (map[str
 
 // ParseFlowFromString parses a flow YAML string into a Flow struct.
 func ParseFlowFromString(yamlStr string) (*model.Flow, error) {
-	return parser.ParseFlowFromString(yamlStr)
+	return dsl.ParseFromString(yamlStr)
 }
 
 // RunSpec validates and runs a flow spec inline, returning run ID and outputs.

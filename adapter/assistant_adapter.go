@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"github.com/awantoch/beemflow/docs"
+	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/logger"
-	"github.com/awantoch/beemflow/parser"
 )
 
 // SystemPrompt is loaded from the embedded documentation package.
@@ -39,7 +39,7 @@ func Execute(ctx context.Context, userMessages []string) (draftYAML string, vali
 	}
 
 	// 3. Validate returned YAML against your JSON-Schema (flow lint)
-	flow, parseErr := parser.ParseFlowFromString(draftYAML)
+	flow, parseErr := dsl.ParseFromString(draftYAML)
 	if parseErr != nil {
 		validationErrors = append(validationErrors, fmt.Sprintf("YAML parse error: %v", parseErr))
 		return draftYAML, validationErrors, nil
@@ -55,7 +55,7 @@ func Execute(ctx context.Context, userMessages []string) (draftYAML string, vali
 		logger.Warn("Schema file not found: %s", schema)
 	}
 
-	if valErr := parser.ValidateFlow(flow, schema); valErr != nil {
+	if valErr := dsl.Validate(flow); valErr != nil {
 		validationErrors = append(validationErrors, fmt.Sprintf("Schema validation error: %v", valErr))
 	}
 

@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/mcp"
-	"github.com/awantoch/beemflow/parser"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/spf13/cobra"
 )
@@ -29,7 +29,7 @@ func newRunCmd() *cobra.Command {
 			}
 			// Real execution when a file is provided
 			file := args[0]
-			flow, err := parser.ParseFlow(file)
+			flow, err := dsl.Parse(file)
 			if err != nil {
 				logger.Error("YAML parse error: %v", err)
 				exit(1)

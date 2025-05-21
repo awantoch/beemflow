@@ -1,4 +1,4 @@
-package templater
+package dsl
 
 import (
 	"fmt"
@@ -46,6 +46,16 @@ func (t *Templater) RegisterFilters(filters map[string]pongo2.FilterFunction) {
 	}
 }
 
+// Render applies templating to the given string with the provided data.
+func Render(tmpl string, data map[string]any) (string, error) {
+	return NewTemplater().Render(tmpl, data)
+}
+
+// RegisterFilters applies custom filters for rendering.
+func RegisterFilters(filters map[string]pongo2.FilterFunction) {
+	NewTemplater().RegisterFilters(filters)
+}
+
 // registerBuiltinFilters registers built-in filters for BeemFlow.
 var builtinFiltersRegistered = false
 
@@ -88,7 +98,7 @@ func registerBuiltinFilters() {
 	builtinFiltersRegistered = true
 }
 
-// flattenContext now just converts the map for pongo2 compatibility, since vars are already flattened in the engine.
+// flattenContext converts the map for pongo2 compatibility.
 func flattenContext(data map[string]any) pongo2.Context {
 	converted := make(pongo2.Context)
 	for k, v := range data {
@@ -97,7 +107,7 @@ func flattenContext(data map[string]any) pongo2.Context {
 	return converted
 }
 
-// contextKeys returns the keys of a pongo2.Context as a []string
+// contextKeys returns the keys of a pongo2.Context as a []string.
 func contextKeys(ctx pongo2.Context) []string {
 	var out []string
 	for k := range ctx {

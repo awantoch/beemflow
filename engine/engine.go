@@ -11,12 +11,12 @@ import (
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/logger"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
-	"github.com/awantoch/beemflow/templater"
 	"github.com/google/uuid"
 )
 
@@ -28,7 +28,7 @@ var runIDKey = runIDKeyType{}
 // Engine is the core runtime for executing BeemFlow flows. It manages adapters, templating, event bus, and in-memory state.
 type Engine struct {
 	Adapters  *adapter.Registry
-	Templater *templater.Templater
+	Templater *dsl.Templater
 	EventBus  event.EventBus
 	BlobStore blob.BlobStore
 	Storage   storage.Storage
@@ -110,7 +110,7 @@ func NewDefaultAdapterRegistry(ctx context.Context) *adapter.Registry {
 func NewEngineWithBlobStore(ctx context.Context, blobStore blob.BlobStore) *Engine {
 	return &Engine{
 		Adapters:         NewDefaultAdapterRegistry(ctx),
-		Templater:        templater.NewTemplater(),
+		Templater:        dsl.NewTemplater(),
 		EventBus:         event.NewInProcEventBus(),
 		BlobStore:        blobStore,
 		waiting:          make(map[string]*PausedRun),
@@ -122,7 +122,7 @@ func NewEngineWithBlobStore(ctx context.Context, blobStore blob.BlobStore) *Engi
 // NewEngine creates a new Engine with all dependencies injected.
 func NewEngine(
 	adapters *adapter.Registry,
-	templater *templater.Templater,
+	templater *dsl.Templater,
 	eventBus event.EventBus,
 	blobStore blob.BlobStore,
 	storage storage.Storage,
@@ -156,7 +156,7 @@ func NewEngineWithConfig(ctx context.Context, store storage.Storage, cfg *config
 	}
 	return NewEngine(
 		NewDefaultAdapterRegistry(ctx),
-		templater.NewTemplater(),
+		dsl.NewTemplater(),
 		bus,
 		nil, // or set to a default if needed
 		store,
@@ -774,7 +774,7 @@ func NewDefaultEngine(ctx context.Context) *Engine {
 	}
 	return NewEngine(
 		NewDefaultAdapterRegistry(ctx),
-		templater.NewTemplater(),
+		dsl.NewTemplater(),
 		event.NewInProcEventBus(),
 		bs,
 		storage.NewMemoryStorage(),
