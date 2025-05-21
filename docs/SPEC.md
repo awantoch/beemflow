@@ -97,7 +97,7 @@ steps:
   - id: print
     use: core.echo
     with:
-      text: "{{.outputs.summarize.choices[0].message.content}}"
+      text: "{{ (index .outputs.summarize.choices 0).message.content }}"
 ```
 
 ### 3. Slack Notification
@@ -151,6 +151,130 @@ steps:
     use: core.echo
     with:
       text: "Approval received!"
+```
+
+---
+
+# Triggers, Events, and Await Event
+
+## Triggers (`on:`)
+A BeemFlow flow is started by one or more triggers, defined in the `on:` field at the top level of the YAML. The value can be a string, a list, or an object.
+
+**Supported trigger types:**
+
+- `cli.manual` — Manual trigger from the CLI or API.
+- `event: <topic>` — Subscribes to a named event topic (e.g. `event: tweet.request`).
+- `schedule.cron` — Runs on a cron schedule (requires a `cron:` field).
+- `schedule.interval` — Runs on a fixed interval (requires an `every:` field).
+
+**Examples:**
+
+```yaml
+on: cli.manual
+```
+
+```yaml
+on:
+  - event: tweet.request
+  - schedule.cron
+cron: "0 9 * * 1-5"  # every weekday at 09:00
+```
+
+```yaml
+on:
+  - schedule.interval
+every: "1h"
+```
+
+---
+
+## Events
+- When a flow is triggered by an event (e.g. `event: tweet.request`), the event payload is available as `.event` in templates.
+- For scheduled triggers, `.event` is usually empty unless injected by the runner.
+- You can use event fields in step inputs, conditions, and templates.
+
+**Example:**
+
+```yaml
+steps:
+  - id: greet
+    use: core.echo
+    with:
+      text: "Hello, {{.event.user}}!"
+```
+
+---
+
+## Await Event (`await_event`)
+The `await_event` step pauses the flow until a matching event is received. This enables human-in-the-loop, webhook, or external event-driven automations.
+
+**Schema:**
+
+```yaml
+- id: await_approval
+  await_event:
+    source: <string>         # e.g. "airtable", "bus", "slack"
+    match:                   # map of fields to match on the incoming event
+      <field>: <value>       # e.g. record_id: "{{some_id}}", field: Status, equals: Approved
+    timeout: <duration>      # (optional) e.g. "24h", "10m"
+```
+
+**How it works:**
+- The flow pauses at this step.
+- BeemFlow subscribes to events from the given `source`.
+- When an event arrives that matches all fields in `match`, the flow resumes.
+- If `timeout` is set and no event arrives in time, the flow can error or take a catch path.
+
+**Example:**
+
+```yaml
+- id: await_approval
+  await_event:
+    source: airtable
+    match:
+      record_id: "{{.outputs.create_airtable_record.id}}"
+      field: Status
+      equals: Approved
+    timeout: 24h
+```
+
+**Notes:**
+- The `match` map is used to filter incoming events. All fields must match for the step to resume.
+- The event that resumes the flow is available as `.event` in subsequent steps.
+- The `source` determines which event bus or integration to listen on (e.g. `airtable`, `bus`, `slack`).
+
+---
+
+## Advanced: Custom Event Topics
+You can define custom event topics and trigger flows on them:
+
+```yaml
+on:
+  - event: my.custom.topic
+```
+
+And publish events to those topics from other flows or external systems.
+
+---
+
+## Example: Full Await Event Flow
+
+```yaml
+name: approval_flow
+on: event: approval.requested
+
+steps:
+  - id: await_approval
+    await_event:
+      source: bus
+      match:
+        request_id: "{{.event.request_id}}"
+        status: approved
+      timeout: 48h
+  - id: notify
+    use: core.echo
+    with:
+      text: "Approval received for request {{.event.request_id}}!"
 ```
 
 ---
@@ -459,7 +583,7 @@ steps:
   - id: print
     use: core.echo
     with:
-      text: "{{.outputs.summarize.choices[0].message.content}}"
+      text: "{{ (index .outputs.summarize.choices 0).message.content }}"
 ```
 
 ---

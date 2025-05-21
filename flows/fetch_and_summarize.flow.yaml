@@ -19,4 +19,4 @@ steps:
   - id: print
     use: core.echo
     with:
-      text: "Summary: {{(index .summarize.choices 0).message.content}}"
+      text: "Summary: {{ (index .summarize.choices 0).message.content }}"

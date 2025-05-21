@@ -22,6 +22,12 @@ Write a single YAML file → run it locally, over REST, or through the Model Con
     - [🛒 E-Commerce Autopilot – Dynamic Pricing \& Ads](#-e-commerce-autopilot--dynamic-pricing--ads)
     - [📬 Invoice Chaser – Recover Aged AR in \< 24 h](#-invoice-chaser--recover-aged-ar-in--24-h)
   - [Anatomy of a Flow](#anatomy-of-a-flow)
+  - [Flows as Functions: Universal, Protocolized, and Language-Native](#flows-as-functions-universal-protocolized-and-language-native)
+    - [YAML](#yaml)
+    - [Go](#go)
+    - [TypeScript](#typescript)
+    - [Rust](#rust)
+    - [Python](#python)
   - [Registry \& Tool Resolution](#registry--tool-resolution)
   - [CLI • HTTP • MCP — One Brain](#cli--http--mcp--one-brain)
   - [Extending BeemFlow](#extending-beemflow)
@@ -108,7 +114,7 @@ steps:
   - id: print
     use: core.echo
     with:
-      text: "Summary: {{(index .summarize.choices 0).message.content}}"
+      text: "Summary: {{ (index .summarize.choices 0).message.content }}"
 ```
 ```bash
 flow run summarize.flow.yaml
@@ -169,8 +175,8 @@ steps:
     use: core.echo
     with:
       text: |
-        🌕 Moon: {{(index .outputs.fanout.moon_fact.choices 0).message.content}}
-        🌊 Ocean: {{(index .outputs.fanout.ocean_fact.choices 0).message.content}}
+        🌕 Moon: {{ (index .outputs.fanout.moon_fact.choices 0).message.content }}
+        🌊 Ocean: {{ (index .outputs.fanout.ocean_fact.choices 0).message.content }}
 ```
 ```bash
 flow run parallel.flow.yaml
@@ -555,6 +561,248 @@ steps:
 🔄 **Error handling:** `catch:` block processes failures.
 
 Full grammar ➜ [SPEC.md](./docs/SPEC.md).
+
+---
+
+## Flows as Functions: Universal, Protocolized, and Language-Native
+
+> **Define flows in YAML, or as native data structures in your favorite language. Compose, generate, and run flows as code—unlocking the power of "flows as functions" and true protocolization.**
+
+The BeemFlow protocol is not just for YAML. You can define flows as native structs or objects in any language, and run them using the same universal grammar. This means you can build, compose, and share automations as code—making BeemFlow the most flexible, programmable workflow engine for both devs and non-devs.
+
+Below, see the same flow defined in YAML, Go, TypeScript, Rust, and Python:
+
+---
+
+### YAML
+```yaml
+name: fetch_and_summarize
+on: cli.manual
+vars:
+  URL: "https://en.wikipedia.org/wiki/Artificial_intelligence"
+steps:
+  - id: fetch
+    use: http.fetch
+    with:
+      url: "{{.vars.URL}}"
+  - id: summarize
+    use: openai.chat_completion
+    with:
+      model: "gpt-4o"
+      messages:
+        - role: system
+          content: "Summarize the following text in 3 bullet points."
+        - role: user
+          content: "{{.outputs.fetch.body}}"
+  - id: print
+    use: core.echo
+    with:
+      text: "{{.outputs.summarize.choices.0.message.content}}"
+```
+
+### Go
+```go
+import "github.com/awantoch/beemflow/model"
+
+flow := &model.Flow{
+    Name: "fetch_and_summarize",
+    On:   "cli.manual",
+    Vars: map[string]interface{}{
+        "URL": "https://en.wikipedia.org/wiki/Artificial_intelligence",
+    },
+    Steps: []model.Step{
+        {
+            ID:  "fetch",
+            Use: "http.fetch",
+            With: map[string]interface{}{
+                "url": "{{.vars.URL}}",
+            },
+        },
+        {
+            ID:  "summarize",
+            Use: "openai.chat_completion",
+            With: map[string]interface{}{
+                "model": "gpt-4o",
+                "messages": []interface{}{
+                    map[string]interface{}{ "role": "system", "content": "Summarize the following text in 3 bullet points." },
+                    map[string]interface{}{ "role": "user", "content": "{{.outputs.fetch.body}}" },
+                },
+            },
+        },
+        {
+            ID:  "print",
+            Use: "core.echo",
+            With: map[string]interface{}{
+                "text": "{{.outputs.summarize.choices.0.message.content}}",
+            },
+        },
+    },
+}
+```
+
+### TypeScript
+```typescript
+// types.ts
+export interface Flow {
+  name: string;
+  on: string | object | Array<string | object>;
+  vars?: Record<string, any>;
+  steps: Step[];
+  catch?: Step[];
+}
+
+export interface Step {
+  id: string;
+  use?: string;
+  with?: Record<string, any>;
+  depends_on?: string[];
+  parallel?: boolean;
+  if?: string;
+  foreach?: string;
+  as?: string;
+  do?: Step[];
+  steps?: Step[];
+  retry?: RetrySpec;
+  await_event?: AwaitEventSpec;
+  wait?: WaitSpec;
+}
+
+// flow.ts
+import { Flow } from './types';
+
+const flow: Flow = {
+  name: "fetch_and_summarize",
+  on: "cli.manual",
+  vars: {
+    URL: "https://en.wikipedia.org/wiki/Artificial_intelligence",
+  },
+  steps: [
+    {
+      id: "fetch",
+      use: "http.fetch",
+      with: { url: "{{.vars.URL}}" },
+    },
+    {
+      id: "summarize",
+      use: "openai.chat_completion",
+      with: {
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: "Summarize the following text in 3 bullet points." },
+          { role: "user", content: "{{.outputs.fetch.body}}" },
+        ],
+      },
+    },
+    {
+      id: "print",
+      use: "core.echo",
+      with: { text: "{{.outputs.summarize.choices.0.message.content}}" },
+    },
+  ],
+};
+```
+
+### Rust
+```rust
+use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+
+#[derive(Serialize, Deserialize)]
+struct Flow {
+    name: String,
+    on: serde_yaml::Value,
+    vars: Option<HashMap<String, serde_yaml::Value>>,
+    steps: Vec<Step>,
+    catch: Option<Vec<Step>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Step {
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    use_: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    with: Option<HashMap<String, serde_yaml::Value>>,
+    // ... other fields ...
+}
+
+fn main() {
+    let flow = Flow {
+        name: "fetch_and_summarize".to_string(),
+        on: serde_yaml::Value::String("cli.manual".to_string()),
+        vars: Some([
+            ("URL".to_string(), serde_yaml::Value::String("https://en.wikipedia.org/wiki/Artificial_intelligence".to_string())),
+        ].iter().cloned().collect()),
+        steps: vec![
+            Step {
+                id: "fetch".to_string(),
+                use_: Some("http.fetch".to_string()),
+                with: Some([
+                    ("url".to_string(), serde_yaml::Value::String("{{.vars.URL}}".to_string())),
+                ].iter().cloned().collect()),
+                // ...
+            },
+            // ... summarize and print steps ...
+        ],
+        catch: None,
+    };
+    // Serialize to YAML, JSON, or use in your Rust runtime!
+}
+```
+
+### Python
+```python
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Union
+
+@dataclass
+class Step:
+    id: str
+    use: Optional[str] = None
+    with_: Optional[Dict[str, Any]] = field(default_factory=dict)
+    # ... other fields ...
+
+@dataclass
+class Flow:
+    name: str
+    on: Union[str, dict, List[Union[str, dict]]]
+    vars: Optional[Dict[str, Any]] = field(default_factory=dict)
+    steps: List[Step] = field(default_factory=list)
+    catch: Optional[List[Step]] = field(default_factory=list)
+
+flow = Flow(
+    name="fetch_and_summarize",
+    on="cli.manual",
+    vars={"URL": "https://en.wikipedia.org/wiki/Artificial_intelligence"},
+    steps=[
+        Step(
+            id="fetch",
+            use="http.fetch",
+            with_={"url": "{{.vars.URL}}"},
+        ),
+        Step(
+            id="summarize",
+            use="openai.chat_completion",
+            with_={
+                "model": "gpt-4o",
+                "messages": [
+                    {"role": "system", "content": "Summarize the following text in 3 bullet points."},
+                    {"role": "user", "content": "{{.outputs.fetch.body}}"},
+                ],
+            },
+        ),
+        Step(
+            id="print",
+            use="core.echo",
+            with_={"text": "{{.outputs.summarize.choices.0.message.content}}"},
+        ),
+    ]
+)
+```
+
+---
+
+> **BeemFlow: One protocol, infinite languages. Program the world.**
 
 ---
 
