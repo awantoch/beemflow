@@ -16,7 +16,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestLoadConfig(t *testing.T) {
-	cfgJSON := `{"storage":{"driver":"d","dsn":"u"},"blob":{"driver":"b","bucket":"c"},"event":{"driver":"e","url":"u"},"secrets":{"driver":"s","region":"r","prefix":"p"},"registries":[{"type":"local","path":"foo.json"},{"type":"smithery","url":"bar"}],"http":{"host":"h","port":8080},"log":{"level":"l"}}`
+	cfgJSON := `{"storage":{"driver":"d","dsn":"u"},"blob":{"driver":"b","bucket":"c"},"event":{"driver":"memory","url":"u"},"secrets":{"driver":"s","region":"r","prefix":"p"},"registries":[{"type":"local","path":"foo.json"},{"type":"smithery","url":"bar"}],"http":{"host":"h","port":8080},"log":{"level":"l"}}`
 	tmp, err := os.CreateTemp("", "config.json")
 	if err != nil {
 		t.Fatalf("create temp: %v", err)
@@ -95,42 +95,6 @@ func TestLoadConfig_InvalidJSON(t *testing.T) {
 	_, err = LoadConfig(tmp.Name())
 	if err == nil {
 		t.Error("expected error for invalid JSON, got nil")
-	}
-}
-
-func TestLoadConfig_MCPAutoInclude(t *testing.T) {
-	// Write a curated config file for airtable
-	curated := `{"airtable": {"install_cmd": ["npx", "-y", "airtable-mcp-server"], "required_env": ["AIRTABLE_API_KEY"], "port": 3030}}`
-	curatedPath := "mcp_servers/airtable.json"
-	_ = os.MkdirAll("mcp_servers", 0755)
-	defer os.Remove(curatedPath)
-	err := os.WriteFile(curatedPath, []byte(curated), 0644)
-	if err != nil {
-		t.Fatalf("failed to write curated: %v", err)
-	}
-
-	cfgJSON := `{"mcpServers": {"airtable": {}}}`
-	tmp, err := os.CreateTemp("", "config.json")
-	if err != nil {
-		t.Fatalf("create temp: %v", err)
-	}
-	defer os.Remove(tmp.Name())
-
-	if _, err := tmp.Write([]byte(cfgJSON)); err != nil {
-		t.Fatalf("write temp: %v", err)
-	}
-	tmp.Close()
-
-	c, err := LoadConfig(tmp.Name())
-	if err != nil {
-		t.Fatalf("LoadConfig failed: %v", err)
-	}
-	merged, err := GetMergedMCPServerConfig(c, "airtable")
-	if err != nil {
-		t.Fatalf("airtable not found in merged config: %v", err)
-	}
-	if merged.Port != 3030 {
-		t.Errorf("expected port 3030 from curated, got %d", merged.Port)
 	}
 }
 

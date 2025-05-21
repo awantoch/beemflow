@@ -1,6 +1,5 @@
 package dsl
 
-import _ "embed"
+import "github.com/awantoch/beemflow/docs"
 
-//go:embed beemflow.schema.json
-var schemaJSON []byte
+var schemaJSON = []byte(docs.BeemflowSchema)

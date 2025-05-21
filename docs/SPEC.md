@@ -452,7 +452,7 @@ Each tool is described by a JSON-Schema manifest:
 
 ## 7. Configuration (`flow.config.json`)
 
-The runtime is configured via a JSON file. All fields in `config.Config` are supported. See [flow_config.schema.json](flow_config.schema.json) for the full schema.
+The runtime is configured via a JSON file. All fields in `config.Config` are supported. See [flow.config.schema.json](flow.config.schema.json) for the full schema.
 
 ### Example: Memory (default)
 ```jsonc

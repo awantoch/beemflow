@@ -9,7 +9,7 @@
         "driver": { "type": "string" },
         "dsn": { "type": "string" }
       },
-      "required": ["driver"]
+      "required": ["driver", "dsn"]
     },
     "event": {
       "type": "object",
@@ -17,7 +17,6 @@
         "driver": { "type": "string", "enum": ["memory", "nats"] },
         "url": { "type": "string" }
       },
-      "required": ["driver"],
       "additionalProperties": false
     },
     "blob": {
@@ -37,7 +36,15 @@
     },
     "registries": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" },
+          "url": { "type": "string" },
+          "path": { "type": "string" }
+        },
+        "required": ["type"]
+      }
     },
     "http": {
       "type": "object",

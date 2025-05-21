@@ -11,7 +11,9 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/awantoch/beemflow/docs"
 	"github.com/awantoch/beemflow/utils"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
 // Sample config for BeemFlow registry system:
@@ -149,19 +151,38 @@ type SecretsProvider interface {
 // DefaultConfigPath is the default path for the main config file.
 const DefaultConfigPath = "flow.config.json"
 
+// ValidateConfig validates the config JSON against the embedded schema.
+func ValidateConfig(raw []byte) error {
+	schema, err := jsonschema.CompileString("flow.config.schema.json", docs.FlowConfigSchema)
+	if err != nil {
+		return err
+	}
+	var doc interface{}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return err
+	}
+	return schema.Validate(doc)
+}
+
 // LoadConfig loads the JSON config from the given path.
 func LoadConfig(path string) (*Config, error) {
-	utils.Debug("Entered LoadConfig with path: %s", path)
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	var cfg Config
-	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+	var raw []byte
+	raw, err = io.ReadAll(f)
+	if err != nil {
 		return nil, err
 	}
-	utils.Debug("Raw loaded config after decode: %+v", cfg)
+	if err := ValidateConfig(raw); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
 }
 
