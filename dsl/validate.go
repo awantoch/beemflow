@@ -3,6 +3,7 @@ package dsl
 import (
 	"encoding/json"
 
+	"github.com/awantoch/beemflow/docs"
 	"github.com/awantoch/beemflow/model"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 )
@@ -15,7 +16,7 @@ func Validate(flow *model.Flow) error {
 		return err
 	}
 	// Compile the embedded schema
-	schema, err := jsonschema.CompileString("beemflow.schema.json", string(schemaJSON))
+	schema, err := jsonschema.CompileString("beemflow.schema.json", docs.BeemflowSchema)
 	if err != nil {
 		return err
 	}
