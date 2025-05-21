@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	"github.com/awantoch/beemflow/utils"
 )
 
 func TestExecute_Validation(t *testing.T) {
@@ -60,5 +62,5 @@ func TestExecute_Validation(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	os.Setenv("BEEMFLOW_SCHEMA", "../beemflow.schema.json")
-	os.Exit(m.Run())
+	utils.WithCleanDirs(m, ".beemflow", "registry.json")
 }

@@ -72,8 +72,8 @@ func ParseRegistryConfig(reg RegistryConfig) (any, error) {
 
 // TracingConfig controls OpenTelemetry tracing exporter and options.
 type TracingConfig struct {
-	Exporter    string `json:"exporter,omitempty"`    // "stdout", "jaeger", "otlp"
-	Endpoint    string `json:"endpoint,omitempty"`    // Jaeger/OTLP endpoint URL
+	Exporter    string `json:"exporter,omitempty"`    // "stdout", "otlp"
+	Endpoint    string `json:"endpoint,omitempty"`    // OTLP endpoint URL
 	ServiceName string `json:"serviceName,omitempty"` // Service name for traces
 	// Add more fields as needed (sampling, etc.)
 }

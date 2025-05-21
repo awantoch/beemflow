@@ -12,7 +12,7 @@ import (
 
 // TestMain ensures the mcp_servers folder is cleaned up before and after tests
 func TestMain(m *testing.M) {
-	utils.WithCleanDirs(m, DefaultConfigDir, "mcp_servers")
+	utils.WithCleanDirs(m, ".beemflow", DefaultConfigDir, "mcp_servers")
 }
 
 func TestLoadConfig(t *testing.T) {

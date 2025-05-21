@@ -28,7 +28,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	otelhttp "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -68,8 +67,8 @@ func init() {
 // Tracing config example:
 //
 //	"tracing": {
-//	  "exporter": "jaeger", // or "stdout", "otlp"
-//	  "endpoint": "http://localhost:14268/api/traces", // Jaeger/OTLP endpoint
+//	  "exporter": "otlp", // or "stdout"
+//	  "endpoint": "http://localhost:4318", // OTLP endpoint
 //	  "serviceName": "beemflow"
 //	}
 func initTracerFromConfig(cfg *config.Config) {
@@ -91,18 +90,6 @@ func initTracerFromConfig(cfg *config.Config) {
 			trace.WithBatcher(exp),
 			trace.WithResource(res),
 		)
-	case cfg.Tracing.Exporter == "jaeger":
-		endpoint := cfg.Tracing.Endpoint
-		if endpoint == "" {
-			endpoint = "http://localhost:14268/api/traces"
-		}
-		exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(endpoint)))
-		if err == nil {
-			tp = trace.NewTracerProvider(
-				trace.WithBatcher(exp),
-				trace.WithResource(res),
-			)
-		}
 	case cfg.Tracing.Exporter == "otlp":
 		endpoint := cfg.Tracing.Endpoint
 		if endpoint == "" {

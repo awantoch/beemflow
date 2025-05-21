@@ -138,37 +138,6 @@ func NewEngine(
 	}
 }
 
-// Deprecated: use NewEngine with explicit dependencies instead.
-func NewEngineWithConfig(ctx context.Context, store storage.Storage, cfg *config.Config) *Engine {
-	if store == nil {
-		store = storage.NewMemoryStorage()
-	}
-	var bus event.EventBus
-	if cfg != nil && cfg.Event != nil {
-		var err error
-		bus, err = event.NewEventBusFromConfig(cfg.Event)
-		if err != nil {
-			// fallback to in-memory if config is invalid
-			bus = event.NewInProcEventBus()
-		}
-	} else {
-		bus = event.NewInProcEventBus()
-	}
-	return NewEngine(
-		NewDefaultAdapterRegistry(ctx),
-		dsl.NewTemplater(),
-		bus,
-		nil, // or set to a default if needed
-		store,
-	)
-}
-
-// NewEngineWithStorage creates a new Engine with a custom Storage backend.
-func NewEngineWithStorage(ctx context.Context, store storage.Storage) *Engine {
-	cfg, _ := config.LoadConfig(config.DefaultConfigPath)
-	return NewEngineWithConfig(ctx, store, cfg)
-}
-
 // Execute now supports pausing and resuming at await_event.
 func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string]any) (map[string]any, error) {
 	if flow == nil {

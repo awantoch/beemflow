@@ -16,7 +16,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	utils.WithCleanDir(m, config.DefaultConfigDir)
+	utils.WithCleanDirs(m, ".beemflow", config.DefaultConfigDir)
 }
 
 func TestHandlers_MethodsAndCodes(t *testing.T) {

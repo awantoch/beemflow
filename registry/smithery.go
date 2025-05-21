@@ -45,7 +45,7 @@ func (s *SmitheryRegistry) ListServers(ctx context.Context, opts ListOptions) ([
 		s.APIKey = os.Getenv("SMITHERY_API_KEY")
 	}
 	if s.APIKey == "" {
-		return nil, fmt.Errorf("Smithery API key not set")
+		return nil, fmt.Errorf("smithery API key not set")
 	}
 	req.Header.Set("Authorization", "Bearer "+s.APIKey)
 
@@ -55,7 +55,7 @@ func (s *SmitheryRegistry) ListServers(ctx context.Context, opts ListOptions) ([
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Smithery registry returned status %s", resp.Status)
+		return nil, fmt.Errorf("smithery registry returned status %s", resp.Status)
 	}
 	var data struct {
 		Servers []struct {
@@ -93,7 +93,7 @@ func (s *SmitheryRegistry) GetServer(ctx context.Context, name string) (*Registr
 		s.APIKey = os.Getenv("SMITHERY_API_KEY")
 	}
 	if s.APIKey == "" {
-		return nil, fmt.Errorf("Smithery API key not set")
+		return nil, fmt.Errorf("smithery API key not set")
 	}
 	req.Header.Set("Authorization", "Bearer "+s.APIKey)
 	resp, err := http.DefaultClient.Do(req)
@@ -102,7 +102,7 @@ func (s *SmitheryRegistry) GetServer(ctx context.Context, name string) (*Registr
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Smithery registry returned status %s", resp.Status)
+		return nil, fmt.Errorf("smithery registry returned status %s", resp.Status)
 	}
 	var data struct {
 		QualifiedName string `json:"qualifiedName"`
@@ -148,7 +148,7 @@ func (s *SmitheryRegistry) GetServerSpec(ctx context.Context, name string) (conf
 		s.APIKey = os.Getenv("SMITHERY_API_KEY")
 	}
 	if s.APIKey == "" {
-		return config.MCPServerConfig{}, fmt.Errorf("Smithery API key not set")
+		return config.MCPServerConfig{}, fmt.Errorf("smithery API key not set")
 	}
 	req.Header.Set("Authorization", "Bearer "+s.APIKey)
 	resp, err := http.DefaultClient.Do(req)
@@ -157,7 +157,7 @@ func (s *SmitheryRegistry) GetServerSpec(ctx context.Context, name string) (conf
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return config.MCPServerConfig{}, fmt.Errorf("Smithery registry returned status %s", resp.Status)
+		return config.MCPServerConfig{}, fmt.Errorf("smithery registry returned status %s", resp.Status)
 	}
 	var data struct {
 		Connections []struct {

@@ -123,7 +123,7 @@ func GraphFlow(ctx context.Context, name string) (string, error) {
 }
 
 // StartRun starts a new run for the given flow and event.
-func StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.UUID, error) {
+func StartRun(ctx context.Context, flowName string, eventData map[string]any) (uuid.UUID, error) {
 	// Load config
 	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
@@ -134,7 +134,13 @@ func StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.
 	if err != nil {
 		return uuid.Nil, err
 	}
-	eng := engine.NewEngineWithStorage(ctx, store)
+	eng := engine.NewEngine(
+		engine.NewDefaultAdapterRegistry(ctx),
+		dsl.NewTemplater(),
+		event.NewInProcEventBus(),
+		nil, // blob store not needed here
+		store,
+	)
 	flow, err := dsl.Parse(filepath.Join(flowsDir, flowName+".flow.yaml"))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -142,7 +148,7 @@ func StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.
 		}
 		return uuid.Nil, err
 	}
-	_, execErr := eng.Execute(ctx, flow, event)
+	_, execErr := eng.Execute(ctx, flow, eventData)
 	// Find the latest run for this flow
 	runs, err := store.ListRuns(ctx)
 	if err != nil || len(runs) == 0 {
@@ -201,7 +207,13 @@ func GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.NewEngineWithStorage(ctx, store)
+	eng := engine.NewEngine(
+		engine.NewDefaultAdapterRegistry(ctx),
+		dsl.NewTemplater(),
+		event.NewInProcEventBus(),
+		nil, // blob store not needed here
+		store,
+	)
 	run, err := eng.GetRunByID(ctx, runID)
 	if err != nil {
 		return nil, nil
@@ -220,7 +232,13 @@ func ListRuns(ctx context.Context) ([]*model.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.NewEngineWithStorage(ctx, store)
+	eng := engine.NewEngine(
+		engine.NewDefaultAdapterRegistry(ctx),
+		dsl.NewTemplater(),
+		event.NewInProcEventBus(),
+		nil, // blob store not needed here
+		store,
+	)
 	return eng.ListRuns(ctx)
 }
 
@@ -238,7 +256,7 @@ func PublishEvent(ctx context.Context, topic string, payload map[string]any) err
 }
 
 // ResumeRun resumes a paused run with the given token and event, returning outputs if available.
-func ResumeRun(ctx context.Context, token string, event map[string]any) (map[string]any, error) {
+func ResumeRun(ctx context.Context, token string, eventData map[string]any) (map[string]any, error) {
 	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
@@ -248,8 +266,14 @@ func ResumeRun(ctx context.Context, token string, event map[string]any) (map[str
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.NewEngineWithStorage(ctx, store)
-	eng.Resume(ctx, token, event)
+	eng := engine.NewEngine(
+		engine.NewDefaultAdapterRegistry(ctx),
+		dsl.NewTemplater(),
+		event.NewInProcEventBus(),
+		nil, // blob store not needed here
+		store,
+	)
+	eng.Resume(ctx, token, eventData)
 	outputs := eng.GetCompletedOutputs(token)
 	return outputs, nil
 }
@@ -260,7 +284,7 @@ func ParseFlowFromString(yamlStr string) (*model.Flow, error) {
 }
 
 // RunSpec validates and runs a flow spec inline, returning run ID and outputs.
-func RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.UUID, map[string]any, error) {
+func RunSpec(ctx context.Context, flow *model.Flow, eventData map[string]any) (uuid.UUID, map[string]any, error) {
 	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
 		return uuid.Nil, nil, err
@@ -270,8 +294,14 @@ func RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
-	eng := engine.NewEngineWithStorage(ctx, store)
-	outputs, err := eng.Execute(ctx, flow, event)
+	eng := engine.NewEngine(
+		engine.NewDefaultAdapterRegistry(ctx),
+		dsl.NewTemplater(),
+		event.NewInProcEventBus(),
+		nil, // blob store not needed here
+		store,
+	)
+	outputs, err := eng.Execute(ctx, flow, eventData)
 	if err != nil {
 		return uuid.Nil, outputs, err
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/jaeger"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -42,7 +42,7 @@ func init() {
 }
 
 // Init sets up tracing exporter based on config.
-// Supported exporters: "stdout", "jaeger".
+// Supported exporters: "stdout", "otlp".
 func Init(cfg *config.Config) {
 	// Setup tracer provider
 	serviceName := "beemflow"
@@ -57,12 +57,12 @@ func Init(cfg *config.Config) {
 	)
 	var tp *sdktrace.TracerProvider
 	switch {
-	case cfg.Tracing != nil && cfg.Tracing.Exporter == "jaeger":
+	case cfg.Tracing != nil && cfg.Tracing.Exporter == "otlp":
 		endpoint := cfg.Tracing.Endpoint
 		if endpoint == "" {
-			endpoint = "http://localhost:14268/api/traces"
+			endpoint = "http://localhost:4318"
 		}
-		exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(endpoint)))
+		exp, err := otlptracehttp.New(context.Background(), otlptracehttp.WithEndpoint(endpoint), otlptracehttp.WithInsecure())
 		if err == nil {
 			tp = sdktrace.NewTracerProvider(
 				sdktrace.WithBatcher(exp),

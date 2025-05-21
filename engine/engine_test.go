@@ -11,13 +11,15 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/dsl"
+	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/utils"
 )
 
 func TestMain(m *testing.M) {
-	utils.WithCleanDir(m, config.DefaultConfigDir)
+	utils.WithCleanDirs(m, ".beemflow", config.DefaultConfigDir, config.DefaultFlowsDir)
 }
 
 func TestNewEngine(t *testing.T) {
@@ -306,7 +308,13 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	defer func() {
 		_ = s.Close()
 	}()
-	engine := NewEngineWithStorage(context.Background(), s)
+	engine := NewEngine(
+		NewDefaultAdapterRegistry(context.Background()),
+		dsl.NewTemplater(),
+		event.NewInProcEventBus(),
+		nil, // blob store not needed here
+		s,
+	)
 
 	// Start the flow, should pause at await_event
 	startEvent := map[string]any{"input": "hello world", "token": "abc123"}
@@ -342,7 +350,13 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	defer func() {
 		_ = s2.Close()
 	}()
-	engine2 := NewEngineWithStorage(context.Background(), s2)
+	engine2 := NewEngine(
+		NewDefaultAdapterRegistry(context.Background()),
+		dsl.NewTemplater(),
+		event.NewInProcEventBus(),
+		nil, // blob store not needed here
+		s2,
+	)
 
 	// Simulate resume event
 	resumeEvent := map[string]any{"resume_value": "it worked!", "token": "abc123"}
@@ -407,7 +421,13 @@ func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
 	defer func() {
 		_ = s.Close()
 	}()
-	engine := NewEngineWithStorage(context.Background(), s)
+	engine := NewEngine(
+		NewDefaultAdapterRegistry(context.Background()),
+		dsl.NewTemplater(),
+		event.NewInProcEventBus(),
+		nil, // blob store not needed here
+		s,
+	)
 
 	startEvent := map[string]any{"input": "hello world", "token": "abc123"}
 	outputs, err := engine.Execute(context.Background(), &flow, startEvent)

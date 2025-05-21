@@ -196,5 +196,5 @@ func TestMain_ToolStub(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	utils.WithCleanDir(m, config.DefaultConfigDir)
+	utils.WithCleanDirs(m, ".beemflow", config.DefaultConfigDir)
 }

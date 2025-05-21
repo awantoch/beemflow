@@ -21,7 +21,9 @@ var (
 	loggerModeMutex sync.RWMutex
 )
 
-const requestIDKey = "request_id"
+type requestIDKeyType struct{}
+
+var requestIDKey = requestIDKeyType{}
 
 func init() {
 	userLogger = log.New(userWriter, "", 0)
