@@ -7,7 +7,7 @@ import (
 
 	"github.com/awantoch/beemflow/docs"
 	"github.com/awantoch/beemflow/dsl"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 )
 
 // SystemPrompt is loaded from the embedded documentation package.
@@ -35,7 +35,7 @@ func Execute(ctx context.Context, userMessages []string) (draftYAML string, vali
 	// 2. Call LLM (via tool registry)
 	draftYAML, err = CallLLM(ctx, SystemPrompt, userMessages)
 	if err != nil {
-		return "", nil, logger.Errorf("LLM error: %w", err)
+		return "", nil, utils.Errorf("LLM error: %w", err)
 	}
 
 	// 3. Validate returned YAML against your JSON-Schema (flow lint)
@@ -47,12 +47,12 @@ func Execute(ctx context.Context, userMessages []string) (draftYAML string, vali
 
 	schema := os.Getenv("BEEMFLOW_SCHEMA")
 	if schema != "" {
-		logger.Info("Using schema from BEEMFLOW_SCHEMA: %s", schema)
+		utils.Info("Using schema from BEEMFLOW_SCHEMA: %s", schema)
 	} else {
 		schema = schemaPath
 	}
 	if _, err := os.Stat(schema); os.IsNotExist(err) {
-		logger.Warn("Schema file not found: %s", schema)
+		utils.Warn("Schema file not found: %s", schema)
 	}
 
 	if valErr := dsl.Validate(flow); valErr != nil {

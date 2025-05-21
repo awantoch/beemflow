@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/model"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 )
 
@@ -43,7 +43,7 @@ func NewSqliteStorage(dsn string) (*SqliteStorage, error) {
 	if dsn != ":memory:" && dsn != "" {
 		dir := filepath.Dir(dsn)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return nil, logger.Errorf("failed to create db directory %q: %w", dir, err)
+			return nil, utils.Errorf("failed to create db directory %q: %w", dir, err)
 		}
 	}
 	db, err := sql.Open("sqlite3", dsn)

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/awantoch/beemflow/api"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +15,7 @@ func newToolCmd() *cobra.Command {
 		Use:   "tool",
 		Short: "Tooling commands",
 		Run: func(cmd *cobra.Command, args []string) {
-			logger.User("flow tool (stub)")
+			utils.User("flow tool (stub)")
 		},
 	}
 	cmd.AddCommand(
@@ -24,7 +24,7 @@ func newToolCmd() *cobra.Command {
 			Short: "Scaffold a tool manifest",
 			// Not implemented yet. Planned for a future release.
 			Run: func(cmd *cobra.Command, args []string) {
-				logger.User("flow tool (stub)")
+				utils.User("flow tool (stub)")
 			},
 		},
 		&cobra.Command{
@@ -37,13 +37,13 @@ func newToolCmd() *cobra.Command {
 					return err
 				}
 				// Header
-				logger.User("NAME\tKIND\tDESCRIPTION\tENDPOINT")
+				utils.User("NAME\tKIND\tDESCRIPTION\tENDPOINT")
 				for _, t := range tools {
 					name, _ := t["name"].(string)
 					kind, _ := t["kind"].(string)
 					desc, _ := t["description"].(string)
 					endpoint, _ := t["endpoint"].(string)
-					logger.User("%s\t%s\t%s\t%s", name, kind, desc, endpoint)
+					utils.User("%s\t%s\t%s\t%s", name, kind, desc, endpoint)
 				}
 				return nil
 			},

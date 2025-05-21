@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/awantoch/beemflow/registry"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 )
 
 // CoreAdapter is the built-in echo adapter for debugging (consolidated from core_echo_adapter.go).
@@ -20,7 +20,7 @@ func (a *CoreAdapter) ID() string {
 func (a *CoreAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
 	if text, ok := inputs["text"].(string); ok {
 		if os.Getenv("BEEMFLOW_DEBUG") != "" {
-			logger.Info("%s", text)
+			utils.Info("%s", text)
 		}
 	}
 	return inputs, nil

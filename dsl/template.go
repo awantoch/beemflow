@@ -6,7 +6,7 @@ import (
 
 	"encoding/base64"
 
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	pongo2 "github.com/flosch/pongo2/v6"
 )
 
@@ -27,7 +27,7 @@ func (t *Templater) Render(tmpl string, data map[string]any) (string, error) {
 	}
 	ctx := flattenContext(data)
 	// DEBUG: Log template string and context keys before rendering
-	logger.Debug("Templater.Render: tmpl = %q, context keys = %v", tmpl, contextKeys(ctx))
+	utils.Debug("Templater.Render: tmpl = %q, context keys = %v", tmpl, contextKeys(ctx))
 	pl, err := pongo2.FromString(tmpl)
 	if err != nil {
 		return "", err

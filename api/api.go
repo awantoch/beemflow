@@ -15,7 +15,7 @@ import (
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 )
 
@@ -26,25 +26,25 @@ func getStoreFromConfig(cfg *config.Config) (storage.Storage, error) {
 		case "sqlite":
 			store, err := storage.NewSqliteStorage(cfg.Storage.DSN)
 			if err != nil {
-				logger.WarnCtx(context.Background(), "Failed to create sqlite storage: %v, using in-memory fallback", "error", err)
+				utils.WarnCtx(context.Background(), "Failed to create sqlite storage: %v, using in-memory fallback", "error", err)
 				return storage.NewMemoryStorage(), nil
 			}
 			return store, nil
 		case "postgres":
 			store, err := storage.NewPostgresStorage(cfg.Storage.DSN)
 			if err != nil {
-				logger.WarnCtx(context.Background(), "Failed to create postgres storage: %v, using in-memory fallback", "error", err)
+				utils.WarnCtx(context.Background(), "Failed to create postgres storage: %v, using in-memory fallback", "error", err)
 				return storage.NewMemoryStorage(), nil
 			}
 			return store, nil
 		default:
-			return nil, logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
+			return nil, utils.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
 		}
 	}
 	// Default to SQLite
 	store, err := storage.NewSqliteStorage(config.DefaultSQLiteDSN)
 	if err != nil {
-		logger.WarnCtx(context.Background(), "Failed to create default sqlite storage: %v, using in-memory fallback", "error", err)
+		utils.WarnCtx(context.Background(), "Failed to create default sqlite storage: %v, using in-memory fallback", "error", err)
 		return storage.NewMemoryStorage(), nil
 	}
 	return store, nil

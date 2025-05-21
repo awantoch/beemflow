@@ -14,7 +14,7 @@ import (
 	"github.com/awantoch/beemflow/config"
 	mcpmanager "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
 )
@@ -136,7 +136,7 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 				if err != nil {
 					return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
 				}
-				cmd.Stderr = &logger.LoggerWriter{Fn: logger.Error, Prefix: "[MCP " + host + " ERR] "}
+				cmd.Stderr = &utils.LoggerWriter{Fn: utils.Error, Prefix: "[MCP " + host + " ERR] "}
 				if err := cmd.Start(); err != nil {
 					return nil, fmt.Errorf("failed to start MCP server %s: %w", host, err)
 				}

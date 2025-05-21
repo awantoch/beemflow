@@ -16,7 +16,7 @@ import (
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 )
 
@@ -218,7 +218,7 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 		StartedAt: time.Now(),
 	}
 	if err := e.Storage.SaveRun(ctx, run); err != nil {
-		logger.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
+		utils.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
 	}
 
 	outputs, err := e.executeStepsWithPersistence(ctx, flow, stepCtx, 0, runID)
@@ -242,7 +242,7 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 		EndedAt:   ptrTime(time.Now()),
 	}
 	if err := e.Storage.SaveRun(ctx, run); err != nil {
-		logger.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
+		utils.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
 	}
 
 	if err != nil && len(flow.Catch) > 0 {
@@ -287,7 +287,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 			match := step.AwaitEvent.Match
 			tokenRaw, _ := match["token"].(string)
 			if tokenRaw == "" {
-				return nil, logger.Errorf("await_event step missing token in match")
+				return nil, utils.Errorf("await_event step missing token in match")
 			}
 			// Render the token template
 			data := make(map[string]any)
@@ -306,10 +306,10 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				}
 			}
 			// DEBUG: Log full context before rendering
-			logger.Debug("About to render template for step %s: data = %#v", step.ID, data)
+			utils.Debug("About to render template for step %s: data = %#v", step.ID, data)
 			renderedToken, err := e.Templater.Render(tokenRaw, data)
 			if err != nil {
-				return nil, logger.Errorf("failed to render token template: %w", err)
+				return nil, utils.Errorf("failed to render token template: %w", err)
 			}
 			token := renderedToken
 			// Pause: store state and subscribe for resume
@@ -346,7 +346,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				}
 				e.Resume(ctx, token, resumeEvent)
 			})
-			return nil, logger.Errorf("step %s is waiting for event (await_event pause)", step.ID)
+			return nil, utils.Errorf("step %s is waiting for event (await_event pause)", step.ID)
 		}
 		err := e.executeStep(ctx, step, stepCtx, step.ID)
 		// Persist the step after execution
@@ -371,7 +371,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				srun.Error = err.Error()
 			}
 			if err := e.Storage.SaveStep(ctx, srun); err != nil {
-				logger.Error("SaveStep failed: %v", err)
+				utils.Error("SaveStep failed: %v", err)
 			}
 		}
 		if err != nil {
@@ -383,7 +383,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 
 // Resume resumes a paused run with the given token and event.
 func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[string]any) {
-	logger.Debug("Resume called for token %s with event: %+v", token, resumeEvent)
+	utils.Debug("Resume called for token %s with event: %+v", token, resumeEvent)
 	e.mu.Lock()
 	paused, ok := e.waiting[token]
 	if !ok {
@@ -399,7 +399,7 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 	for k, v := range resumeEvent {
 		paused.StepCtx.Event[k] = v
 	}
-	logger.Debug("Outputs map before resume for token %s: %+v", token, paused.StepCtx.Outputs)
+	utils.Debug("Outputs map before resume for token %s: %+v", token, paused.StepCtx.Outputs)
 	// Continue execution from next step
 	ctx = context.WithValue(ctx, runIDKey, paused.RunID)
 	outputs, err := e.executeStepsWithPersistence(ctx, paused.Flow, paused.StepCtx, paused.StepIdx+1, paused.RunID)
@@ -416,7 +416,7 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 		// If both are nil/empty, ensure we store at least an empty map
 		allOutputs = map[string]any{}
 	}
-	logger.Debug("Outputs map after resume for token %s: %+v", token, allOutputs)
+	utils.Debug("Outputs map after resume for token %s: %+v", token, allOutputs)
 	e.mu.Lock()
 	e.completedOutputs[token] = allOutputs
 	e.mu.Unlock()
@@ -436,18 +436,18 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 			EndedAt:   ptrTime(time.Now()),
 		}
 		if err := e.Storage.SaveRun(ctx, run); err != nil {
-			logger.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
+			utils.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
 		}
 	}
 }
 
 // GetCompletedOutputs returns and clears the outputs for a completed resumed run.
 func (e *Engine) GetCompletedOutputs(token string) map[string]any {
-	logger.Debug("GetCompletedOutputs called for token %s", token)
+	utils.Debug("GetCompletedOutputs called for token %s", token)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	outputs := e.completedOutputs[token]
-	logger.Debug("GetCompletedOutputs for token %s returns: %+v", token, outputs)
+	utils.Debug("GetCompletedOutputs for token %s returns: %+v", token, outputs)
 	delete(e.completedOutputs, token)
 	return outputs
 }
@@ -504,11 +504,11 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			key := strings.TrimSpace(s[2 : len(s)-2])
 			val, ok := stepCtx.Event[key]
 			if !ok {
-				return logger.Errorf("foreach variable not found: %s", key)
+				return utils.Errorf("foreach variable not found: %s", key)
 			}
 			list, ok := val.([]any)
 			if !ok {
-				return logger.Errorf("foreach variable %s is not a list", key)
+				return utils.Errorf("foreach variable %s is not a list", key)
 			}
 			if len(list) == 0 {
 				stepCtx.Outputs[stepID] = make(map[string]any)
@@ -548,7 +548,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			stepCtx.Outputs[stepID] = make(map[string]any)
 			return nil
 		}
-		return logger.Errorf("unsupported foreach expression: %s", step.Foreach)
+		return utils.Errorf("unsupported foreach expression: %s", step.Foreach)
 	}
 	if step.Use == "" {
 		return nil
@@ -559,11 +559,11 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			adapterInst, ok = e.Adapters.Get("mcp")
 			if !ok {
 				stepCtx.Outputs[stepID] = make(map[string]any)
-				return logger.Errorf("MCPAdapter not registered")
+				return utils.Errorf("MCPAdapter not registered")
 			}
 		} else {
 			stepCtx.Outputs[stepID] = make(map[string]any)
-			return logger.Errorf("adapter not found: %s", step.Use)
+			return utils.Errorf("adapter not found: %s", step.Use)
 		}
 	}
 	inputs := make(map[string]any)
@@ -590,12 +590,12 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 				varsKeys = append(varsKeys, key)
 			}
 		}
-		logger.Debug("Template context keys: %v, vars keys: %v, vars: %+v", keys(data), varsKeys, data["vars"])
+		utils.Debug("Template context keys: %v, vars keys: %v, vars: %+v", keys(data), varsKeys, data["vars"])
 		// DEBUG: Log full context before rendering
-		logger.Debug("About to render template for step %s: data = %#v", stepID, data)
+		utils.Debug("About to render template for step %s: data = %#v", stepID, data)
 		rendered, err := e.renderValue(v, data)
 		if err != nil {
-			return logger.Errorf("template error in step %s: %w", stepID, err)
+			return utils.Errorf("template error in step %s: %w", stepID, err)
 		}
 		inputs[k] = rendered
 	}
@@ -620,18 +620,18 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	}
 	// Optionally, add a generic debug log for all tool payloads if desired:
 	payload, _ := json.Marshal(inputs)
-	logger.Debug("tool %s payload: %s", step.Use, payload)
+	utils.Debug("tool %s payload: %s", step.Use, payload)
 	if strings.HasPrefix(step.Use, "mcp://") {
 		inputs["__use"] = step.Use
 	}
 	outputs, err := adapterInst.Execute(ctx, inputs)
 	if err != nil {
 		stepCtx.Outputs[stepID] = outputs
-		return logger.Errorf("step %s failed: %w", stepID, err)
+		return utils.Errorf("step %s failed: %w", stepID, err)
 	}
-	logger.Debug("Writing outputs for step %s: %+v", stepID, outputs)
+	utils.Debug("Writing outputs for step %s: %+v", stepID, outputs)
 	stepCtx.Outputs[stepID] = outputs
-	logger.Debug("Outputs map after step %s: %+v", stepID, stepCtx.Outputs)
+	utils.Debug("Outputs map after step %s: %+v", stepID, stepCtx.Outputs)
 	return nil
 }
 
@@ -769,7 +769,7 @@ func NewDefaultEngine(ctx context.Context) *Engine {
 	// Default BlobStore
 	bs, err := blob.NewDefaultBlobStore(ctx, nil)
 	if err != nil {
-		logger.WarnCtx(ctx, "Failed to create default blob store: %v, using nil fallback", "error", err)
+		utils.WarnCtx(ctx, "Failed to create default blob store: %v, using nil fallback", "error", err)
 		bs = nil
 	}
 	return NewEngine(

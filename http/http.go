@@ -22,7 +22,7 @@ import (
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -134,7 +134,7 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 		if reqID == "" {
 			reqID = uuid.New().String()
 		}
-		ctx := logger.WithRequestID(r.Context(), reqID)
+		ctx := utils.WithRequestID(r.Context(), reqID)
 		r = r.WithContext(ctx)
 		w.Header().Set("X-Request-Id", reqID)
 		next.ServeHTTP(w, r)
@@ -214,16 +214,16 @@ func StartServer(cfg *config.Config) error {
 		case "postgres":
 			store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
 		default:
-			return logger.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
+			return utils.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
 		}
 		if err != nil {
-			return logger.Errorf("failed to initialize storage: %w", err)
+			return utils.Errorf("failed to initialize storage: %w", err)
 		}
 	} else {
 		// Default to SQLite
 		sqliteStore, err := storage.NewSqliteStorage(config.DefaultSQLiteDSN)
 		if err != nil {
-			logger.WarnCtx(context.Background(), "Failed to create default sqlite storage: %v, using in-memory fallback", "error", err)
+			utils.WarnCtx(context.Background(), "Failed to create default sqlite storage: %v, using in-memory fallback", "error", err)
 			store = storage.NewMemoryStorage()
 		} else {
 			store = sqliteStore
@@ -236,7 +236,7 @@ func StartServer(cfg *config.Config) error {
 	if cfg.Event != nil {
 		bus, err = event.NewEventBusFromConfig(cfg.Event)
 		if err != nil {
-			logger.WarnCtx(context.Background(), "Failed to create event bus: %v, using in-memory fallback", "error", err)
+			utils.WarnCtx(context.Background(), "Failed to create event bus: %v, using in-memory fallback", "error", err)
 			bus = event.NewInProcEventBus()
 		}
 	} else {
@@ -253,7 +253,7 @@ func StartServer(cfg *config.Config) error {
 	}
 	blobStore, err = blob.NewDefaultBlobStore(context.Background(), blobConfig)
 	if err != nil {
-		logger.WarnCtx(context.Background(), "Failed to create blob store: %v, using nil fallback", "error", err)
+		utils.WarnCtx(context.Background(), "Failed to create blob store: %v, using nil fallback", "error", err)
 		blobStore = nil
 	}
 
@@ -316,7 +316,7 @@ func StartServer(cfg *config.Config) error {
 	// Channel to listen for errors from ListenAndServe
 	errChan := make(chan error, 1)
 	go func() {
-		logger.Info("HTTP server starting on %s", addr)
+		utils.Info("HTTP server starting on %s", addr)
 		errChan <- server.ListenAndServe()
 	}()
 
@@ -326,18 +326,18 @@ func StartServer(cfg *config.Config) error {
 
 	select {
 	case sig := <-sigChan:
-		logger.Info("Received signal %v, shutting down HTTP server...", sig)
+		utils.Info("Received signal %v, shutting down HTTP server...", sig)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
-			logger.Error("HTTP server shutdown error: %v", err)
+			utils.Error("HTTP server shutdown error: %v", err)
 			return err
 		}
-		logger.Info("HTTP server shutdown complete.")
+		utils.Info("HTTP server shutdown complete.")
 		return nil
 	case err := <-errChan:
 		if err != nil && err != http.ErrServerClosed {
-			logger.Error("HTTP server error: %v", err)
+			utils.Error("HTTP server error: %v", err)
 			return err
 		}
 		return nil
@@ -354,13 +354,13 @@ func runsListHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte(err.Error())); err != nil {
-			logger.ErrorCtx(r.Context(), "w.Write failed", "error", err)
+			utils.ErrorCtx(r.Context(), "w.Write failed", "error", err)
 		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(runs); err != nil {
-		logger.ErrorCtx(r.Context(), "json.Encode failed", "error", err)
+		utils.ErrorCtx(r.Context(), "json.Encode failed", "error", err)
 	}
 }
 
@@ -377,7 +377,7 @@ func runsHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("invalid request body")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -385,7 +385,7 @@ func runsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte(err.Error())); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -395,7 +395,7 @@ func runsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		logger.Error("json.Encode failed: %v", err)
+		utils.Error("json.Encode failed: %v", err)
 	}
 }
 
@@ -407,7 +407,7 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			if _, err := w.Write([]byte("invalid run ID")); err != nil {
-				logger.Error("w.Write failed: %v", err)
+				utils.Error("w.Write failed: %v", err)
 			}
 			return
 		}
@@ -415,13 +415,13 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil || run == nil {
 			w.WriteHeader(http.StatusNotFound)
 			if _, err := w.Write([]byte("run not found")); err != nil {
-				logger.Error("w.Write failed: %v", err)
+				utils.Error("w.Write failed: %v", err)
 			}
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(run); err != nil {
-			logger.Error("json.Encode failed: %v", err)
+			utils.Error("json.Encode failed: %v", err)
 		}
 		return
 	} else if r.Method == http.MethodDelete {
@@ -430,14 +430,14 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			if _, err := w.Write([]byte("invalid run ID")); err != nil {
-				logger.Error("w.Write failed: %v", err)
+				utils.Error("w.Write failed: %v", err)
 			}
 			return
 		}
 		if eng == nil || eng.Storage == nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			if _, err := w.Write([]byte("engine/storage not initialized")); err != nil {
-				logger.Error("w.Write failed: %v", err)
+				utils.Error("w.Write failed: %v", err)
 			}
 			return
 		}
@@ -445,13 +445,13 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			if _, err := w.Write([]byte(err.Error())); err != nil {
-				logger.Error("w.Write failed: %v", err)
+				utils.Error("w.Write failed: %v", err)
 			}
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("deleted")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -520,7 +520,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	if flowName == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("missing flow name")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -528,13 +528,13 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte(err.Error())); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
 	w.Header().Set("Content-Type", "text/vnd.mermaid")
 	if _, err := w.Write([]byte(graph)); err != nil {
-		logger.Error("w.Write failed: %v", err)
+		utils.Error("w.Write failed: %v", err)
 	}
 }
 
@@ -549,7 +549,7 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("invalid request body")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -557,13 +557,13 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte(err.Error())); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte("ok")); err != nil {
-		logger.Error("w.Write failed: %v", err)
+		utils.Error("w.Write failed: %v", err)
 	}
 }
 
@@ -577,7 +577,7 @@ func UpdateRunEvent(id uuid.UUID, newEvent map[string]any) error {
 	defer runsMu.Unlock()
 	run, ok := runs[id]
 	if !ok {
-		return logger.Errorf("run not found")
+		return utils.Errorf("run not found")
 	}
 	run.Event = newEvent
 	return nil
@@ -594,7 +594,7 @@ func assistantChatHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("invalid request body")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -609,7 +609,7 @@ func assistantChatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		logger.Error("json.Encode failed: %v", err)
+		utils.Error("json.Encode failed: %v", err)
 	}
 }
 
@@ -625,7 +625,7 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("invalid request body")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -634,7 +634,7 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("invalid flow spec: " + err.Error())); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -643,7 +643,7 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte("run error: " + err.Error())); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -653,7 +653,7 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		logger.Error("json.Encode failed: %v", err)
+		utils.Error("json.Encode failed: %v", err)
 	}
 }
 
@@ -667,13 +667,13 @@ func toolsIndexHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte("failed to list tools")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(tools); err != nil {
-		logger.Error("json.Encode failed: %v", err)
+		utils.Error("json.Encode failed: %v", err)
 	}
 }
 
@@ -689,13 +689,13 @@ func toolsManifestHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte("failed to get tool manifest")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(manifest); err != nil {
-		logger.Error("json.Encode failed: %v", err)
+		utils.Error("json.Encode failed: %v", err)
 	}
 }
 
@@ -707,7 +707,7 @@ func flowsHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			if _, err := w.Write([]byte(err.Error())); err != nil {
-				logger.Error("w.Write failed: %v", err)
+				utils.Error("w.Write failed: %v", err)
 			}
 			return
 		}
@@ -721,14 +721,14 @@ func flowsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(specs); err != nil {
-			logger.Error("json.Encode failed: %v", err)
+			utils.Error("json.Encode failed: %v", err)
 		}
 		return
 	} else if r.Method == http.MethodPost {
 		// Upload or update a flow (stub)
 		w.WriteHeader(http.StatusNotImplemented)
 		if _, err := w.Write([]byte("upload/update flow not implemented yet")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -741,7 +741,7 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("missing flow name")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -750,13 +750,13 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			if _, err := w.Write([]byte(err.Error())); err != nil {
-				logger.Error("w.Write failed: %v", err)
+				utils.Error("w.Write failed: %v", err)
 			}
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(flow); err != nil {
-			logger.Error("json.Encode failed: %v", err)
+			utils.Error("json.Encode failed: %v", err)
 		}
 		return
 	} else if r.Method == http.MethodDelete {
@@ -767,19 +767,19 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request) {
 			if os.IsNotExist(err) {
 				w.WriteHeader(http.StatusNotFound)
 				if _, err := w.Write([]byte("flow not found")); err != nil {
-					logger.Error("w.Write failed: %v", err)
+					utils.Error("w.Write failed: %v", err)
 				}
 				return
 			}
 			w.WriteHeader(http.StatusInternalServerError)
 			if _, err := w.Write([]byte(err.Error())); err != nil {
-				logger.Error("w.Write failed: %v", err)
+				utils.Error("w.Write failed: %v", err)
 			}
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("deleted")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -799,7 +799,7 @@ func eventsHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("invalid request body")); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
@@ -807,12 +807,12 @@ func eventsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte(err.Error())); err != nil {
-			logger.Error("w.Write failed: %v", err)
+			utils.Error("w.Write failed: %v", err)
 		}
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte("ok")); err != nil {
-		logger.Error("w.Write failed: %v", err)
+		utils.Error("w.Write failed: %v", err)
 	}
 }

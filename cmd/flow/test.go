@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -12,7 +12,7 @@ func newTestCmd() *cobra.Command {
 		Use:   "test",
 		Short: "Test a flow file",
 		Run: func(cmd *cobra.Command, args []string) {
-			logger.User("flow test (not yet implemented)")
+			utils.User("flow test (not yet implemented)")
 		},
 	}
 }

@@ -10,15 +10,14 @@ import (
 	"testing"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/utils/logger"
-	"github.com/awantoch/beemflow/utils/testutil"
+	"github.com/awantoch/beemflow/utils"
 )
 
 func captureOutput(f func()) string {
 	orig := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	logger.SetUserOutput(w)
+	utils.SetUserOutput(w)
 	f()
 	w.Close()
 	var buf bytes.Buffer
@@ -26,7 +25,7 @@ func captureOutput(f func()) string {
 		log.Printf("buf.ReadFrom failed: %v", err)
 	}
 	os.Stdout = orig
-	logger.SetUserOutput(orig)
+	utils.SetUserOutput(orig)
 	return buf.String()
 }
 
@@ -35,7 +34,7 @@ func captureStderrExit(f func()) (string, int) {
 	origExit := exit
 	r, w, _ := os.Pipe()
 	os.Stderr = w
-	logger.SetInternalOutput(w)
+	utils.SetInternalOutput(w)
 	var buf bytes.Buffer
 	var out string
 	exitCode := 0
@@ -57,7 +56,7 @@ func captureStderrExit(f func()) (string, int) {
 		log.Printf("io.Copy failed: %v", err)
 	}
 	os.Stderr = origStderr
-	logger.SetInternalOutput(origStderr)
+	utils.SetInternalOutput(origStderr)
 	exit = origExit
 	out = buf.String()
 	return out, exitCode
@@ -197,5 +196,5 @@ func TestMain_ToolStub(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	testutil.WithCleanDir(m, config.DefaultConfigDir)
+	utils.WithCleanDir(m, config.DefaultConfigDir)
 }

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -24,7 +24,7 @@ type S3BlobStore struct {
 // NewS3BlobStore creates a new S3BlobStore using the provided context.
 func NewS3BlobStore(ctx context.Context, bucket, region string) (*S3BlobStore, error) {
 	if bucket == "" || region == "" {
-		return nil, logger.Errorf("bucket and region must be non-empty")
+		return nil, utils.Errorf("bucket and region must be non-empty")
 	}
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {

@@ -13,11 +13,11 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/storage"
-	"github.com/awantoch/beemflow/utils/testutil"
+	"github.com/awantoch/beemflow/utils"
 )
 
 func TestMain(m *testing.M) {
-	testutil.WithCleanDir(m, config.DefaultConfigDir)
+	utils.WithCleanDir(m, config.DefaultConfigDir)
 }
 
 func TestNewEngine(t *testing.T) {

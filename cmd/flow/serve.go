@@ -5,7 +5,7 @@ import (
 
 	"github.com/awantoch/beemflow/config"
 	beemhttp "github.com/awantoch/beemflow/http"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +20,7 @@ func newServeCmd() *cobra.Command {
 				if os.IsNotExist(err) {
 					cfg = &config.Config{}
 				} else {
-					logger.Error("Failed to load config: %v", err)
+					utils.Error("Failed to load config: %v", err)
 					exit(1)
 				}
 			}
@@ -30,17 +30,17 @@ func newServeCmd() *cobra.Command {
 				cfg.Storage.DSN = config.DefaultSQLiteDSN
 			}
 			if err := cfg.Validate(); err != nil {
-				logger.Error("Config validation failed: %v", err)
+				utils.Error("Config validation failed: %v", err)
 				exit(1)
 			}
-			logger.Info("Starting BeemFlow HTTP server...")
+			utils.Info("Starting BeemFlow HTTP server...")
 			// If stdout is not a terminal (e.g., piped in tests), skip starting the server to avoid blocking
 			if fi, statErr := os.Stdout.Stat(); statErr == nil && fi.Mode()&os.ModeCharDevice == 0 {
-				logger.User("flow serve (stub)")
+				utils.User("flow serve (stub)")
 				return
 			}
 			if err := beemhttp.StartServer(cfg); err != nil {
-				logger.Error("Failed to start server: %v", err)
+				utils.Error("Failed to start server: %v", err)
 				exit(1)
 			}
 		},

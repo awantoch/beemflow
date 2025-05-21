@@ -11,12 +11,12 @@ import (
 
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/model"
-	"github.com/awantoch/beemflow/utils/testutil"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 )
 
 func TestMain(m *testing.M) {
-	testutil.WithCleanDir(m, config.DefaultConfigDir)
+	utils.WithCleanDir(m, config.DefaultConfigDir)
 }
 
 func TestHandlers_MethodsAndCodes(t *testing.T) {

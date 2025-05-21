@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 
 	"github.com/awantoch/beemflow/api"
 	mcpserver "github.com/awantoch/beemflow/mcp"
@@ -278,7 +278,7 @@ steps:
 		return
 	}
 	b, _ := json.Marshal(resp.Content[0])
-	logger.Debug("getRun resp.Content[0] marshaled: %q", string(b))
+	utils.Debug("getRun resp.Content[0] marshaled: %q", string(b))
 	if contentStr == "null" {
 		// Allow run to be nil if completed
 		return
@@ -320,10 +320,10 @@ steps:
 	defer func() { _ = os.Chdir(origDir) }()
 	// Debug: print working dir and files
 	wd, _ := os.Getwd()
-	logger.Debug("working dir: %s", wd)
+	utils.Debug("working dir: %s", wd)
 	files, _ := os.ReadDir("flows")
 	for _, f := range files {
-		logger.Debug(config.DefaultFlowsDir+"/ contains: %s", f.Name())
+		utils.Debug(config.DefaultFlowsDir+"/ contains: %s", f.Name())
 	}
 
 	// Pick a random available port
@@ -540,10 +540,10 @@ steps:
 
 	// (3) malformed tool call (missing params)
 	resp, err = client.CallTool(ctx, "getFlow", struct{}{})
-	logger.Debug("malformed tool call resp: %+v, err: %v", resp, err)
+	utils.Debug("malformed tool call resp: %+v, err: %v", resp, err)
 	if resp != nil && len(resp.Content) > 0 {
 		b, _ := json.Marshal(resp.Content[0])
-		logger.Debug("malformed tool call resp.Content[0] JSON: %s", string(b))
+		utils.Debug("malformed tool call resp.Content[0] JSON: %s", string(b))
 		var m map[string]interface{}
 		if err := json.Unmarshal(b, &m); err == nil {
 			if txt, ok := m["text"].(string); ok {

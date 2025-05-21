@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
@@ -25,22 +25,22 @@ type ToolRegistration struct {
 func Serve(configPath string, debug bool, stdio bool, addr string, tools []ToolRegistration) error {
 	// If using stdio transport and debug is disabled, silence user-facing logs on stdout; keep internal logs on stderr
 	if stdio && !debug {
-		logger.SetUserOutput(io.Discard)
+		utils.SetUserOutput(io.Discard)
 	}
 
 	// Load runtime config
 	_, err := config.LoadConfig(configPath)
 	if err != nil && !strings.Contains(err.Error(), "no such file") {
-		return logger.Errorf("failed to load config %s: %w", configPath, err)
+		return utils.Errorf("failed to load config %s: %w", configPath, err)
 	}
 	// Create MCP server transport
 	var server *mcp.Server
 	if stdio {
-		logger.Info("Starting MCP server on stdio...")
+		utils.Info("Starting MCP server on stdio...")
 		transport := mcpstdio.NewStdioServerTransport()
 		server = mcp.NewServer(transport)
 	} else {
-		logger.Info("Starting MCP server on HTTP at %s...", addr)
+		utils.Info("Starting MCP server on HTTP at %s...", addr)
 		transport := mcphttp.NewHTTPTransport("/mcp").WithAddr(addr)
 		server = mcp.NewServer(transport)
 	}
@@ -55,7 +55,7 @@ func Serve(configPath string, debug bool, stdio bool, addr string, tools []ToolR
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 		sig := <-sigCh
-		logger.Info("Received signal %v, shutting down MCP stdio server", sig)
+		utils.Info("Received signal %v, shutting down MCP stdio server", sig)
 	}
 	return nil
 }

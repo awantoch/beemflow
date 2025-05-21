@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 )
 
 // Sample config for BeemFlow registry system:
@@ -151,7 +151,7 @@ const DefaultConfigPath = "flow.config.json"
 
 // LoadConfig loads the JSON config from the given path.
 func LoadConfig(path string) (*Config, error) {
-	logger.Debug("Entered LoadConfig with path: %s", path)
+	utils.Debug("Entered LoadConfig with path: %s", path)
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -161,7 +161,7 @@ func LoadConfig(path string) (*Config, error) {
 	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
 		return nil, err
 	}
-	logger.Debug("Raw loaded config after decode: %+v", cfg)
+	utils.Debug("Raw loaded config after decode: %+v", cfg)
 	return &cfg, nil
 }
 
@@ -268,7 +268,7 @@ func GetMergedMCPServerConfig(cfg *Config, host string) (MCPServerConfig, error)
 	}
 	// 4. Validate presence
 	if !found && !overrideExists {
-		return MCPServerConfig{}, logger.Errorf("MCP server '%s' not found in registry or config", host)
+		return MCPServerConfig{}, utils.Errorf("MCP server '%s' not found in registry or config", host)
 	}
 	// 5. Merge: start from base, then overlay override fields
 	merged := base

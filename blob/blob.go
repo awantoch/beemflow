@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 )
 
 // BlobStore is the interface for pluggable blob storage backends.
@@ -34,9 +34,9 @@ func NewDefaultBlobStore(ctx context.Context, cfg *BlobConfig) (BlobStore, error
 	}
 	if cfg.Driver == "s3" {
 		if cfg.Bucket == "" || cfg.Region == "" {
-			return nil, logger.Errorf("s3 driver requires bucket and region")
+			return nil, utils.Errorf("s3 driver requires bucket and region")
 		}
 		return NewS3BlobStore(ctx, cfg.Bucket, cfg.Region)
 	}
-	return nil, logger.Errorf("unsupported blob driver: %s", cfg.Driver)
+	return nil, utils.Errorf("unsupported blob driver: %s", cfg.Driver)
 }

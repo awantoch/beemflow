@@ -12,7 +12,7 @@ import (
 	"github.com/awantoch/beemflow/docs"
 	mcpserver "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/spf13/cobra"
@@ -48,9 +48,9 @@ func newMCPCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				logger.User("NAME\tDESCRIPTION\tENDPOINT")
+				utils.User("NAME\tDESCRIPTION\tENDPOINT")
 				for _, s := range entries {
-					logger.User("%s\t%s\t%s", s.Name, s.Description, s.Endpoint)
+					utils.User("%s\t%s\t%s", s.Name, s.Description, s.Endpoint)
 				}
 				return nil
 			},
@@ -102,7 +102,7 @@ func newMCPCmd() *cobra.Command {
 				if err := os.WriteFile(*configFile, out, 0644); err != nil {
 					return fmt.Errorf("failed to write %s: %w", *configFile, err)
 				}
-				logger.User("Installed MCP server %s to %s (mcpServers)", qn, *configFile)
+				utils.User("Installed MCP server %s to %s (mcpServers)", qn, *configFile)
 				return nil
 			},
 		},
@@ -116,17 +116,17 @@ func newMCPCmd() *cobra.Command {
 					return err
 				}
 				ctx := context.Background()
-				logger.User("REGISTRY\tNAME\tDESCRIPTION\tKIND\tENDPOINT")
+				utils.User("REGISTRY\tNAME\tDESCRIPTION\tKIND\tENDPOINT")
 				if cfg != nil && cfg.MCPServers != nil {
 					for name, spec := range cfg.MCPServers {
-						logger.User("config\t%s\t%s\t%s\t%s", name, "", spec.Transport, spec.Endpoint)
+						utils.User("config\t%s\t%s\t%s\t%s", name, "", spec.Transport, spec.Endpoint)
 					}
 				}
 				localMgr := registry.NewLocalRegistry("")
 				servers, err := localMgr.ListMCPServers(ctx, registry.ListOptions{PageSize: 100})
 				if err == nil {
 					for _, s := range servers {
-						logger.User("%s\t%s\t%s\t%s\t%s", s.Registry, s.Name, s.Description, s.Kind, s.Endpoint)
+						utils.User("%s\t%s\t%s\t%s\t%s", s.Registry, s.Name, s.Description, s.Kind, s.Endpoint)
 					}
 				}
 				return nil

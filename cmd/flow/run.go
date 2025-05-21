@@ -10,7 +10,7 @@ import (
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/storage"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -24,37 +24,37 @@ func newRunCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			// Stub behavior when no file argument is provided
 			if len(args) == 0 {
-				logger.User("flow run (stub)")
+				utils.User("flow run (stub)")
 				return
 			}
 			// Real execution when a file is provided
 			file := args[0]
 			flow, err := dsl.Parse(file)
 			if err != nil {
-				logger.Error("YAML parse error: %v", err)
+				utils.Error("YAML parse error: %v", err)
 				exit(1)
 			}
 			cfg, err := config.LoadConfig(configPath)
 			if err != nil {
 				if os.IsNotExist(err) {
-					logger.Warn("config file %s not found, using defaults", configPath)
+					utils.Warn("config file %s not found, using defaults", configPath)
 					cfg = &config.Config{}
 				} else {
-					logger.Error("Failed to load config: %v", err)
+					utils.Error("Failed to load config: %v", err)
 					exit(2)
 				}
 			}
 			if debug {
 				cfgJSON, _ := json.MarshalIndent(cfg.MCPServers, "", "  ")
-				logger.Debug("Loaded MCPServers config:\n%s\n", cfgJSON)
+				utils.Debug("Loaded MCPServers config:\n%s\n", cfgJSON)
 			}
 			if err := mcp.EnsureMCPServersWithTimeout(cmd.Context(), flow, cfg, mcpStartupTimeout); err != nil {
-				logger.Error("Failed to ensure MCP servers: %v", err)
+				utils.Error("Failed to ensure MCP servers: %v", err)
 				exit(3)
 			}
 			event, err := loadEvent(eventPath, eventJSON)
 			if err != nil {
-				logger.Error("Failed to load event: %v", err)
+				utils.Error("Failed to load event: %v", err)
 				exit(4)
 			}
 			// Determine storage based on config or default to SQLite
@@ -66,18 +66,18 @@ func newRunCmd() *cobra.Command {
 				case "postgres":
 					store, err = storage.NewPostgresStorage(cfg.Storage.DSN)
 				default:
-					logger.Error("unsupported storage driver: %s", cfg.Storage.Driver)
+					utils.Error("unsupported storage driver: %s", cfg.Storage.Driver)
 					exit(6)
 				}
 				if err != nil {
-					logger.Error("Failed to create storage: %v", err)
+					utils.Error("Failed to create storage: %v", err)
 					exit(7)
 				}
 			} else {
 				// Default to SQLite
 				sqliteStore, err := storage.NewSqliteStorage(config.DefaultSQLiteDSN)
 				if err != nil {
-					logger.Warn("Failed to create default sqlite storage: %v, using in-memory fallback", err)
+					utils.Warn("Failed to create default sqlite storage: %v, using in-memory fallback", err)
 					store = storage.NewMemoryStorage()
 				} else {
 					store = sqliteStore
@@ -88,22 +88,22 @@ func newRunCmd() *cobra.Command {
 			eng.Storage = store
 			outputs, err := eng.Execute(cmd.Context(), flow, event)
 			if err != nil {
-				logger.Error("Flow execution error: %v", err)
+				utils.Error("Flow execution error: %v", err)
 				exit(5)
 			}
 
 			if debug {
 				// Print all outputs as JSON for debugging
 				outJSONBytes, _ := json.MarshalIndent(outputs, "", "  ")
-				logger.User("%s", string(outJSONBytes))
-				logger.Info("Flow executed successfully.")
-				logger.Info("Step outputs:\n%s\n", string(outJSONBytes))
+				utils.User("%s", string(outJSONBytes))
+				utils.Info("Flow executed successfully.")
+				utils.Info("Step outputs:\n%s\n", string(outJSONBytes))
 			} else {
 				// Only print the output of core.echo steps (by convention, steps with id 'print' or use 'core.echo')
 				for _, stepOutput := range outputs {
 					if outMap, ok := stepOutput.(map[string]any); ok {
 						if text, ok := outMap["text"]; ok {
-							logger.Info("%s", text)
+							utils.Info("%s", text)
 						}
 					}
 				}

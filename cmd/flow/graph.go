@@ -5,7 +5,7 @@ import (
 
 	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/graph"
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -20,21 +20,21 @@ func newGraphCmd() *cobra.Command {
 			file := args[0]
 			flow, err := dsl.Parse(file)
 			if err != nil {
-				logger.Error("YAML parse error: %v\n", err)
+				utils.Error("YAML parse error: %v\n", err)
 				os.Exit(1)
 			}
 			diagram, err := graph.ExportMermaid(flow)
 			if err != nil {
-				logger.Error("Graph export error: %v\n", err)
+				utils.Error("Graph export error: %v\n", err)
 				os.Exit(2)
 			}
 			if outPath != "" {
 				if err := os.WriteFile(outPath, []byte(diagram), 0644); err != nil {
-					logger.Error("Failed to write graph to %s: %v\n", outPath, err)
+					utils.Error("Failed to write graph to %s: %v\n", outPath, err)
 					os.Exit(3)
 				}
 			} else {
-				logger.Info("%s", diagram)
+				utils.Info("%s", diagram)
 			}
 		},
 	}

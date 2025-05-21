@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/awantoch/beemflow/utils/logger"
+	"github.com/awantoch/beemflow/utils"
 )
 
 // TestCoreAdapter tests that CoreAdapter prints text and returns inputs.
@@ -19,12 +19,12 @@ func TestCoreAdapter(t *testing.T) {
 	// capture logger output
 	r, w, _ := os.Pipe()
 	orig := os.Stderr
-	logger.SetInternalOutput(w)
+	utils.SetInternalOutput(w)
 
 	in := map[string]any{"text": "echoed"}
 	out, err := a.Execute(context.Background(), in)
 	w.Close()
-	logger.SetInternalOutput(orig)
+	utils.SetInternalOutput(orig)
 
 	buf, _ := io.ReadAll(r)
 	if string(buf) == "" || string(buf) == "\n" {

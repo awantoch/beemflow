@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/awantoch/beemflow/registry"
-	"github.com/awantoch/beemflow/utils/testutil"
+	"github.com/awantoch/beemflow/utils"
 )
 
 // dummyAdapter implements Adapter for testing
@@ -191,7 +191,7 @@ func TestLoadAndRegisterTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MkdirTemp failed: %v", err)
 	}
-	defer testutil.CleanupDir(dir)
+	defer utils.CleanupDir(dir)
 	// Create manifest file
 	m := &registry.ToolManifest{Name: "tool2", Description: "d", Kind: "task", Parameters: map[string]any{}, Endpoint: "http://x"}
 	data, _ := json.Marshal(m)
