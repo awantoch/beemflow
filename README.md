@@ -5,8 +5,6 @@
 BeemFlow is a **workflow protocol, runtime, and global tool registry** for the age of LLM co-workers.
 Write a single YAML file → run it locally, over REST, or through the Model Context Protocol (MCP). The same spec powers the BeemFlow agency, SaaS, and acquisition flywheel—now you can build on it too.
 
-📖 **[Read the Comprehensive Guide](./docs/BEEMFLOW.md)** — The exhaustive, LLM-ingestible reference for BeemFlow, suitable for training, implementation, and integration by AI agents and developers worldwide.
-
 ---
 
 ## Table of Contents
@@ -40,6 +38,10 @@ Write a single YAML file → run it locally, over REST, or through the Model Con
   - [Contributing](#contributing)
     - [Code Quality Standards](#code-quality-standards)
   - [License](#license)
+
+---
+
+📖 **[Read/Feed the Comprehensive Guide](./docs/BEEMFLOW.md)** — The exhaustive, LLM-ingestible reference for BeemFlow, suitable for training, implementation, and integration by AI agents and developers worldwide.
 
 ---
 
