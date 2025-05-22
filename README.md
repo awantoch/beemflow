@@ -50,7 +50,7 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
 
 ---
 
-📖 **[Read/Feed the Comprehensive Guide](./docs/BEEMFLOW.md)** — The exhaustive, LLM-ingestible reference for BeemFlow, suitable for training, implementation, and integration by AI agents and developers worldwide.
+📖 **[Read & Feed the Comprehensive Guide](./docs/BEEMFLOW.md)** — The exhaustive, LLM-ingestible reference for BeemFlow, suitable for training, implementation, and integration by AI agents and developers worldwide.
 
 ---
 
