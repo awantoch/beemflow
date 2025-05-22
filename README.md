@@ -597,6 +597,39 @@ steps:
           content: "{{ outputs.search.body }}"
 ```
 
+**JSON-Native (Wire Protocol):**
+```json
+{
+  "name": "research_flow",
+  "steps": [
+    {
+      "id": "search",
+      "use": "http.fetch",
+      "with": {
+        "url": "{{ topic }}"
+      }
+    },
+    {
+      "id": "summarize",
+      "use": "openai.chat_completion",
+      "with": {
+        "model": "gpt-4o",
+        "messages": [
+          {
+            "role": "system",
+            "content": "Summarize in 3 bullets."
+          },
+          {
+            "role": "user", 
+            "content": "{{ outputs.search.body }}"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
 **Protocol-Native (Language-Centric):**
 
 #### Go: Native Structs
