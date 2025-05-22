@@ -12,22 +12,22 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/model"
+	pproto "github.com/awantoch/beemflow/spec/proto"
 )
 
 func TestFindMCPServersInFlow(t *testing.T) {
-	flow := &model.Flow{
-		Steps: []model.Step{
-			{Use: "mcp://foo/tool1"},
-			{Use: "other://bar"},
-			{
-				Do: []model.Step{
-					{Use: "mcp://bar/tool2"},
+	flow := &pproto.Flow{
+		Steps: []*pproto.Step{
+			{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "mcp://foo/tool1"}}},
+			{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "other://bar"}}},
+			{Behavior: &pproto.Step_Foreach{Foreach: &pproto.Foreach{
+				Steps: []*pproto.Step{
+					{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "mcp://bar/tool2"}}},
 				},
-			},
+			}}},
 		},
-		Catch: []model.Step{
-			{Use: "mcp://baz/tool3"},
+		Catch: []*pproto.Step{
+			{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "mcp://baz/tool3"}}},
 		},
 	}
 	servers := FindMCPServersInFlow(flow)
@@ -43,8 +43,8 @@ func TestFindMCPServersInFlow(t *testing.T) {
 }
 
 func TestEnsureMCPServers_MissingConfig(t *testing.T) {
-	flow := &model.Flow{
-		Steps: []model.Step{{Use: "mcp://unknown/tool"}},
+	flow := &pproto.Flow{
+		Steps: []*pproto.Step{{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "mcp://unknown/tool"}}}},
 	}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{}}
 	err := EnsureMCPServers(context.Background(), flow, cfg)
@@ -54,8 +54,8 @@ func TestEnsureMCPServers_MissingConfig(t *testing.T) {
 }
 
 func TestEnsureMCPServers_MissingEnv(t *testing.T) {
-	flow := &model.Flow{
-		Steps: []model.Step{{Use: "mcp://foo/tool"}},
+	flow := &pproto.Flow{
+		Steps: []*pproto.Step{{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "mcp://foo/tool"}}}},
 	}
 	cfg := &config.Config{
 		MCPServers: map[string]config.MCPServerConfig{
@@ -70,8 +70,8 @@ func TestEnsureMCPServers_MissingEnv(t *testing.T) {
 
 func TestEnsureMCPServers_Success(t *testing.T) {
 	// Use "true" command which should exist on system
-	flow := &model.Flow{
-		Steps: []model.Step{{Use: "mcp://foo/tool"}},
+	flow := &pproto.Flow{
+		Steps: []*pproto.Step{{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "mcp://foo/tool"}}}},
 	}
 	cfg := &config.Config{
 		MCPServers: map[string]config.MCPServerConfig{
@@ -136,7 +136,7 @@ func TestWaitForMCP_Error(t *testing.T) {
 
 // TestEnsureMCPServers_MissingCommand checks that missing Command yields an error
 func TestEnsureMCPServers_MissingCommand(t *testing.T) {
-	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
+	flow := &pproto.Flow{Steps: []*pproto.Step{{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "mcp://foo/tool"}}}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {Command: ""}}}
 	err := EnsureMCPServers(context.Background(), flow, cfg)
 	if err == nil || !strings.Contains(err.Error(), "config is missing 'command'") {
@@ -146,7 +146,7 @@ func TestEnsureMCPServers_MissingCommand(t *testing.T) {
 
 // TestEnsureMCPServers_DebugLogging ensures the debug logging branch is exercised
 func TestEnsureMCPServers_DebugLogging(t *testing.T) {
-	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
+	flow := &pproto.Flow{Steps: []*pproto.Step{{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "mcp://foo/tool"}}}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {Command: "true"}}}
 	os.Setenv("BEEMFLOW_DEBUG", "1")
 	defer os.Unsetenv("BEEMFLOW_DEBUG")
@@ -158,7 +158,7 @@ func TestEnsureMCPServers_DebugLogging(t *testing.T) {
 
 // TestEnsureMCPServers_CommandStartError ensures errors starting the command are handled
 func TestEnsureMCPServers_CommandStartError(t *testing.T) {
-	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
+	flow := &pproto.Flow{Steps: []*pproto.Step{{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "mcp://foo/tool"}}}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {Command: "nonexistent_binary"}}}
 	err := EnsureMCPServers(context.Background(), flow, cfg)
 	if err == nil || !strings.Contains(err.Error(), "failed to start MCP server foo") {
@@ -168,7 +168,7 @@ func TestEnsureMCPServers_CommandStartError(t *testing.T) {
 
 // TestEnsureMCPServers_EnvMapping exercises the env mapping logic for both literal and $env values
 func TestEnsureMCPServers_EnvMapping(t *testing.T) {
-	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
+	flow := &pproto.Flow{Steps: []*pproto.Step{{Behavior: &pproto.Step_Exec{Exec: &pproto.Execute{Use: "mcp://foo/tool"}}}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {
 		Command: "true",
 		Env:     map[string]string{"FOO_LIT": "val1", "FOO_SHELL": "$env"},

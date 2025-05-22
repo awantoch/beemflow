@@ -1,0 +1,5 @@
+name: parallel_empty
+on: cli.manual
+steps:
+  - id: empty_parallel
+    parallel: true 

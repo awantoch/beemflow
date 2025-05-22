@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/awantoch/beemflow/model"
+	pproto "github.com/awantoch/beemflow/spec/proto"
 )
 
 // Node is a vertex in the graph.
@@ -35,24 +35,24 @@ type Renderer interface {
 type MermaidRenderer struct{}
 
 // NewGraph creates a Graph representation of the given Flow.
-func NewGraph(flow *model.Flow) *Graph {
+func NewGraph(flow *pproto.Flow) *Graph {
 	g := &Graph{}
 	if flow == nil || len(flow.Steps) == 0 {
 		return g
 	}
 	for i, step := range flow.Steps {
 		// Create node
-		g.Nodes = append(g.Nodes, &Node{ID: step.ID, Label: step.ID})
+		g.Nodes = append(g.Nodes, &Node{ID: step.GetId(), Label: step.GetId()})
 		// Determine dependencies
 		var deps []string
 		if len(step.DependsOn) > 0 {
 			deps = step.DependsOn
 		} else if i > 0 {
-			deps = []string{flow.Steps[i-1].ID}
+			deps = []string{flow.Steps[i-1].GetId()}
 		}
 		// Create edges
 		for _, dep := range deps {
-			g.Edges = append(g.Edges, &Edge{From: dep, To: step.ID})
+			g.Edges = append(g.Edges, &Edge{From: dep, To: step.GetId()})
 		}
 	}
 	return g
@@ -81,7 +81,7 @@ func (r *MermaidRenderer) Render(g *Graph) (string, error) {
 }
 
 // ExportMermaid is a helper to create a Mermaid diagram from a Flow.
-func ExportMermaid(flow *model.Flow) (string, error) {
+func ExportMermaid(flow *pproto.Flow) (string, error) {
 	g := NewGraph(flow)
 	renderer := &MermaidRenderer{}
 	return renderer.Render(g)

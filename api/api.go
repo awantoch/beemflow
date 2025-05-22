@@ -14,6 +14,7 @@ import (
 	"github.com/awantoch/beemflow/graph"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
+	pproto "github.com/awantoch/beemflow/spec/proto"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
@@ -84,14 +85,14 @@ func ListFlows(ctx context.Context) ([]string, error) {
 }
 
 // GetFlow returns the parsed flow definition for the given name.
-func GetFlow(ctx context.Context, name string) (model.Flow, error) {
+func GetFlow(ctx context.Context, name string) (pproto.Flow, error) {
 	path := filepath.Join(flowsDir, name+".flow.yaml")
 	flow, err := dsl.Parse(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return model.Flow{}, nil
+			return pproto.Flow{}, nil
 		}
-		return model.Flow{}, err
+		return pproto.Flow{}, err
 	}
 	return *flow, nil
 }
@@ -106,7 +107,7 @@ func ValidateFlow(ctx context.Context, name string) error {
 		}
 		return err
 	}
-	return dsl.Validate(flow)
+	return dsl.ValidateProto(flow)
 }
 
 // GraphFlow returns the Mermaid diagram for the given flow.
@@ -167,7 +168,7 @@ func StartRun(ctx context.Context, flowName string, eventData map[string]any) (u
 		}
 		return uuid.Nil, execErr
 	}
-	var latest *model.Run
+	var latest *pproto.Run
 	for _, r := range runs {
 		if r.FlowName == flowName && (latest == nil || r.StartedAt.After(latest.StartedAt)) {
 			latest = r
@@ -218,10 +219,18 @@ func GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
 	if err != nil {
 		return nil, nil
 	}
+	steps, err := store.GetSteps(ctx, runID)
+	if err == nil {
+		var persisted []model.StepRun
+		for _, s := range steps {
+			persisted = append(persisted, *s)
+		}
+		run.Steps = persisted
+	}
 	return run, nil
 }
 
-// ListRuns returns all runs.
+// ListRuns returns all runs, using storage if available, otherwise in-memory
 func ListRuns(ctx context.Context) ([]*model.Run, error) {
 	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
@@ -232,14 +241,7 @@ func ListRuns(ctx context.Context) ([]*model.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.NewEngine(
-		engine.NewDefaultAdapterRegistry(ctx),
-		dsl.NewTemplater(),
-		event.NewInProcEventBus(),
-		nil, // blob store not needed here
-		store,
-	)
-	return eng.ListRuns(ctx)
+	return store.ListRuns(ctx)
 }
 
 // PublishEvent publishes an event to a topic.
@@ -279,12 +281,12 @@ func ResumeRun(ctx context.Context, token string, eventData map[string]any) (map
 }
 
 // ParseFlowFromString parses a flow YAML string into a Flow struct.
-func ParseFlowFromString(yamlStr string) (*model.Flow, error) {
+func ParseFlowFromString(yamlStr string) (*pproto.Flow, error) {
 	return dsl.ParseFromString(yamlStr)
 }
 
 // RunSpec validates and runs a flow spec inline, returning run ID and outputs.
-func RunSpec(ctx context.Context, flow *model.Flow, eventData map[string]any) (uuid.UUID, map[string]any, error) {
+func RunSpec(ctx context.Context, flow *pproto.Flow, eventData map[string]any) (uuid.UUID, map[string]any, error) {
 	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
 		return uuid.Nil, nil, err
@@ -310,7 +312,7 @@ func RunSpec(ctx context.Context, flow *model.Flow, eventData map[string]any) (u
 	if err != nil || len(runs) == 0 {
 		return uuid.Nil, outputs, err
 	}
-	var latest *model.Run
+	var latest *pproto.Run
 	for _, r := range runs {
 		if r.FlowName == flow.Name && (latest == nil || r.StartedAt.After(latest.StartedAt)) {
 			latest = r

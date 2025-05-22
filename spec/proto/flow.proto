@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package protocol;
+
+option go_package = "github.com/awantoch/beemflow/spec/proto;protocol";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// A Flow is the unit of work.
+message Flow {
+  string name = 1;
+  Trigger on = 2;
+  map<string, Value> vars = 3;
+  repeated Step steps = 4;
+  repeated Step catch = 5;
+}
+
+// How a flow starts.
+message Trigger {
+  oneof kind {
+    CliManualTrigger cli_manual = 1;
+    ScheduleCron schedule = 2;
+    McpEventTrigger mcp_event = 3;
+    HttpTrigger http = 4;
+  }
+}
+
+message CliManualTrigger {}
+
+message ScheduleCron {
+  string cron = 1;
+}
+
+message McpEventTrigger {
+  string source = 1;
+  string token = 2;
+}
+
+message HttpTrigger {
+  string path = 1;
+  map<string, string> headers = 2;
+}
+
+// A single step in the flow DAG.
+message Step {
+  string id = 1;
+  oneof behavior {
+    Execute exec = 2;
+    Parallel parallel = 3;
+    Foreach foreach = 4;
+    AwaitEvent await_event = 5;
+    Wait wait = 6;
+  }
+  repeated string depends_on = 7;
+  string condition = 8;
+}
+
+message Execute {
+  string use = 1;
+  map<string, Value> with = 2;
+  RetryPolicy retry = 3;
+  CatchBlock catch = 4;
+}
+
+message Parallel {
+  repeated Step steps = 1;
+}
+
+message Foreach {
+  string list_expr = 1;
+  Step template = 2;
+  string alias = 3;
+  repeated Step steps = 4;
+}
+
+message AwaitEvent {
+  string source = 1;
+  MatchCondition match = 2;
+  google.protobuf.Duration timeout = 3;
+}
+
+message Wait {
+  int32 seconds = 1;
+  string until = 2;
+}
+
+message RetryPolicy {
+  int32 max_retries = 1;
+  google.protobuf.Duration backoff = 2;
+}
+
+message CatchBlock {
+  string error_var = 1;
+  Step handler = 2;
+}
+
+message MatchCondition {
+  map<string, string> equals = 1;
+}
+
+// Value is a generic value type for variables, with/outputs, etc.
+message Value {
+  oneof value {
+    string s = 1;
+    double n = 2;
+    bool b = 3;
+    Struct m = 4;
+    ListValue l = 5;
+  }
+}
+
+message Struct {
+  map<string, Value> fields = 1;
+}
+
+message ListValue {
+  repeated Value values = 1;
+}
+
+// RunStatus represents the lifecycle status of a Run.
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_PENDING = 1;
+  RUN_STATUS_RUNNING = 2;
+  RUN_STATUS_SUCCEEDED = 3;
+  RUN_STATUS_FAILED = 4;
+  RUN_STATUS_SKIPPED = 5;
+  RUN_STATUS_WAITING = 6;
+}
+
+// StepStatus represents the lifecycle status of a StepRun.
+enum StepStatus {
+  STEP_STATUS_UNSPECIFIED = 0;
+  STEP_STATUS_PENDING = 1;
+  STEP_STATUS_RUNNING = 2;
+  STEP_STATUS_SUCCEEDED = 3;
+  STEP_STATUS_FAILED = 4;
+  STEP_STATUS_WAITING = 5;
+}
+
+// Execution details of a single step in a Run.
+message StepRun {
+  string id = 1;
+  string run_id = 2;
+  string step_name = 3;
+  map<string, Value> outputs = 4;
+  StepStatus status = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp ended_at = 7;
+  string error = 8;
+}
+
+// Run is an execution instance of a Flow.
+message Run {
+  string id = 1;
+  string flow_name = 2;
+  map<string, Value> event = 3;
+  map<string, Value> vars = 4;
+  repeated StepRun steps = 5;
+  RunStatus status = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp ended_at = 8;
+} 

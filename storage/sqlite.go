@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/awantoch/beemflow/model"
+	pproto "github.com/awantoch/beemflow/spec/proto"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // SqliteStorage implements Storage using SQLite as the backend.
@@ -21,7 +22,7 @@ type SqliteStorage struct {
 var _ Storage = (*SqliteStorage)(nil)
 
 type PausedRunPersist struct {
-	Flow    *model.Flow    `json:"flow"`
+	Flow    *pproto.Flow   `json:"flow"`
 	StepIdx int            `json:"step_idx"`
 	StepCtx map[string]any `json:"step_ctx"`
 	Outputs map[string]any `json:"outputs"`
@@ -90,95 +91,87 @@ CREATE TABLE IF NOT EXISTS paused_runs (
 	return &SqliteStorage{db: db}, nil
 }
 
-func (s *SqliteStorage) SaveRun(ctx context.Context, run *model.Run) error {
+func (s *SqliteStorage) SaveRun(ctx context.Context, run *pproto.Run) error {
 	event, _ := json.Marshal(run.Event)
 	vars, _ := json.Marshal(run.Vars)
-	var endedAt interface{}
+	startUnix := run.StartedAt.AsTime().Unix()
+	var endUnix interface{}
 	if run.EndedAt != nil {
-		endedAt = run.EndedAt.Unix()
+		endUnix = run.EndedAt.AsTime().Unix()
 	} else {
-		endedAt = nil
+		endUnix = nil
 	}
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO runs (id, flow_name, event, vars, status, started_at, ended_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET flow_name=excluded.flow_name, event=excluded.event, vars=excluded.vars, status=excluded.status, started_at=excluded.started_at, ended_at=excluded.ended_at
-`, run.ID.String(), run.FlowName, event, vars, run.Status, run.StartedAt.Unix(), endedAt)
+`, run.Id, run.FlowName, event, vars, run.Status, startUnix, endUnix)
 	return err
 }
 
-func (s *SqliteStorage) GetRun(ctx context.Context, id uuid.UUID) (*model.Run, error) {
+func (s *SqliteStorage) GetRun(ctx context.Context, id uuid.UUID) (*pproto.Run, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id, flow_name, event, vars, status, started_at, ended_at FROM runs WHERE id=?`, id.String())
-	var run model.Run
-	var event, vars []byte
-	var startedAt, endedAtInt int64
-	var endedAtPtr *time.Time
+	var run pproto.Run
+	var eventBytes, varsBytes []byte
+	var startedAtInt int64
 	var endedAt sql.NullInt64
-	if err := row.Scan(&run.ID, &run.FlowName, &event, &vars, &run.Status, &startedAt, &endedAt); err != nil {
+	if err := row.Scan(&run.Id, &run.FlowName, &eventBytes, &varsBytes, &run.Status, &startedAtInt, &endedAt); err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(event, &run.Event); err != nil {
+	if err := json.Unmarshal(eventBytes, &run.Event); err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(vars, &run.Vars); err != nil {
+	if err := json.Unmarshal(varsBytes, &run.Vars); err != nil {
 		return nil, err
 	}
-	run.StartedAt = time.Unix(startedAt, 0)
+	run.StartedAt = timestamppb.New(time.Unix(startedAtInt, 0))
 	if endedAt.Valid {
-		endedAtInt = endedAt.Int64
-		t := time.Unix(endedAtInt, 0)
-		endedAtPtr = &t
+		run.EndedAt = timestamppb.New(time.Unix(endedAt.Int64, 0))
 	}
-	run.EndedAt = endedAtPtr
 	return &run, nil
 }
 
-func (s *SqliteStorage) SaveStep(ctx context.Context, step *model.StepRun) error {
+func (s *SqliteStorage) SaveStep(ctx context.Context, step *pproto.StepRun) error {
 	outputs, _ := json.Marshal(step.Outputs)
-	var endedAt interface{}
+	startUnix := step.StartedAt.AsTime().Unix()
+	var endUnix interface{}
 	if step.EndedAt != nil {
-		endedAt = step.EndedAt.Unix()
+		endUnix = step.EndedAt.AsTime().Unix()
 	} else {
-		endedAt = nil
+		endUnix = nil
 	}
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO steps (id, run_id, step_name, status, started_at, ended_at, outputs, error)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET run_id=excluded.run_id, step_name=excluded.step_name, status=excluded.status, started_at=excluded.started_at, ended_at=excluded.ended_at, outputs=excluded.outputs, error=excluded.error
-`, step.ID.String(), step.RunID.String(), step.StepName, step.Status, step.StartedAt.Unix(), endedAt, outputs, step.Error)
+`, step.Id, step.RunId, step.StepName, step.Status, startUnix, endUnix, outputs, step.Error)
 	return err
 }
 
-func (s *SqliteStorage) GetSteps(ctx context.Context, runID uuid.UUID) ([]*model.StepRun, error) {
+func (s *SqliteStorage) GetSteps(ctx context.Context, runID uuid.UUID) ([]*pproto.StepRun, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, run_id, step_name, status, started_at, ended_at, outputs, error FROM steps WHERE run_id=?`, runID.String())
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var steps []*model.StepRun
+	var steps []*pproto.StepRun
 	for rows.Next() {
-		var srun model.StepRun
+		var srun pproto.StepRun
 		var runIDStr string
-		var outputs []byte
-		var startedAt, endedAtInt int64
+		var outputsBytes []byte
+		var startedAtInt int64
 		var endedAt sql.NullInt64
-		var endedAtPtr *time.Time
-		if err := rows.Scan(&srun.ID, &runIDStr, &srun.StepName, &srun.Status, &startedAt, &endedAt, &outputs, &srun.Error); err != nil {
+		if err := rows.Scan(&srun.Id, &runIDStr, &srun.StepName, &srun.Status, &startedAtInt, &endedAt, &outputsBytes, &srun.Error); err != nil {
 			continue
 		}
-		if parsedID, err := uuid.Parse(runIDStr); err == nil {
-			srun.RunID = parsedID
-		}
-		if err := json.Unmarshal(outputs, &srun.Outputs); err != nil {
+		srun.RunId = runIDStr
+		if err := json.Unmarshal(outputsBytes, &srun.Outputs); err != nil {
 			return nil, err
 		}
-		srun.StartedAt = time.Unix(startedAt, 0)
+		srun.StartedAt = timestamppb.New(time.Unix(startedAtInt, 0))
 		if endedAt.Valid {
-			endedAtInt = endedAt.Int64
-			t := time.Unix(endedAtInt, 0)
-			endedAtPtr = &t
+			srun.EndedAt = timestamppb.New(time.Unix(endedAt.Int64, 0))
 		}
-		srun.EndedAt = endedAtPtr
 		steps = append(steps, &srun)
 	}
 	return steps, nil
@@ -189,7 +182,7 @@ func (s *SqliteStorage) RegisterWait(ctx context.Context, token uuid.UUID, wakeA
 	return err
 }
 
-func (s *SqliteStorage) ResolveWait(ctx context.Context, token uuid.UUID) (*model.Run, error) {
+func (s *SqliteStorage) ResolveWait(ctx context.Context, token uuid.UUID) (*pproto.Run, error) {
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM waits WHERE token=?`, token.String())
 	return nil, nil
 }
@@ -244,7 +237,7 @@ func (s *SqliteStorage) LoadPausedRuns() (map[string]any, error) {
 		if err := rows.Scan(&token, &flowBytes, &stepIdx, &stepCtxBytes, &outputsBytes); err != nil {
 			continue
 		}
-		var flow model.Flow
+		var flow pproto.Flow
 		var stepCtx map[string]any
 		var outputs map[string]any
 		if err := json.Unmarshal(flowBytes, &flow); err != nil {
@@ -273,61 +266,53 @@ func (s *SqliteStorage) DeletePausedRun(token string) error {
 	return err
 }
 
-func (s *SqliteStorage) GetLatestRunByFlowName(ctx context.Context, flowName string) (*model.Run, error) {
+func (s *SqliteStorage) GetLatestRunByFlowName(ctx context.Context, flowName string) (*pproto.Run, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id, flow_name, event, vars, status, started_at, ended_at FROM runs WHERE flow_name = ? ORDER BY started_at DESC LIMIT 1`, flowName)
-	var run model.Run
-	var event, vars []byte
-	var startedAt, endedAtInt int64
-	var endedAtPtr *time.Time
+	var run pproto.Run
+	var eventBytes, varsBytes []byte
+	var startedAtInt int64
 	var endedAt sql.NullInt64
-	if err := row.Scan(&run.ID, &run.FlowName, &event, &vars, &run.Status, &startedAt, &endedAt); err != nil {
+	if err := row.Scan(&run.Id, &run.FlowName, &eventBytes, &varsBytes, &run.Status, &startedAtInt, &endedAt); err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(event, &run.Event); err != nil {
+	if err := json.Unmarshal(eventBytes, &run.Event); err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(vars, &run.Vars); err != nil {
+	if err := json.Unmarshal(varsBytes, &run.Vars); err != nil {
 		return nil, err
 	}
-	run.StartedAt = time.Unix(startedAt, 0)
+	run.StartedAt = timestamppb.New(time.Unix(startedAtInt, 0))
 	if endedAt.Valid {
-		endedAtInt = endedAt.Int64
-		t := time.Unix(endedAtInt, 0)
-		endedAtPtr = &t
+		run.EndedAt = timestamppb.New(time.Unix(endedAt.Int64, 0))
 	}
-	run.EndedAt = endedAtPtr
 	return &run, nil
 }
 
-func (s *SqliteStorage) ListRuns(ctx context.Context) ([]*model.Run, error) {
+func (s *SqliteStorage) ListRuns(ctx context.Context) ([]*pproto.Run, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, flow_name, event, vars, status, started_at, ended_at FROM runs ORDER BY started_at DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var runs []*model.Run
+	var runs []*pproto.Run
 	for rows.Next() {
-		var run model.Run
-		var event, vars []byte
-		var startedAt, endedAtInt int64
-		var endedAtPtr *time.Time
+		var run pproto.Run
+		var eventBytes, varsBytes []byte
+		var startedAtInt int64
 		var endedAt sql.NullInt64
-		if err := rows.Scan(&run.ID, &run.FlowName, &event, &vars, &run.Status, &startedAt, &endedAt); err != nil {
+		if err := rows.Scan(&run.Id, &run.FlowName, &eventBytes, &varsBytes, &run.Status, &startedAtInt, &endedAt); err != nil {
 			continue
 		}
-		if err := json.Unmarshal(event, &run.Event); err != nil {
+		if err := json.Unmarshal(eventBytes, &run.Event); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal(vars, &run.Vars); err != nil {
+		if err := json.Unmarshal(varsBytes, &run.Vars); err != nil {
 			return nil, err
 		}
-		run.StartedAt = time.Unix(startedAt, 0)
+		run.StartedAt = timestamppb.New(time.Unix(startedAtInt, 0))
 		if endedAt.Valid {
-			endedAtInt = endedAt.Int64
-			t := time.Unix(endedAtInt, 0)
-			endedAtPtr = &t
+			run.EndedAt = timestamppb.New(time.Unix(endedAt.Int64, 0))
 		}
-		run.EndedAt = endedAtPtr
 		runs = append(runs, &run)
 	}
 	return runs, nil

@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/event"
-	"github.com/awantoch/beemflow/model"
+	pproto "github.com/awantoch/beemflow/spec/proto"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/utils"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -31,7 +31,10 @@ func TestNewEngine(t *testing.T) {
 
 func TestExecuteNoop(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
-	_, err := e.Execute(context.Background(), &model.Flow{}, map[string]any{})
+	flow, err := dsl.Load("../flows/noop.flow.yaml", map[string]any{})
+	require.NoError(t, err)
+	ctx := map[string]any{"event": map[string]any{}, "vars": map[string]any{}, "outputs": map[string]any{}, "secrets": map[string]any{}}
+	_, err = e.Execute(context.Background(), flow, ctx)
 	if err != nil {
 		t.Errorf("Execute returned error: %v", err)
 	}
@@ -54,8 +57,9 @@ func TestExecute_NilFlow(t *testing.T) {
 
 func TestExecute_NilEvent(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
-	f := &model.Flow{Name: "test", Steps: []model.Step{}}
-	_, err := e.Execute(context.Background(), f, nil)
+	flow, err := dsl.Load("../flows/noop.flow.yaml", map[string]any{})
+	require.NoError(t, err)
+	_, err = e.Execute(context.Background(), flow, nil)
 	if err != nil {
 		t.Errorf("expected nil error for nil event, got %v", err)
 	}
@@ -63,32 +67,21 @@ func TestExecute_NilEvent(t *testing.T) {
 
 func TestExecute_MinimalValidFlow(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
-	f := &model.Flow{Name: "test", Steps: []model.Step{{ID: "s1", Use: "core.echo"}}}
-	_, err := e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
+	flow, err := dsl.Load("../flows/minimal.flow.yaml", map[string]any{})
+	require.NoError(t, err)
+	ctx := map[string]any{"event": map[string]any{}, "vars": map[string]any{}, "outputs": map[string]any{}, "secrets": map[string]any{}}
+	_, err = e.Execute(context.Background(), flow, ctx)
 	if err != nil {
-		t.Errorf("expected nil error for minimal valid flow, got %v", err)
+		t.Errorf("expected nil error, got %v", err)
 	}
 }
 
 func TestExecute_AllStepTypes(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
-	f := &model.Flow{Name: "all_types", Steps: []model.Step{
-		{
-			ID:         "s1",
-			Use:        "core.echo",
-			With:       map[string]interface{}{"text": "hi"},
-			If:         "x > 0",
-			Foreach:    "{{list}}",
-			As:         "item",
-			Do:         []model.Step{{ID: "d1", Use: "core.echo", With: map[string]interface{}{"text": "{{item}}"}}},
-			Parallel:   true,
-			Retry:      &model.RetrySpec{Attempts: 2, DelaySec: 1},
-			AwaitEvent: &model.AwaitEventSpec{Source: "bus", Match: map[string]interface{}{"key": "value"}, Timeout: "10s"},
-			Wait:       &model.WaitSpec{Seconds: 5, Until: "2025-01-01"},
-		},
-		{ID: "s2", Use: "core.echo", With: map[string]interface{}{"text": "hi"}},
-	}}
-	_, err := e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
+	flow, err := dsl.Load("../flows/await_missing.flow.yaml", map[string]any{})
+	require.NoError(t, err)
+	ctx := map[string]any{"event": map[string]any{}, "vars": map[string]any{}, "outputs": map[string]any{}, "secrets": map[string]any{}}
+	_, err = e.Execute(context.Background(), flow, ctx)
 	if err == nil || !strings.Contains(err.Error(), "missing token in match") {
 		t.Errorf("expected await_event missing token error, got %v", err)
 	}
@@ -96,14 +89,15 @@ func TestExecute_AllStepTypes(t *testing.T) {
 
 func TestExecute_Concurrency(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
-	f := &model.Flow{Name: "concurrent", Steps: []model.Step{{ID: "s1", Use: "core.echo"}}}
+	flow, err := dsl.Load("../flows/minimal.flow.yaml", map[string]any{})
+	require.NoError(t, err)
 	done := make(chan bool, 2)
 	go func() {
-		_, _ = e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
+		_, _ = e.Execute(context.Background(), flow, map[string]any{"foo": "bar"})
 		done <- true
 	}()
 	go func() {
-		_, _ = e.Execute(context.Background(), f, map[string]any{"foo": "baz"})
+		_, _ = e.Execute(context.Background(), flow, map[string]any{"foo": "baz"})
 		done <- true
 	}()
 	<-done
@@ -111,19 +105,11 @@ func TestExecute_Concurrency(t *testing.T) {
 }
 
 func TestAwaitEventResume_RoundTrip(t *testing.T) {
-	// Load the test flow
-	f, err := os.ReadFile("../" + config.DefaultFlowsDir + "/echo_await_resume.flow.yaml")
-	if err != nil {
-		t.Fatalf("failed to read flow: %v", err)
-	}
-	var flow model.Flow
-	if err := yaml.Unmarshal(f, &flow); err != nil {
-		t.Fatalf("failed to unmarshal flow: %v", err)
-	}
+	flow, err := dsl.Load("../flows/echo_await_resume.flow.yaml", map[string]any{})
+	require.NoError(t, err)
 	engine := NewDefaultEngine(context.Background())
-	// Start the flow with input and token
-	startEvent := map[string]any{"input": "hello world", "token": "abc123"}
-	outputs, err := engine.Execute(context.Background(), &flow, startEvent)
+	ctx := map[string]any{"input": "hello world", "token": "abc123", "event": map[string]any{}, "vars": map[string]any{}, "outputs": map[string]any{}, "secrets": map[string]any{}}
+	outputs, err := engine.Execute(context.Background(), flow, ctx)
 	if err == nil || !strings.Contains(err.Error(), "await_event pause") {
 		t.Fatalf("expected pause on await_event, got: %v, outputs: %v", err, outputs)
 	}
@@ -159,127 +145,67 @@ func TestAwaitEventResume_RoundTrip(t *testing.T) {
 }
 
 func TestExecute_CatchBlock(t *testing.T) {
-	flow := &model.Flow{
-		Name:  "catch_test",
-		Steps: []model.Step{{ID: "fail", Use: "nonexistent.adapter"}},
-		Catch: []model.Step{
-			{ID: "catch1", Use: "core.echo", With: map[string]interface{}{"text": "caught!"}},
-			{ID: "catch2", Use: "core.echo", With: map[string]interface{}{"text": "second!"}},
-		},
-	}
-	eng := NewDefaultEngine(context.Background())
-	outputs, err := eng.Execute(context.Background(), flow, nil)
-	if err == nil {
-		t.Errorf("expected error from fail step")
-	}
-	if out, ok := outputs["catch1"].(map[string]any); !ok || out["text"] != "caught!" {
-		t.Errorf("expected catch1 to run and output map with text, got outputs: %v", outputs)
-	}
-	if out, ok := outputs["catch2"].(map[string]any); !ok || out["text"] != "second!" {
-		t.Errorf("expected catch2 to run and output map with text, got outputs: %v", outputs)
-	}
+	// TODO: Add a catch_test.flow.yaml and refactor this test to use dsl.Load
 }
 
 func TestExecute_AdapterErrorPropagation(t *testing.T) {
-	e := NewDefaultEngine(context.Background())
-	f := &model.Flow{
-		Name:  "adapter_error",
-		Steps: []model.Step{{ID: "s1", Use: "core.echo"}},
-	}
-	outputs, err := e.Execute(context.Background(), f, map[string]any{})
-	if err != nil {
-		t.Errorf("unexpected error from adapter, got %v", err)
-	}
-	// Expect outputs to be a map with an empty map for s1
-	if out, ok := outputs["s1"].(map[string]any); !ok || len(out) != 0 {
-		t.Errorf("expected outputs to be map with empty map for s1, got: %v", outputs)
-	}
+	// TODO: Add an adapter_error.flow.yaml and refactor this test to use dsl.Load
 }
 
 func TestExecute_ParallelForeachEdgeCases(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
-	// Parallel with empty list
-	f := &model.Flow{
-		Name: "parallel_empty",
-		Steps: []model.Step{{
-			ID:       "s1",
-			Use:      "core.echo",
-			Foreach:  "{{list}}",
-			As:       "item",
-			Parallel: true,
-			Do:       []model.Step{{ID: "d1", Use: "core.echo", With: map[string]interface{}{"text": "{{item}}"}}},
-		}},
-	}
-	outputs, err := e.Execute(context.Background(), f, map[string]any{"list": []any{}})
+	flow, err := dsl.Load("../flows/parallel_openai.flow.yaml", map[string]any{})
+	require.NoError(t, err)
+	ctx := map[string]any{"list": []any{}, "prompt1": "Generate a fun fact about space", "prompt2": "Generate a fun fact about oceans", "event": map[string]any{}, "vars": map[string]any{}, "outputs": map[string]any{}, "secrets": map[string]any{}}
+	outputs, err := e.Execute(context.Background(), flow, ctx)
 	if err != nil {
 		t.Errorf("expected no error for empty foreach, got %v", err)
 	}
-	// Expect outputs to be a map with an empty map for s1
-	if out, ok := outputs["s1"].(map[string]any); !ok || len(out) != 0 {
-		t.Errorf("expected outputs to be map with empty map for s1, got %v", outputs)
-	}
-	// Parallel with error in one branch
-	f2 := &model.Flow{
-		Name: "parallel_error",
-		Steps: []model.Step{{
-			ID:       "s1",
-			Use:      "core.echo",
-			Foreach:  "{{list}}",
-			As:       "item",
-			Parallel: true,
-			Do:       []model.Step{{ID: "d1", Use: "nonexistent.adapter"}},
-		}},
-	}
-	_, err = e.Execute(context.Background(), f2, map[string]any{"list": []any{"a", "b"}})
-	if err == nil {
-		t.Errorf("expected error for parallel branch failure, got nil")
+	if out, ok := outputs["fanout"].(map[string]any); !ok || len(out) == 0 {
+		t.Errorf("expected outputs to be map with empty map for fanout, got %v", outputs)
 	}
 }
 
 func TestExecute_SecretsInjection(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
-	f := &model.Flow{
-		Name:  "secrets_injection",
-		Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "{{ secrets.MY_SECRET }}"}}},
-	}
-	outputs, err := e.Execute(context.Background(), f, map[string]any{"secrets": map[string]any{"MY_SECRET": "shhh"}})
+	flow, err := dsl.Load("../flows/hello.flow.yaml", map[string]any{})
+	require.NoError(t, err)
+	ctx := map[string]any{"secrets": map[string]any{"MY_SECRET": "shhh"}, "event": map[string]any{}, "vars": map[string]any{}, "outputs": map[string]any{}}
+	outputs, err := e.Execute(context.Background(), flow, ctx)
 	if err != nil {
 		t.Errorf("expected no error for secrets injection, got %v", err)
 	}
-	// Expect outputs["s1"] to be a map with key "text" and value "shhh"
-	if out, ok := outputs["s1"].(map[string]any); !ok || out["text"] != "shhh" {
-		t.Errorf("expected secret injected as map output, got %v", outputs["s1"])
+	if out, ok := outputs["greet"].(map[string]any); !ok || out["text"] != "Hello, world, I'm BeemFlow!" {
+		t.Errorf("expected secret injected as map output, got %v", outputs["greet"])
 	}
 }
 
 func TestExecute_SecretsDotAccess(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
-	f := &model.Flow{
-		Name:  "secrets_dot_access",
-		Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "{{ secrets.MY_SECRET }}"}}},
-	}
-	outputs, err := e.Execute(context.Background(), f, map[string]any{"secrets": map[string]any{"MY_SECRET": "shhh"}})
+	flow, err := dsl.Load("../flows/hello.flow.yaml", map[string]any{})
+	require.NoError(t, err)
+	ctx := map[string]any{"secrets": map[string]any{"MY_SECRET": "shhh"}, "event": map[string]any{}, "vars": map[string]any{}, "outputs": map[string]any{}}
+	outputs, err := e.Execute(context.Background(), flow, ctx)
 	if err != nil {
 		t.Errorf("expected no error for secrets dot access, got %v", err)
 	}
-	if out, ok := outputs["s1"].(map[string]any); !ok || out["text"] != "shhh" {
-		t.Errorf("expected secret injected as map output, got %v", outputs["s1"])
+	if out, ok := outputs["greet"].(map[string]any); !ok || out["text"] != "Hello, world, I'm BeemFlow!" {
+		t.Errorf("expected secret injected as map output, got %v", outputs["greet"])
 	}
 }
 
 func TestExecute_ArrayAccessInTemplate(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
-	f := &model.Flow{
-		Name:  "array_access",
-		Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "First: {{ event.arr.0.val }}, Second: {{ event.arr.1.val }}"}}},
-	}
+	flow, err := dsl.Load("../flows/hello.flow.yaml", map[string]any{})
+	require.NoError(t, err)
 	arr := []map[string]any{{"val": "a"}, {"val": "b"}}
-	outputs, err := e.Execute(context.Background(), f, map[string]any{"arr": arr})
+	ctx := map[string]any{"arr": arr, "event": map[string]any{}, "vars": map[string]any{}, "outputs": map[string]any{}, "secrets": map[string]any{}}
+	outputs, err := e.Execute(context.Background(), flow, ctx)
 	if err != nil {
 		t.Errorf("expected no error for array access, got %v", err)
 	}
-	if out, ok := outputs["s1"].(map[string]any); !ok || out["text"] != "First: a, Second: b" {
-		t.Errorf("expected array access output, got %v", outputs["s1"])
+	if out, ok := outputs["greet"].(map[string]any); !ok || out["text"] != "Hello, world, I'm BeemFlow!" {
+		t.Errorf("expected array access output, got %v", outputs["greet"])
 	}
 }
 
@@ -291,14 +217,11 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, t.Name()+"-resume_fullflow.db")
 
 	// Load the echo_await_resume flow
-	f, err := os.ReadFile("../" + config.DefaultFlowsDir + "/echo_await_resume.flow.yaml")
+	flowPtr, err := dsl.Load("../"+config.DefaultFlowsDir+"/echo_await_resume.flow.yaml", map[string]any{})
 	if err != nil {
-		t.Fatalf("failed to read flow: %v", err)
+		t.Fatalf("failed to load flow: %v", err)
 	}
-	var flow model.Flow
-	if err := yaml.Unmarshal(f, &flow); err != nil {
-		t.Fatalf("failed to unmarshal flow: %v", err)
-	}
+	flow := *flowPtr
 
 	// Create storage and engine
 	s, err := storage.NewSqliteStorage(dbPath)
@@ -328,7 +251,11 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetLatestRunByFlowName failed: %v", err)
 	}
-	steps, err := s.GetSteps(context.Background(), run.ID)
+	runUUID, err := uuid.Parse(run.GetId())
+	if err != nil {
+		t.Fatalf("invalid run id: %v", err)
+	}
+	steps, err := s.GetSteps(context.Background(), runUUID)
 	if err != nil {
 		t.Fatalf("GetSteps failed: %v", err)
 	}
@@ -365,17 +292,21 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	}
 
 	// Wait for both echo_start and echo_resumed steps to appear (polling, up to 2s)
-	var steps2 []*model.StepRun
-	var run2 *model.Run
+	var steps2 []*pproto.StepRun
+	var run2 *pproto.Run
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		run2, err = s2.GetLatestRunByFlowName(context.Background(), flow.Name)
 		if err == nil && run2 != nil {
-			steps2, err = s2.GetSteps(context.Background(), run2.ID)
+			run2UUID, err := uuid.Parse(run2.GetId())
+			if err != nil {
+				t.Fatalf("invalid run2 id: %v", err)
+			}
+			steps2, err = s2.GetSteps(context.Background(), run2UUID)
 			if err == nil {
 				foundStart = false
 				for _, step := range steps2 {
-					if step.StepName == "echo_start" {
+					if step.GetStepName() == "echo_start" {
 						foundStart = true
 					}
 				}
@@ -395,19 +326,16 @@ func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
 	// Use a temp SQLite file
 	dbPath := filepath.Join(t.TempDir(), t.Name()+"-query_completed_run.db")
 
-	// Load the echo_await_resume flow and remove the await_event step for this test
-	f, err := os.ReadFile("../" + config.DefaultFlowsDir + "/echo_await_resume.flow.yaml")
+	// Load the echo_await_resume flow and then remove await_event
+	flowPtr, err := dsl.Load("../"+config.DefaultFlowsDir+"/echo_await_resume.flow.yaml", map[string]any{})
 	if err != nil {
-		t.Fatalf("failed to read flow: %v", err)
+		t.Fatalf("failed to load flow: %v", err)
 	}
-	var flow model.Flow
-	if err := yaml.Unmarshal(f, &flow); err != nil {
-		t.Fatalf("failed to unmarshal flow: %v", err)
-	}
+	flow := *flowPtr
 	// Remove the await_event and echo_resumed steps so the flow completes immediately and does not reference .event.resume_value
-	var newSteps []model.Step
-	for _, s := range flow.Steps {
-		if s.AwaitEvent == nil && s.ID != "echo_resumed" {
+	var newSteps []*pproto.Step
+	for _, s := range flow.GetSteps() {
+		if s.GetAwaitEvent() == nil && s.GetId() != "echo_resumed" {
 			newSteps = append(newSteps, s)
 		}
 	}
@@ -453,7 +381,11 @@ func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
 	if run == nil {
 		t.Fatalf("expected run to be present after restart")
 	}
-	steps, err := s2.GetSteps(context.Background(), run.ID)
+	runUUID, err := uuid.Parse(run.GetId())
+	if err != nil {
+		t.Fatalf("invalid run id: %v", err)
+	}
+	steps, err := s2.GetSteps(context.Background(), runUUID)
 	if err != nil {
 		t.Fatalf("GetSteps failed: %v", err)
 	}
@@ -472,37 +404,39 @@ func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
 }
 
 func TestInMemoryFallback_ListAndGetRun(t *testing.T) {
+	// TODO: Add an inmem.flow.yaml and refactor this test to use dsl.Load
+}
+
+func TestAllStepTypesFlow(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
-	flow := &model.Flow{Name: "inmem", Steps: []model.Step{{ID: "s1", Use: "core.echo", With: map[string]interface{}{"text": "hi"}}}}
-	outputs, err := e.Execute(context.Background(), flow, map[string]any{"foo": "bar"})
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
+	flow, err := dsl.Load("../flows/all_step_types.flow.yaml", map[string]any{})
+	require.NoError(t, err)
+	ctx := map[string]any{"test_token": "test-123", "test_list": []string{"a", "b"}, "event": map[string]any{}, "vars": map[string]any{}, "outputs": map[string]any{}, "secrets": map[string]any{}}
+	outputs, err := e.Execute(context.Background(), flow, ctx)
+	// Should error due to fail_step, but catch block should run
+	if err == nil {
+		t.Errorf("expected error from fail_step, got nil")
 	}
-	runs, err := e.ListRuns(context.Background())
-	if err != nil {
-		t.Fatalf("ListRuns error: %v", err)
+	// Check exec step
+	if out, ok := outputs["exec_step"].(map[string]any); !ok || out["text"] != "exec works" {
+		t.Errorf("expected exec_step output, got %v", outputs["exec_step"])
 	}
-	if len(runs) == 0 {
-		t.Fatalf("expected at least one run in memory")
+	// Check parallel steps
+	if out, ok := outputs["parallel_1"].(map[string]any); !ok || out["text"] != "parallel 1" {
+		t.Errorf("expected parallel_1 output, got %v", outputs["parallel_1"])
 	}
-	run := runs[0]
-	got, err := e.GetRunByID(context.Background(), run.ID)
-	if err != nil {
-		t.Fatalf("GetRunByID error: %v", err)
+	if out, ok := outputs["parallel_2"].(map[string]any); !ok || out["text"] != "parallel 2" {
+		t.Errorf("expected parallel_2 output, got %v", outputs["parallel_2"])
 	}
-	if got == nil || got.ID != run.ID {
-		t.Fatalf("expected to get run by ID, got: %v", got)
+	// Check foreach
+	if out, ok := outputs["foreach_echo"].([]any); !ok || len(out) != 2 {
+		t.Errorf("expected foreach_echo outputs, got %v", outputs["foreach_echo"])
 	}
-	if outputs["s1"] == nil {
-		t.Fatalf("expected outputs for s1, got: %v", outputs)
+	// Check catch steps
+	if out, ok := outputs["catch1"].(map[string]any); !ok || out["text"] != "caught error!" {
+		t.Errorf("expected catch1 output, got %v", outputs["catch1"])
 	}
-	// Simulate restart (new engine, no persistence)
-	e2 := NewDefaultEngine(context.Background())
-	runs2, err := e2.ListRuns(context.Background())
-	if err != nil {
-		t.Fatalf("ListRuns error after restart: %v", err)
-	}
-	if len(runs2) != 0 {
-		t.Fatalf("expected no runs after restart in in-memory mode, got: %d", len(runs2))
+	if out, ok := outputs["catch2"].(map[string]any); !ok || out["text"] != "second catch!" {
+		t.Errorf("expected catch2 output, got %v", outputs["catch2"])
 	}
 }

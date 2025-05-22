@@ -1,0 +1,51 @@
+name: all_step_types
+on: cli.manual
+vars:
+  test_token: "test-123"
+  test_list:
+    - a
+    - b
+steps:
+  - id: exec_step
+    use: core.echo
+    with:
+      text: "exec works"
+  - id: parallel_block
+    parallel: true
+    steps:
+      - id: parallel_1
+        use: core.echo
+        with:
+          text: "parallel 1"
+      - id: parallel_2
+        use: core.echo
+        with:
+          text: "parallel 2"
+  - id: foreach_block
+    foreach: "{{ test_list }}"
+    as: item
+    do:
+      - id: foreach_echo
+        use: core.echo
+        with:
+          text: "foreach: {{ item }}"
+  - id: wait_step
+    wait:
+      seconds: 0
+  - id: await_event_step
+    await_event:
+      source: test
+      match:
+        token: "{{ test_token }}"
+      timeout: 1s
+  - id: fail_step
+    use: nonexistent.adapter
+catch:
+  - id: catch1
+    use: core.echo
+    with:
+      text: "caught error!"
+  - id: catch2
+    use: core.echo
+    with:
+      text: "second catch!" 

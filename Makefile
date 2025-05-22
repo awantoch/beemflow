@@ -6,7 +6,7 @@ SHELL   := /usr/bin/env bash
 BINARY   := flow
 CMD_PATH := ./cmd/flow
 # ────────────────────────────────────────────────────────────────────────────
-.PHONY: all clean build install test fmt vet lint deps coverage run e2e serve
+.PHONY: all clean build install test fmt vet lint deps coverage run e2e serve proto
 
 all: clean test build install 
 
@@ -53,3 +53,7 @@ vet:
 tidy:
 	go mod tidy
 	go mod verify
+
+# generate Go protobuf code
+proto:
+	protoc --go_out=paths=source_relative:. spec/proto/flow.proto

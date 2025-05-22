@@ -14,16 +14,16 @@ import (
 // FlowService defines the full API surface for flows and runs.
 type FlowService interface {
 	ListFlows(ctx context.Context) ([]string, error)
-	GetFlow(ctx context.Context, name string) (model.Flow, error)
+	GetFlow(ctx context.Context, name string) (pproto.Flow, error)
 	ValidateFlow(ctx context.Context, name string) error
 	GraphFlow(ctx context.Context, name string) (string, error)
 	StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.UUID, error)
-	GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error)
-	ListRuns(ctx context.Context) ([]*model.Run, error)
+	GetRun(ctx context.Context, runID uuid.UUID) (*pproto.Run, error)
+	ListRuns(ctx context.Context) ([]*pproto.Run, error)
 	DeleteRun(ctx context.Context, id uuid.UUID) error
 	PublishEvent(ctx context.Context, topic string, payload map[string]any) error
 	ResumeRun(ctx context.Context, token string, event map[string]any) (map[string]any, error)
-	RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.UUID, map[string]any, error)
+	RunSpec(ctx context.Context, flow *pproto.Flow, event map[string]any) (uuid.UUID, map[string]any, error)
 	AssistantChat(ctx context.Context, systemPrompt string, userMessages []string) (string, []string, error)
 	ListTools(ctx context.Context) ([]registry.ToolManifest, error)
 	GetToolManifest(ctx context.Context, name string) (*registry.ToolManifest, error)
@@ -43,7 +43,7 @@ func NewFlowService() FlowService {
 func (s *defaultService) ListFlows(ctx context.Context) ([]string, error) {
 	return ListFlows(ctx)
 }
-func (s *defaultService) GetFlow(ctx context.Context, name string) (model.Flow, error) {
+func (s *defaultService) GetFlow(ctx context.Context, name string) (pproto.Flow, error) {
 	return GetFlow(ctx, name)
 }
 func (s *defaultService) ValidateFlow(ctx context.Context, name string) error {
@@ -55,10 +55,10 @@ func (s *defaultService) GraphFlow(ctx context.Context, name string) (string, er
 func (s *defaultService) StartRun(ctx context.Context, flowName string, event map[string]any) (uuid.UUID, error) {
 	return StartRun(ctx, flowName, event)
 }
-func (s *defaultService) GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
+func (s *defaultService) GetRun(ctx context.Context, runID uuid.UUID) (*pproto.Run, error) {
 	return GetRun(ctx, runID)
 }
-func (s *defaultService) ListRuns(ctx context.Context) ([]*model.Run, error) {
+func (s *defaultService) ListRuns(ctx context.Context) ([]*pproto.Run, error) {
 	return ListRuns(ctx)
 }
 func (s *defaultService) DeleteRun(ctx context.Context, id uuid.UUID) error {
@@ -72,7 +72,7 @@ func (s *defaultService) PublishEvent(ctx context.Context, topic string, payload
 func (s *defaultService) ResumeRun(ctx context.Context, token string, event map[string]any) (map[string]any, error) {
 	return ResumeRun(ctx, token, event)
 }
-func (s *defaultService) RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.UUID, map[string]any, error) {
+func (s *defaultService) RunSpec(ctx context.Context, flow *pproto.Flow, event map[string]any) (uuid.UUID, map[string]any, error) {
 	return RunSpec(ctx, flow, event)
 }
 func (s *defaultService) AssistantChat(ctx context.Context, systemPrompt string, userMessages []string) (string, []string, error) {

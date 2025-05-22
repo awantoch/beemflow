@@ -1,6 +1,5 @@
 name: list_airtable_tables
-on:
-  - cli.manual
+on: cli.manual
 steps:
   - id: list_bases
     use: mcp://airtable/list_bases

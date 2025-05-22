@@ -19,7 +19,7 @@ func newLintCmd() *cobra.Command {
 				utils.Error("YAML parse error: %v\n", err)
 				exit(1)
 			}
-			err = dsl.Validate(flow)
+			err = dsl.ValidateProto(flow)
 			if err != nil {
 				utils.Error("Schema validation error: %v\n", err)
 				exit(2)

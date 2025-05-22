@@ -55,7 +55,7 @@ func Execute(ctx context.Context, userMessages []string) (draftYAML string, vali
 		utils.Warn("Schema file not found: %s", schema)
 	}
 
-	if valErr := dsl.Validate(flow); valErr != nil {
+	if valErr := dsl.ValidateProto(flow); valErr != nil {
 		validationErrors = append(validationErrors, fmt.Sprintf("Schema validation error: %v", valErr))
 	}
 

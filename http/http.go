@@ -37,7 +37,7 @@ import (
 
 var (
 	runsMu            sync.Mutex
-	runs              = make(map[uuid.UUID]*model.Run)
+	runs              = make(map[uuid.UUID]*pproto.Run)
 	runTokens         = make(map[string]uuid.UUID) // token -> runID
 	eng               *beemengine.Engine
 	svc               = api.NewFlowService()
@@ -485,7 +485,7 @@ func resumeHandler(w http.ResponseWriter, r *http.Request) {
 		runsMu.Lock()
 		if outputs != nil {
 			run.Event["outputs"] = outputs
-			run.Status = model.RunSucceeded
+			run.Status = pproto.RunSucceeded
 			ended := time.Now()
 			run.EndedAt = &ended
 		}

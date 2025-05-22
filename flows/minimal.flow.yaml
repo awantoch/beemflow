@@ -1,0 +1,5 @@
+name: minimal
+on: cli.manual
+steps:
+  - id: s1
+    use: core.echo 

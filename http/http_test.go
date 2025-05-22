@@ -47,11 +47,11 @@ func TestHandlers_MethodsAndCodes(t *testing.T) {
 
 func TestUpdateRunEvent(t *testing.T) {
 	runsMu.Lock()
-	runs = make(map[uuid.UUID]*model.Run) // reset for test
+	runs = make(map[uuid.UUID]*pproto.Run) // reset for test
 	runsMu.Unlock()
 
 	runID := uuid.New()
-	run := &model.Run{
+	run := &pproto.Run{
 		ID:    runID,
 		Event: map[string]any{"foo": "bar"},
 	}
@@ -77,11 +77,11 @@ func TestUpdateRunEvent(t *testing.T) {
 
 func TestResumeHandler_UpdatesEvent(t *testing.T) {
 	runsMu.Lock()
-	runs = make(map[uuid.UUID]*model.Run) // reset for test
+	runs = make(map[uuid.UUID]*pproto.Run) // reset for test
 	runsMu.Unlock()
 
 	runID := uuid.New()
-	run := &model.Run{
+	run := &pproto.Run{
 		ID:    runID,
 		Event: map[string]any{"foo": "bar"},
 	}

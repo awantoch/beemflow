@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/awantoch/beemflow/model"
+	pproto "github.com/awantoch/beemflow/spec/proto"
 	"github.com/google/uuid"
 )
 
@@ -30,23 +30,24 @@ func TestStorage_RoundTrip(t *testing.T) {
 	}
 	s, _ := NewPostgresStorage(dsn)
 	ctx := context.Background()
-	run := &model.Run{ID: uuid.New(), FlowName: "test-flow"}
+	runID := uuid.New()
+	run := &pproto.Run{Id: runID.String(), FlowName: "test-flow"}
 	if err := s.SaveRun(ctx, run); err != nil {
 		t.Errorf("SaveRun failed: %v", err)
 	}
-	gotRun, err := s.GetRun(ctx, run.ID)
+	gotRun, err := s.GetRun(ctx, runID)
 	if err != nil {
 		t.Errorf("GetRun failed: %v", err)
 	}
-	if gotRun.ID != run.ID {
-		t.Errorf("expected run ID %v, got %v", run.ID, gotRun.ID)
+	if gotRun.Id != run.Id {
+		t.Errorf("expected run ID %v, got %v", run.Id, gotRun.Id)
 	}
-	step := &model.StepRun{ID: uuid.New(), StepName: "step1"}
-	step.RunID = run.ID
+	stepID := uuid.New()
+	step := &pproto.StepRun{Id: stepID.String(), RunId: run.Id, StepName: "step1"}
 	if err := s.SaveStep(ctx, step); err != nil {
 		t.Errorf("SaveStep failed: %v", err)
 	}
-	steps, err := s.GetSteps(ctx, run.ID)
+	steps, err := s.GetSteps(ctx, runID)
 	if err != nil {
 		t.Errorf("GetSteps failed: %v", err)
 	}
@@ -79,23 +80,24 @@ func TestSqliteStorage_RoundTrip(t *testing.T) {
 		t.Fatalf("NewSqliteStorage failed: %v", err)
 	}
 	ctx := context.Background()
-	run := &model.Run{ID: uuid.New(), FlowName: "test-flow"}
+	runID := uuid.New()
+	run := &pproto.Run{Id: runID.String(), FlowName: "test-flow"}
 	if err := s.SaveRun(ctx, run); err != nil {
 		t.Errorf("SaveRun failed: %v", err)
 	}
-	gotRun, err := s.GetRun(ctx, run.ID)
+	gotRun, err := s.GetRun(ctx, runID)
 	if err != nil {
 		t.Errorf("GetRun failed: %v", err)
 	}
-	if gotRun.ID != run.ID {
-		t.Errorf("expected run ID %v, got %v", run.ID, gotRun.ID)
+	if gotRun.Id != run.Id {
+		t.Errorf("expected run ID %v, got %v", run.Id, gotRun.Id)
 	}
-	step := &model.StepRun{ID: uuid.New(), StepName: "step1"}
-	step.RunID = run.ID
+	stepID := uuid.New()
+	step := &pproto.StepRun{Id: stepID.String(), RunId: run.Id, StepName: "step1"}
 	if err := s.SaveStep(ctx, step); err != nil {
 		t.Errorf("SaveStep failed: %v", err)
 	}
-	steps, err := s.GetSteps(ctx, run.ID)
+	steps, err := s.GetSteps(ctx, runID)
 	if err != nil {
 		t.Errorf("GetSteps failed: %v", err)
 	}

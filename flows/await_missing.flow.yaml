@@ -1,0 +1,7 @@
+name: await_missing
+on: cli.manual
+steps:
+  - id: wait
+    await_event:
+      source: test
+      match: {} 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,11 +14,12 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/event"
-	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
+	pproto "github.com/awantoch/beemflow/spec/proto"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Define a custom type for context keys
@@ -42,7 +44,7 @@ type Engine struct {
 }
 
 type PausedRun struct {
-	Flow    *model.Flow
+	Flow    *pproto.Flow
 	StepIdx int
 	StepCtx *StepContext
 	Outputs map[string]any
@@ -138,14 +140,100 @@ func NewEngine(
 	}
 }
 
+// toProtoValue converts a Go value into a protobuf Value.
+func toProtoValue(v any) *pproto.Value {
+	if v == nil {
+		return nil
+	}
+	switch x := v.(type) {
+	case string:
+		return &pproto.Value{Value: &pproto.Value_S{S: x}}
+	case bool:
+		return &pproto.Value{Value: &pproto.Value_B{B: x}}
+	case float64:
+		return &pproto.Value{Value: &pproto.Value_N{N: x}}
+	case int:
+		return &pproto.Value{Value: &pproto.Value_N{N: float64(x)}}
+	case int64:
+		return &pproto.Value{Value: &pproto.Value_N{N: float64(x)}}
+	case map[string]any:
+		m := make(map[string]*pproto.Value)
+		for k, v2 := range x {
+			if pv := toProtoValue(v2); pv != nil {
+				m[k] = pv
+			}
+		}
+		return &pproto.Value{Value: &pproto.Value_M{M: &pproto.Struct{Fields: m}}}
+	case []any:
+		var lst []*pproto.Value
+		for _, elem := range x {
+			if pv := toProtoValue(elem); pv != nil {
+				lst = append(lst, pv)
+			}
+		}
+		return &pproto.Value{Value: &pproto.Value_L{L: &pproto.ListValue{Values: lst}}}
+	default:
+		return nil
+	}
+}
+
+// toProtoMap converts a Go map[string]any into a map[string]*pproto.Value.
+func toProtoMap(m map[string]any) map[string]*pproto.Value {
+	out := make(map[string]*pproto.Value, len(m))
+	for k, v := range m {
+		if pv := toProtoValue(v); pv != nil {
+			out[k] = pv
+		}
+	}
+	return out
+}
+
+// protoValueToAny converts a protobuf Value into a Go any.
+func protoValueToAny(v *pproto.Value) any {
+	if v == nil {
+		return nil
+	}
+	switch x := v.GetValue().(type) {
+	case *pproto.Value_S:
+		return x.S
+	case *pproto.Value_N:
+		return x.N
+	case *pproto.Value_B:
+		return x.B
+	case *pproto.Value_M:
+		m := map[string]any{}
+		for k, vv := range x.M.GetFields() {
+			m[k] = protoValueToAny(vv)
+		}
+		return m
+	case *pproto.Value_L:
+		var lst []any
+		for _, vv := range x.L.GetValues() {
+			lst = append(lst, protoValueToAny(vv))
+		}
+		return lst
+	default:
+		return nil
+	}
+}
+
+// protoMapToGo converts a protobuf map[string]*Value to map[string]any for templating.
+func protoMapToGo(m map[string]*pproto.Value) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = protoValueToAny(v)
+	}
+	return out
+}
+
 // Execute now supports pausing and resuming at await_event.
-func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string]any) (map[string]any, error) {
+func (e *Engine) Execute(ctx context.Context, flow *pproto.Flow, event map[string]any) (map[string]any, error) {
 	if flow == nil {
 		return nil, nil
 	}
 	// Initialize outputs and handle empty flow as no-op
 	outputs := make(map[string]any)
-	if len(flow.Steps) == 0 {
+	if len(flow.GetSteps()) == 0 {
 		return outputs, nil
 	}
 	// Collect env secrets and merge with event-supplied secrets
@@ -171,20 +259,20 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	// No need to register helpers; context flattening will expose secrets as top-level keys if needed.
 	stepCtx := &StepContext{
 		Event:   event,
-		Vars:    flow.Vars,
+		Vars:    protoMapToGo(flow.GetVars()),
 		Outputs: outputs,
 		Secrets: secretsMap,
 	}
 
 	// Create and persist the run
-	var runID uuid.UUID = uuid.New()
-	run := &model.Run{
-		ID:        runID,
+	runID := uuid.New()
+	run := &pproto.Run{
+		Id:        runID.String(),
 		FlowName:  flow.Name,
-		Event:     event,
-		Vars:      flow.Vars,
-		Status:    model.RunRunning,
-		StartedAt: time.Now(),
+		Event:     toProtoMap(event),
+		Vars:      flow.GetVars(),
+		Status:    pproto.RunStatus_RUN_STATUS_RUNNING,
+		StartedAt: timestamppb.New(time.Now()),
 	}
 	if err := e.Storage.SaveRun(ctx, run); err != nil {
 		utils.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
@@ -193,34 +281,34 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	outputs, err := e.executeStepsWithPersistence(ctx, flow, stepCtx, 0, runID)
 
 	// On completion, update run status (treat pause as waiting)
-	status := model.RunSucceeded
+	status := pproto.RunStatus_RUN_STATUS_SUCCEEDED
 	if err != nil {
 		if strings.Contains(err.Error(), "await_event pause") {
-			status = model.RunWaiting
+			status = pproto.RunStatus_RUN_STATUS_WAITING
 		} else {
-			status = model.RunFailed
+			status = pproto.RunStatus_RUN_STATUS_FAILED
 		}
 	}
-	run = &model.Run{
-		ID:        runID,
+	run = &pproto.Run{
+		Id:        runID.String(),
 		FlowName:  flow.Name,
-		Event:     event,
-		Vars:      flow.Vars,
+		Event:     toProtoMap(event),
+		Vars:      flow.GetVars(),
 		Status:    status,
-		StartedAt: time.Now(),
-		EndedAt:   ptrTime(time.Now()),
+		StartedAt: timestamppb.New(time.Now()),
+		EndedAt:   timestamppb.New(time.Now()),
 	}
 	if err := e.Storage.SaveRun(ctx, run); err != nil {
 		utils.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
 	}
 
-	if err != nil && len(flow.Catch) > 0 {
+	if err != nil && len(flow.GetCatch()) > 0 {
 		// Run catch steps in defined order if error
 		catchOutputs := map[string]any{}
-		for _, step := range flow.Catch {
-			err2 := e.executeStep(ctx, &step, stepCtx, step.ID)
+		for _, step := range flow.GetCatch() {
+			err2 := e.executeStep(ctx, step, stepCtx, step.GetId())
 			if err2 == nil {
-				catchOutputs[step.ID] = stepCtx.Outputs[step.ID]
+				catchOutputs[step.GetId()] = stepCtx.Outputs[step.GetId()]
 			}
 		}
 		return catchOutputs, err
@@ -228,13 +316,8 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	return outputs, err
 }
 
-// Helper to get pointer to time.Time
-func ptrTime(t time.Time) *time.Time {
-	return &t
-}
-
 // executeStepsWithPersistence executes steps, persisting each step after execution
-func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Flow, stepCtx *StepContext, startIdx int, runID uuid.UUID) (map[string]any, error) {
+func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *pproto.Flow, stepCtx *StepContext, startIdx int, runID uuid.UUID) (map[string]any, error) {
 	if runID == uuid.Nil {
 		runID = runIDFromContext(ctx)
 	}
@@ -249,12 +332,36 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 	//
 	// This will allow block-parallel barriers and keep backward compatibility for parallel: true
 
-	for i := startIdx; i < len(flow.Steps); i++ {
-		step := &flow.Steps[i]
-		if step.AwaitEvent != nil {
+	for i := startIdx; i < len(flow.GetSteps()); i++ {
+		step := flow.GetSteps()[i]
+		// Conditional execution: skip if condition is defined and evaluates to false
+		if cond := step.GetCondition(); cond != "" {
+			// Prepare template data
+			data := make(map[string]any)
+			data["event"] = stepCtx.Event
+			data["vars"] = stepCtx.Vars
+			data["outputs"] = stepCtx.Outputs
+			data["secrets"] = stepCtx.Secrets
+			for id, out := range stepCtx.Outputs {
+				data[id] = out
+			}
+			for key, val := range stepCtx.Vars {
+				data[key] = val
+			}
+			rendered, err := e.Templater.Render(cond, data)
+			if err != nil {
+				return nil, utils.Errorf("failed to render condition for step %s: %w", step.GetId(), err)
+			}
+			b, err := strconv.ParseBool(strings.TrimSpace(rendered))
+			if err != nil || !b {
+				// Skip this step
+				continue
+			}
+		}
+		if step.GetAwaitEvent() != nil {
 			// Render token from match (support template)
-			match := step.AwaitEvent.Match
-			tokenRaw, _ := match["token"].(string)
+			eqMap := step.GetAwaitEvent().GetMatch().GetEquals()
+			tokenRaw := eqMap["token"]
 			if tokenRaw == "" {
 				return nil, utils.Errorf("await_event step missing token in match")
 			}
@@ -275,7 +382,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				}
 			}
 			// DEBUG: Log full context before rendering
-			utils.Debug("About to render template for step %s: data = %#v", step.ID, data)
+			utils.Debug("About to render template for step %s: data = %#v", step.GetId(), data)
 			renderedToken, err := e.Templater.Render(tokenRaw, data)
 			if err != nil {
 				return nil, utils.Errorf("failed to render token template: %w", err)
@@ -287,8 +394,8 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 			if old, exists := e.waiting[token]; exists {
 				if e.Storage != nil {
 					if existingRun, err := e.Storage.GetRun(ctx, old.RunID); err == nil {
-						existingRun.Status = model.RunSkipped
-						existingRun.EndedAt = ptrTime(time.Now())
+						existingRun.Status = pproto.RunStatus_RUN_STATUS_SKIPPED
+						existingRun.EndedAt = timestamppb.New(time.Now())
 						_ = e.Storage.SaveRun(ctx, existingRun)
 					}
 					_ = e.Storage.DeletePausedRun(token)
@@ -315,28 +422,21 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 				}
 				e.Resume(ctx, token, resumeEvent)
 			})
-			return nil, utils.Errorf("step %s is waiting for event (await_event pause)", step.ID)
+			return nil, utils.Errorf("step %s is waiting for event (await_event pause)", step.GetId())
 		}
-		err := e.executeStep(ctx, step, stepCtx, step.ID)
+		err := e.executeStep(ctx, step, stepCtx, step.GetId())
 		// Persist the step after execution
 		if e.Storage != nil {
-			var stepOutputs map[string]any
-			if out, ok := stepCtx.Outputs[step.ID].(map[string]any); ok {
-				stepOutputs = out
-			} else {
-				stepOutputs = nil
-			}
-			srun := &model.StepRun{
-				ID:        uuid.New(),
-				RunID:     runID,
-				StepName:  step.ID,
-				Status:    model.StepSucceeded,
-				StartedAt: time.Now(),
-				EndedAt:   ptrTime(time.Now()),
-				Outputs:   stepOutputs,
+			srun := &pproto.StepRun{
+				Id:        uuid.New().String(),
+				RunId:     runID.String(),
+				StepName:  step.GetId(),
+				Status:    pproto.StepStatus_STEP_STATUS_SUCCEEDED,
+				StartedAt: timestamppb.New(time.Now()),
+				EndedAt:   timestamppb.New(time.Now()),
 			}
 			if err != nil {
-				srun.Status = model.StepFailed
+				srun.Status = pproto.StepStatus_STEP_STATUS_FAILED
 				srun.Error = err.Error()
 			}
 			if err := e.Storage.SaveStep(ctx, srun); err != nil {
@@ -391,18 +491,18 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 	e.mu.Unlock()
 	// Update the run in storage after resume
 	if e.Storage != nil {
-		status := model.RunSucceeded
+		status := pproto.RunStatus_RUN_STATUS_SUCCEEDED
 		if err != nil {
-			status = model.RunFailed
+			status = pproto.RunStatus_RUN_STATUS_FAILED
 		}
-		run := &model.Run{
-			ID:        paused.RunID,
+		run := &pproto.Run{
+			Id:        paused.RunID.String(),
 			FlowName:  paused.Flow.Name,
-			Event:     paused.StepCtx.Event,
-			Vars:      paused.StepCtx.Vars,
+			Event:     toProtoMap(paused.StepCtx.Event),
+			Vars:      toProtoMap(paused.StepCtx.Vars),
 			Status:    status,
-			StartedAt: time.Now(),
-			EndedAt:   ptrTime(time.Now()),
+			StartedAt: timestamppb.New(time.Now()),
+			EndedAt:   timestamppb.New(time.Now()),
 		}
 		if err := e.Storage.SaveRun(ctx, run); err != nil {
 			utils.ErrorCtx(ctx, "SaveRun failed: %v", "error", err)
@@ -422,24 +522,23 @@ func (e *Engine) GetCompletedOutputs(token string) map[string]any {
 }
 
 // executeStep runs a single step (use/with) and stores output
-func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
+func (e *Engine) executeStep(ctx context.Context, step *pproto.Step, stepCtx *StepContext, stepID string) error {
 	// Nested parallel block logic
-	if step.Parallel && len(step.Steps) > 0 {
+	if step.GetParallel() != nil && len(step.GetParallel().GetSteps()) > 0 {
 		var wg sync.WaitGroup
-		errChan := make(chan error, len(step.Steps))
+		errChan := make(chan error, len(step.GetParallel().GetSteps()))
 		outputs := make(map[string]any)
 		mu := sync.Mutex{}
-		for i := range step.Steps {
-			child := &step.Steps[i]
+		for _, child := range step.GetParallel().GetSteps() {
 			wg.Add(1)
-			go func(child *model.Step) {
+			go func(child *pproto.Step) {
 				defer wg.Done()
-				if err := e.executeStep(ctx, child, stepCtx, child.ID); err != nil {
+				if err := e.executeStep(ctx, child, stepCtx, child.GetId()); err != nil {
 					errChan <- err
 					return
 				}
 				mu.Lock()
-				outputs[child.ID] = stepCtx.Outputs[child.ID]
+				outputs[child.GetId()] = stepCtx.Outputs[child.GetId()]
 				mu.Unlock()
 			}(child)
 		}
@@ -453,78 +552,50 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		stepCtx.Outputs[stepID] = outputs
 		return nil
 	}
-	// Sequential block (non-parallel) for steps
-	if !step.Parallel && len(step.Steps) > 0 {
-		outputs := make(map[string]any)
-		for i := range step.Steps {
-			child := &step.Steps[i]
-			if err := e.executeStep(ctx, child, stepCtx, child.ID); err != nil {
-				return err
-			}
-			outputs[child.ID] = stepCtx.Outputs[child.ID]
-		}
-		stepCtx.Outputs[stepID] = outputs
-		return nil
-	}
 	// Foreach logic: handle steps with Foreach and Do
-	if step.Foreach != "" {
-		s := strings.TrimSpace(step.Foreach)
-		if strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}") {
-			key := strings.TrimSpace(s[2 : len(s)-2])
-			val, ok := stepCtx.Event[key]
-			if !ok {
-				return utils.Errorf("foreach variable not found: %s", key)
-			}
-			list, ok := val.([]any)
-			if !ok {
-				return utils.Errorf("foreach variable %s is not a list", key)
-			}
-			if len(list) == 0 {
-				stepCtx.Outputs[stepID] = make(map[string]any)
-				return nil
-			}
-			if step.Parallel {
-				var wg sync.WaitGroup
-				errChan := make(chan error, len(list))
-				for range list {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
-						for _, inner := range step.Do {
-							if err := e.executeStep(ctx, &inner, stepCtx, inner.ID); err != nil {
-								errChan <- err
-								return
-							}
-						}
-					}()
-				}
-				wg.Wait()
-				close(errChan)
-				for err := range errChan {
-					if err != nil {
-						return err
-					}
-				}
-			} else {
-				for range list {
-					for _, inner := range step.Do {
-						if err := e.executeStep(ctx, &inner, stepCtx, inner.ID); err != nil {
-							return err
-						}
-					}
-				}
-			}
-			stepCtx.Outputs[stepID] = make(map[string]any)
-			return nil
+	if f := step.GetForeach(); f != nil {
+		// Evaluate list expression as variable name
+		listKey := f.GetListExpr()
+		itemsRaw, ok := stepCtx.Vars[listKey]
+		if !ok {
+			return utils.Errorf("foreach list variable not found: %s", listKey)
 		}
-		return utils.Errorf("unsupported foreach expression: %s", step.Foreach)
-	}
-	if step.Use == "" {
+		items, ok := itemsRaw.([]any)
+		if !ok {
+			return utils.Errorf("foreach variable %s is not a list", listKey)
+		}
+		// Determine alias for each item
+		alias := f.GetAlias()
+		if alias == "" {
+			alias = listKey
+		}
+		// Collect aggregated outputs for child steps
+		aggregated := make(map[string][]any)
+		for _, item := range items {
+			// Set alias in vars for nested templating
+			stepCtx.Vars[alias] = item
+			for _, child := range f.GetSteps() {
+				if err := e.executeStep(ctx, child, stepCtx, child.GetId()); err != nil {
+					return err
+				}
+				aggregated[child.GetId()] = append(aggregated[child.GetId()], stepCtx.Outputs[child.GetId()])
+			}
+		}
+		// Cleanup alias variable
+		delete(stepCtx.Vars, alias)
+		// Write aggregated outputs back to context
+		for childID, arr := range aggregated {
+			stepCtx.Outputs[childID] = arr
+		}
 		return nil
 	}
-	adapterInst, ok := e.Adapters.Get(step.Use)
+	if step.GetExec().GetUse() == "" {
+		return nil
+	}
+	execUse := step.GetExec().GetUse()
+	adapterInst, ok := e.Adapters.Get(execUse)
 	if !ok {
-		if strings.HasPrefix(step.Use, "mcp://") {
+		if strings.HasPrefix(execUse, "mcp://") {
 			adapterInst, ok = e.Adapters.Get("mcp")
 			if !ok {
 				stepCtx.Outputs[stepID] = make(map[string]any)
@@ -532,11 +603,11 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			}
 		} else {
 			stepCtx.Outputs[stepID] = make(map[string]any)
-			return utils.Errorf("adapter not found: %s", step.Use)
+			return utils.Errorf("adapter not found: %s", execUse)
 		}
 	}
 	inputs := make(map[string]any)
-	for k, v := range step.With {
+	for k, v := range step.GetExec().GetWith() {
 		// Prepare template data, flattening previous step outputs for direct access
 		data := make(map[string]any)
 		data["event"] = stepCtx.Event
@@ -589,9 +660,9 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	}
 	// Optionally, add a generic debug log for all tool payloads if desired:
 	payload, _ := json.Marshal(inputs)
-	utils.Debug("tool %s payload: %s", step.Use, payload)
-	if strings.HasPrefix(step.Use, "mcp://") {
-		inputs["__use"] = step.Use
+	utils.Debug("tool %s payload: %s", execUse, payload)
+	if strings.HasPrefix(execUse, "mcp://") {
+		inputs["__use"] = execUse
 	}
 	outputs, err := adapterInst.Execute(ctx, inputs)
 	if err != nil {
@@ -652,21 +723,21 @@ func runIDFromContext(ctx context.Context) uuid.UUID {
 }
 
 // ListRuns returns all runs, using storage if available, otherwise in-memory
-func (e *Engine) ListRuns(ctx context.Context) ([]*model.Run, error) {
+func (e *Engine) ListRuns(ctx context.Context) ([]*pproto.Run, error) {
 	return e.Storage.ListRuns(ctx)
 }
 
 // GetRunByID returns a run by ID, using storage if available
-func (e *Engine) GetRunByID(ctx context.Context, id uuid.UUID) (*model.Run, error) {
+func (e *Engine) GetRunByID(ctx context.Context, id uuid.UUID) (*pproto.Run, error) {
 	run, err := e.Storage.GetRun(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	steps, err := e.Storage.GetSteps(ctx, id)
 	if err == nil {
-		var persisted []model.StepRun
+		var persisted []*pproto.StepRun
 		for _, s := range steps {
-			persisted = append(persisted, *s)
+			persisted = append(persisted, s)
 		}
 		run.Steps = persisted
 	}

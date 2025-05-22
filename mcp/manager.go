@@ -10,36 +10,53 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/model"
+	pproto "github.com/awantoch/beemflow/spec/proto"
 	"github.com/awantoch/beemflow/utils"
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 )
 
 // FindMCPServersInFlow scans a Flow for MCP tool usage and returns a set of required MCP server addresses.
-func FindMCPServersInFlow(flow *model.Flow) map[string]bool {
-	servers := make(map[string]bool)
-	for _, step := range flow.Steps {
-		findMCPInStep(step, servers)
-	}
-	for _, step := range flow.Catch {
-		findMCPInStep(step, servers)
-	}
-	return servers
-}
-
-func findMCPInStep(step model.Step, servers map[string]bool) {
-	if strings.HasPrefix(step.Use, "mcp://") {
-		// mcp://server/tool
-		parts := strings.SplitN(strings.TrimPrefix(step.Use, "mcp://"), "/", 2)
-		if len(parts) > 0 {
-			servers[parts[0]] = true
+func FindMCPServersInFlow(flow *pproto.Flow) map[string]bool {
+	servers := map[string]bool{}
+	// scan a single step for mcp:// URIs
+	var scanStep func(step *pproto.Step)
+	scanExec := func(use string) {
+		const prefix = "mcp://"
+		if strings.HasPrefix(use, prefix) {
+			rest := use[len(prefix):]
+			parts := strings.SplitN(rest, "/", 2)
+			if len(parts) > 0 && parts[0] != "" {
+				servers[parts[0]] = true
+			}
 		}
 	}
-	// Recursively check nested steps (foreach, do, etc.)
-	for _, sub := range step.Do {
-		findMCPInStep(sub, servers)
+	scanStep = func(s *pproto.Step) {
+		if s.GetExec() != nil {
+			scanExec(s.GetExec().GetUse())
+		}
+		if p := s.GetParallel(); p != nil {
+			for _, child := range p.GetSteps() {
+				scanStep(child)
+			}
+		}
+		if f := s.GetForeach(); f != nil {
+			for _, child := range f.GetSteps() {
+				scanStep(child)
+			}
+		}
+		// catch blocks inside Execute.CatchBlock skip; not relevant here
 	}
+	if flow == nil {
+		return servers
+	}
+	for _, s := range flow.GetSteps() {
+		scanStep(s)
+	}
+	for _, s := range flow.GetCatch() {
+		scanStep(s)
+	}
+	return servers
 }
 
 // NewMCPCommand creates an *exec.Cmd for the given MCP server config, merging environment variables.
@@ -66,7 +83,7 @@ func NewMCPCommand(info config.MCPServerConfig) *exec.Cmd {
 }
 
 // EnsureMCPServersWithTimeout uses runtime configuration to check and run all MCP servers referenced in the flow, with a configurable timeout.
-func EnsureMCPServersWithTimeout(ctx context.Context, flow *model.Flow, cfg *config.Config, timeout time.Duration) error {
+func EnsureMCPServersWithTimeout(ctx context.Context, flow *pproto.Flow, cfg *config.Config, timeout time.Duration) error {
 	servers := FindMCPServersInFlow(flow)
 	for server := range servers {
 		info, err := config.GetMergedMCPServerConfig(cfg, server)
@@ -110,7 +127,7 @@ func EnsureMCPServersWithTimeout(ctx context.Context, flow *model.Flow, cfg *con
 }
 
 // EnsureMCPServers uses a default timeout of 15s for backward compatibility.
-func EnsureMCPServers(ctx context.Context, flow *model.Flow, cfg *config.Config) error {
+func EnsureMCPServers(ctx context.Context, flow *pproto.Flow, cfg *config.Config) error {
 	return EnsureMCPServersWithTimeout(ctx, flow, cfg, 15*time.Second)
 }
 

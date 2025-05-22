@@ -5,36 +5,40 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/awantoch/beemflow/model"
+	pproto "github.com/awantoch/beemflow/spec/proto"
 	"github.com/google/uuid"
 )
 
 // MemoryStorage implements Storage in-memory (for fallback/dev mode)
 type MemoryStorage struct {
-	runs   map[uuid.UUID]*model.Run
-	steps  map[uuid.UUID][]*model.StepRun // runID -> steps
-	mu     sync.RWMutex                   // RWMutex is sufficient for most use cases; consider context-aware primitives if high concurrency or cancellation is needed.
-	paused map[string]any                 // token -> paused run
+	runs   map[uuid.UUID]*pproto.Run
+	steps  map[uuid.UUID][]*pproto.StepRun // runID -> steps
+	mu     sync.RWMutex                    // RWMutex is sufficient for most use cases; consider context-aware primitives if high concurrency or cancellation is needed.
+	paused map[string]any                  // token -> paused run
 }
 
 var _ Storage = (*MemoryStorage)(nil)
 
 func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{
-		runs:   make(map[uuid.UUID]*model.Run),
-		steps:  make(map[uuid.UUID][]*model.StepRun),
+		runs:   make(map[uuid.UUID]*pproto.Run),
+		steps:  make(map[uuid.UUID][]*pproto.StepRun),
 		paused: make(map[string]any),
 	}
 }
 
-func (m *MemoryStorage) SaveRun(ctx context.Context, run *model.Run) error {
+func (m *MemoryStorage) SaveRun(ctx context.Context, run *pproto.Run) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.runs[run.ID] = run
+	id, err := uuid.Parse(run.Id)
+	if err != nil {
+		return err
+	}
+	m.runs[id] = run
 	return nil
 }
 
-func (m *MemoryStorage) GetRun(ctx context.Context, id uuid.UUID) (*model.Run, error) {
+func (m *MemoryStorage) GetRun(ctx context.Context, id uuid.UUID) (*pproto.Run, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	run, ok := m.runs[id]
@@ -44,14 +48,18 @@ func (m *MemoryStorage) GetRun(ctx context.Context, id uuid.UUID) (*model.Run, e
 	return run, nil
 }
 
-func (m *MemoryStorage) SaveStep(ctx context.Context, step *model.StepRun) error {
+func (m *MemoryStorage) SaveStep(ctx context.Context, step *pproto.StepRun) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.steps[step.RunID] = append(m.steps[step.RunID], step)
+	runID, err := uuid.Parse(step.RunId)
+	if err != nil {
+		return err
+	}
+	m.steps[runID] = append(m.steps[runID], step)
 	return nil
 }
 
-func (m *MemoryStorage) GetSteps(ctx context.Context, runID uuid.UUID) ([]*model.StepRun, error) {
+func (m *MemoryStorage) GetSteps(ctx context.Context, runID uuid.UUID) ([]*pproto.StepRun, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.steps[runID], nil
@@ -61,14 +69,14 @@ func (m *MemoryStorage) RegisterWait(ctx context.Context, token uuid.UUID, wakeA
 	return nil
 }
 
-func (m *MemoryStorage) ResolveWait(ctx context.Context, token uuid.UUID) (*model.Run, error) {
+func (m *MemoryStorage) ResolveWait(ctx context.Context, token uuid.UUID) (*pproto.Run, error) {
 	return nil, nil
 }
 
-func (m *MemoryStorage) ListRuns(ctx context.Context) ([]*model.Run, error) {
+func (m *MemoryStorage) ListRuns(ctx context.Context) ([]*pproto.Run, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	var out []*model.Run
+	var out []*pproto.Run
 	for _, run := range m.runs {
 		out = append(out, run)
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 func TestExportMermaid_EmptyFlow(t *testing.T) {
-	f := &model.Flow{Name: "f"}
+	f := &pproto.Flow{Name: "f"}
 	s, err := ExportMermaid(f)
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
@@ -19,7 +19,7 @@ func TestExportMermaid_EmptyFlow(t *testing.T) {
 }
 
 func TestExportMermaid_RealFlow(t *testing.T) {
-	f := &model.Flow{
+	f := &pproto.Flow{
 		Name: "tweet_to_instagram",
 		Steps: []model.Step{
 			{ID: "fetch_tweet", Use: "twitter.tweet.get"},
@@ -40,7 +40,7 @@ func TestExportMermaid_RealFlow(t *testing.T) {
 }
 
 func TestNewGraphSequential(t *testing.T) {
-	f := &model.Flow{
+	f := &pproto.Flow{
 		Name: "seq_flow",
 		Steps: []model.Step{
 			{ID: "a"},
@@ -64,7 +64,7 @@ func TestNewGraphSequential(t *testing.T) {
 }
 
 func TestNewGraphDependsOn(t *testing.T) {
-	f := &model.Flow{
+	f := &pproto.Flow{
 		Name: "dep_flow",
 		Steps: []model.Step{
 			{ID: "first"},
