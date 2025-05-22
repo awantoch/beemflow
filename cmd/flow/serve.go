@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/awantoch/beemflow/config"
 	beemhttp "github.com/awantoch/beemflow/http"
@@ -11,10 +13,13 @@ import (
 
 // newServeCmd creates the 'serve' subcommand.
 func newServeCmd() *cobra.Command {
+	var addr string
+
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the BeemFlow runtime HTTP server",
 		Run: func(cmd *cobra.Command, args []string) {
+
 			cfg, err := config.LoadConfig(config.DefaultConfigPath)
 			if err != nil {
 				if os.IsNotExist(err) {
@@ -33,6 +38,30 @@ func newServeCmd() *cobra.Command {
 				utils.Error("Config validation failed: %v", err)
 				exit(1)
 			}
+
+			// Apply the addr flag if provided
+			if addr != "" {
+				if cfg.HTTP == nil {
+					cfg.HTTP = &config.HTTPConfig{}
+				}
+
+				// Parse host:port format
+				host, portStr, found := strings.Cut(addr, ":")
+				if !found {
+					utils.Error("Invalid address format: %s (expected host:port)", addr)
+					exit(1)
+				}
+
+				port, err := strconv.Atoi(portStr)
+				if err != nil {
+					utils.Error("Invalid port number: %v", err)
+					exit(1)
+				}
+
+				cfg.HTTP.Host = host
+				cfg.HTTP.Port = port
+			}
+
 			utils.Info("Starting BeemFlow HTTP server...")
 			// If stdout is not a terminal (e.g., piped in tests), skip starting the server to avoid blocking
 			if fi, statErr := os.Stdout.Stat(); statErr == nil && fi.Mode()&os.ModeCharDevice == 0 {
@@ -45,5 +74,9 @@ func newServeCmd() *cobra.Command {
 			}
 		},
 	}
+
+	// Add local flags
+	cmd.Flags().StringVar(&addr, "addr", "", "Listen address in the format host:port")
+
 	return cmd
 }

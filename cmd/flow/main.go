@@ -1,13 +1,17 @@
 package main
 
 import (
+	"os"
+
 	"github.com/joho/godotenv"
 )
 
 func main() {
 	// Load .env as early as possible!
 	_ = godotenv.Load()
-	if err := NewRootCmd().Execute(); err != nil {
-		exit(1)
+
+	rootCmd := NewRootCmd()
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
 	}
 }

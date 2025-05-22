@@ -44,23 +44,27 @@ func NewRootCmd() *cobra.Command {
 			api.SetFlowsDir(flowsDir)
 		}
 	}
-	rootCmd.AddCommand(
-		newServeCmd(),
-		newRunCmd(),
-		newLintCmd(),
-		newValidateCmd(),
-		newGraphCmd(),
-		newTestCmd(),
-		newToolCmd(),
-		newMCPCmd(),
-		newMetadataCmd(),
-		newSpecCmd(),
-	)
-	// Register all CLI commands for metadata discovery
-	cliMetas := collectCobra(rootCmd)
-	for _, m := range cliMetas {
-		registry.RegisterInterface(m)
+
+	// Create the service
+	svc := api.NewFlowService()
+
+	// Create command constructors
+	constructors := api.CommandConstructors{
+		NewServeCmd:    newServeCmd,
+		NewRunCmd:      newRunCmd,
+		NewLintCmd:     newLintCmd,
+		NewValidateCmd: newValidateCmd,
+		NewGraphCmd:    newGraphCmd,
+		NewTestCmd:     newTestCmd,
+		NewToolCmd:     newToolCmd,
+		NewMCPCmd:      newMCPCmd,
+		NewMetadataCmd: newMetadataCmd,
+		NewSpecCmd:     newSpecCmd,
 	}
+
+	// Attach all CLI commands
+	api.AttachCLICommands(rootCmd, svc, constructors)
+
 	return rootCmd
 }
 

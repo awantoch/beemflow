@@ -19,8 +19,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// getStoreFromConfig returns a storage instance based on config, or an error if the driver is unknown.
-func getStoreFromConfig(cfg *config.Config) (storage.Storage, error) {
+// GetStoreFromConfig returns a storage instance based on config, or an error if the driver is unknown.
+// This is a utility function that can be used by other packages.
+func GetStoreFromConfig(cfg *config.Config) (storage.Storage, error) {
 	if cfg != nil && cfg.Storage.Driver != "" {
 		switch strings.ToLower(cfg.Storage.Driver) {
 		case "sqlite":
@@ -130,7 +131,7 @@ func StartRun(ctx context.Context, flowName string, eventData map[string]any) (u
 		return uuid.Nil, err
 	}
 	// Initialize storage
-	store, err := getStoreFromConfig(cfg)
+	store, err := GetStoreFromConfig(cfg)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -203,7 +204,7 @@ func GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
 		return nil, err
 	}
 	// Initialize storage
-	store, err := getStoreFromConfig(cfg)
+	store, err := GetStoreFromConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +229,7 @@ func ListRuns(ctx context.Context) ([]*model.Run, error) {
 		return nil, err
 	}
 	// Initialize storage
-	store, err := getStoreFromConfig(cfg)
+	store, err := GetStoreFromConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +263,7 @@ func ResumeRun(ctx context.Context, token string, eventData map[string]any) (map
 		return nil, err
 	}
 	// Initialize storage
-	store, err := getStoreFromConfig(cfg)
+	store, err := GetStoreFromConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +291,7 @@ func RunSpec(ctx context.Context, flow *model.Flow, eventData map[string]any) (u
 		return uuid.Nil, nil, err
 	}
 	// Initialize storage
-	store, err := getStoreFromConfig(cfg)
+	store, err := GetStoreFromConfig(cfg)
 	if err != nil {
 		return uuid.Nil, nil, err
 	}

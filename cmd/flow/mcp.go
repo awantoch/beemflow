@@ -145,7 +145,8 @@ func newMCPServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Serve BeemFlow as an MCP server (HTTP or stdio)",
 		Run: func(cmd *cobra.Command, args []string) {
-			tools := buildMCPToolRegistrations()
+			svc := api.NewFlowService()
+			tools := api.BuildMCPToolRegistrations(svc)
 			if err := mcpserver.Serve(configPath, debug, stdio, addr, tools); err != nil {
 				log.Fatalf("MCP server failed: %v", err)
 			}
