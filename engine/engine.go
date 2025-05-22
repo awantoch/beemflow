@@ -37,6 +37,8 @@ type Engine struct {
 	mu      sync.Mutex
 	// Store completed outputs for resumed runs (token -> outputs)
 	completedOutputs map[string]map[string]any
+	// Mutex to protect concurrent access to StepContext maps
+	contextMu sync.RWMutex
 	// NOTE: Storage, blob, eventbus, and cron are pluggable; in-memory is the default for now.
 	// Call Close() to clean up resources (e.g., MCPAdapter subprocesses) when done.
 }
@@ -116,6 +118,7 @@ func NewEngineWithBlobStore(ctx context.Context, blobStore blob.BlobStore) *Engi
 		waiting:          make(map[string]*PausedRun),
 		completedOutputs: make(map[string]map[string]any),
 		Storage:          storage.NewMemoryStorage(),
+		contextMu:        sync.RWMutex{},
 	}
 }
 
@@ -135,6 +138,7 @@ func NewEngine(
 		Storage:          storage,
 		waiting:          make(map[string]*PausedRun),
 		completedOutputs: make(map[string]map[string]any),
+		contextMu:        sync.RWMutex{},
 	}
 }
 
@@ -260,10 +264,14 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 			}
 			// Render the token template
 			data := make(map[string]any)
+
+			// Safely get context data
+			e.contextMu.RLock()
 			data["event"] = stepCtx.Event
 			data["vars"] = stepCtx.Vars
 			data["outputs"] = stepCtx.Outputs
 			data["secrets"] = stepCtx.Secrets
+
 			// Flatten outputs into context for template rendering
 			for id, out := range stepCtx.Outputs {
 				data[id] = out
@@ -274,6 +282,8 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 					data[key] = val
 				}
 			}
+			e.contextMu.RUnlock()
+
 			// DEBUG: Log full context before rendering
 			utils.Debug("About to render template for step %s: data = %#v", step.ID, data)
 			renderedToken, err := e.Templater.Render(tokenRaw, data)
@@ -321,11 +331,14 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 		// Persist the step after execution
 		if e.Storage != nil {
 			var stepOutputs map[string]any
+			e.contextMu.RLock()
 			if out, ok := stepCtx.Outputs[step.ID].(map[string]any); ok {
 				stepOutputs = out
 			} else {
 				stepOutputs = nil
 			}
+			e.contextMu.RUnlock()
+
 			srun := &model.StepRun{
 				ID:        uuid.New(),
 				RunID:     runID,
@@ -344,10 +357,25 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 			}
 		}
 		if err != nil {
-			return stepCtx.Outputs, err
+			// Make a deep copy of outputs to avoid race conditions
+			e.contextMu.RLock()
+			result := make(map[string]any, len(stepCtx.Outputs))
+			for k, v := range stepCtx.Outputs {
+				result[k] = v
+			}
+			e.contextMu.RUnlock()
+			return result, err
 		}
 	}
-	return stepCtx.Outputs, nil
+
+	// Make a deep copy of outputs to avoid race conditions
+	e.contextMu.RLock()
+	result := make(map[string]any, len(stepCtx.Outputs))
+	for k, v := range stepCtx.Outputs {
+		result[k] = v
+	}
+	e.contextMu.RUnlock()
+	return result, nil
 }
 
 // Resume resumes a paused run with the given token and event.
@@ -364,19 +392,34 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 		_ = e.Storage.DeletePausedRun(token)
 	}
 	e.mu.Unlock()
-	// Update event context
+
+	// Update event context safely
+	e.contextMu.Lock()
 	for k, v := range resumeEvent {
 		paused.StepCtx.Event[k] = v
 	}
+	e.contextMu.Unlock()
+
+	// Log outputs map before resume (with safe access)
+	e.contextMu.RLock()
 	utils.Debug("Outputs map before resume for token %s: %+v", token, paused.StepCtx.Outputs)
+	e.contextMu.RUnlock()
+
 	// Continue execution from next step
 	ctx = context.WithValue(ctx, runIDKey, paused.RunID)
 	outputs, err := e.executeStepsWithPersistence(ctx, paused.Flow, paused.StepCtx, paused.StepIdx+1, paused.RunID)
+
 	// Merge outputs from before and after resume
 	allOutputs := make(map[string]any)
+
+	// Get previous outputs safely
+	e.contextMu.RLock()
 	for k, v := range paused.StepCtx.Outputs {
 		allOutputs[k] = v
 	}
+	e.contextMu.RUnlock()
+
+	// Add new outputs
 	if outputs != nil {
 		for k, v := range outputs {
 			allOutputs[k] = v
@@ -385,21 +428,31 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 		// If both are nil/empty, ensure we store at least an empty map
 		allOutputs = map[string]any{}
 	}
+
 	utils.Debug("Outputs map after resume for token %s: %+v", token, allOutputs)
+
 	e.mu.Lock()
 	e.completedOutputs[token] = allOutputs
 	e.mu.Unlock()
+
 	// Update the run in storage after resume
 	if e.Storage != nil {
 		status := model.RunSucceeded
 		if err != nil {
 			status = model.RunFailed
 		}
+
+		// Safely get event and vars
+		e.contextMu.RLock()
+		event := paused.StepCtx.Event
+		vars := paused.StepCtx.Vars
+		e.contextMu.RUnlock()
+
 		run := &model.Run{
 			ID:        paused.RunID,
 			FlowName:  paused.Flow.Name,
-			Event:     paused.StepCtx.Event,
-			Vars:      paused.StepCtx.Vars,
+			Event:     event,
+			Vars:      vars,
 			Status:    status,
 			StartedAt: time.Now(),
 			EndedAt:   ptrTime(time.Now()),
@@ -428,7 +481,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		var wg sync.WaitGroup
 		errChan := make(chan error, len(step.Steps))
 		outputs := make(map[string]any)
-		mu := sync.Mutex{}
+
 		for i := range step.Steps {
 			child := &step.Steps[i]
 			wg.Add(1)
@@ -438,9 +491,18 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 					errChan <- err
 					return
 				}
-				mu.Lock()
-				outputs[child.ID] = stepCtx.Outputs[child.ID]
-				mu.Unlock()
+
+				// Safely get the output using the engine's contextMu
+				e.contextMu.RLock()
+				childOutput, ok := stepCtx.Outputs[child.ID]
+				e.contextMu.RUnlock()
+
+				if ok {
+					// Use a separate mutex for the local outputs map
+					e.contextMu.Lock()
+					outputs[child.ID] = childOutput
+					e.contextMu.Unlock()
+				}
 			}(child)
 		}
 		wg.Wait()
@@ -450,9 +512,14 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 				return err
 			}
 		}
+
+		// Now that all goroutines are done, safely update stepCtx.Outputs
+		e.contextMu.Lock()
 		stepCtx.Outputs[stepID] = outputs
+		e.contextMu.Unlock()
 		return nil
 	}
+
 	// Sequential block (non-parallel) for steps
 	if !step.Parallel && len(step.Steps) > 0 {
 		outputs := make(map[string]any)
@@ -461,17 +528,31 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			if err := e.executeStep(ctx, child, stepCtx, child.ID); err != nil {
 				return err
 			}
-			outputs[child.ID] = stepCtx.Outputs[child.ID]
+			e.contextMu.RLock()
+			childOutput := stepCtx.Outputs[child.ID]
+			e.contextMu.RUnlock()
+			outputs[child.ID] = childOutput
 		}
+		e.contextMu.Lock()
 		stepCtx.Outputs[stepID] = outputs
+		e.contextMu.Unlock()
 		return nil
 	}
+
 	// Foreach logic: handle steps with Foreach and Do
 	if step.Foreach != "" {
+		e.contextMu.RLock()
+		event := stepCtx.Event
+		e.contextMu.RUnlock()
+
 		s := strings.TrimSpace(step.Foreach)
 		if strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}") {
 			key := strings.TrimSpace(s[2 : len(s)-2])
-			val, ok := stepCtx.Event[key]
+
+			e.contextMu.RLock()
+			val, ok := event[key]
+			e.contextMu.RUnlock()
+
 			if !ok {
 				return utils.Errorf("foreach variable not found: %s", key)
 			}
@@ -480,18 +561,25 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 				return utils.Errorf("foreach variable %s is not a list", key)
 			}
 			if len(list) == 0 {
+				e.contextMu.Lock()
 				stepCtx.Outputs[stepID] = make(map[string]any)
+				e.contextMu.Unlock()
 				return nil
 			}
 			if step.Parallel {
 				var wg sync.WaitGroup
 				errChan := make(chan error, len(list))
+
 				for range list {
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
 						for _, inner := range step.Do {
-							if err := e.executeStep(ctx, &inner, stepCtx, inner.ID); err != nil {
+							// Create a copy of inner to avoid race conditions
+							innerCopy := inner
+
+							// No need for additional locking since executeStep will handle it
+							if err := e.executeStep(ctx, &innerCopy, stepCtx, inner.ID); err != nil {
 								errChan <- err
 								return
 							}
@@ -514,7 +602,9 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 					}
 				}
 			}
+			e.contextMu.Lock()
 			stepCtx.Outputs[stepID] = make(map[string]any)
+			e.contextMu.Unlock()
 			return nil
 		}
 		return utils.Errorf("unsupported foreach expression: %s", step.Foreach)
@@ -527,28 +617,47 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		if strings.HasPrefix(step.Use, "mcp://") {
 			adapterInst, ok = e.Adapters.Get("mcp")
 			if !ok {
+				e.contextMu.Lock()
 				stepCtx.Outputs[stepID] = make(map[string]any)
+				e.contextMu.Unlock()
 				return utils.Errorf("MCPAdapter not registered")
 			}
 		} else {
+			e.contextMu.Lock()
 			stepCtx.Outputs[stepID] = make(map[string]any)
+			e.contextMu.Unlock()
 			return utils.Errorf("adapter not found: %s", step.Use)
 		}
 	}
+
+	// Safely get context data under read lock
+	e.contextMu.RLock()
+	event := stepCtx.Event
+	vars := stepCtx.Vars
+	outputs := map[string]any{}
+	for k, v := range stepCtx.Outputs {
+		outputs[k] = v
+	}
+	secrets := map[string]any{}
+	for k, v := range stepCtx.Secrets {
+		secrets[k] = v
+	}
+	e.contextMu.RUnlock()
+
 	inputs := make(map[string]any)
 	for k, v := range step.With {
 		// Prepare template data, flattening previous step outputs for direct access
 		data := make(map[string]any)
-		data["event"] = stepCtx.Event
-		data["vars"] = stepCtx.Vars
-		data["outputs"] = stepCtx.Outputs
-		data["secrets"] = stepCtx.Secrets
-		for id, out := range stepCtx.Outputs {
+		data["event"] = event
+		data["vars"] = vars
+		data["outputs"] = outputs
+		data["secrets"] = secrets
+		for id, out := range outputs {
 			data[id] = out
 		}
 		// --- FLATTEN VARS INTO TOP-LEVEL CONTEXT ---
-		if stepCtx.Vars != nil {
-			for key, val := range stepCtx.Vars {
+		if vars != nil {
+			for key, val := range vars {
 				data[key] = val
 			}
 		}
@@ -578,7 +687,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 				if prop, ok := params[key].(map[string]any); ok {
 					if def, ok := prop["default"].(map[string]any); ok {
 						if envVar, ok := def["$env"].(string); ok {
-							if val, ok := stepCtx.Secrets[envVar]; ok {
+							if val, ok := secrets[envVar]; ok {
 								inputs[key] = val
 							}
 						}
@@ -595,11 +704,17 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	}
 	outputs, err := adapterInst.Execute(ctx, inputs)
 	if err != nil {
+		e.contextMu.Lock()
 		stepCtx.Outputs[stepID] = outputs
+		e.contextMu.Unlock()
 		return utils.Errorf("step %s failed: %w", stepID, err)
 	}
 	utils.Debug("Writing outputs for step %s: %+v", stepID, outputs)
+
+	e.contextMu.Lock()
 	stepCtx.Outputs[stepID] = outputs
+	e.contextMu.Unlock()
+
 	utils.Debug("Outputs map after step %s: %+v", stepID, stepCtx.Outputs)
 	return nil
 }
