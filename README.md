@@ -23,11 +23,12 @@ Write a single YAML file → run it locally, over REST, or through the Model Con
     - [📬 Invoice Chaser – Recover Aged AR in \< 24 h](#-invoice-chaser--recover-aged-ar-in--24-h)
   - [Anatomy of a Flow](#anatomy-of-a-flow)
   - [Flows as Functions: Universal, Protocolized, and Language-Native](#flows-as-functions-universal-protocolized-and-language-native)
-    - [YAML](#yaml)
-    - [Go](#go)
-    - [TypeScript](#typescript)
-    - [Rust](#rust)
-    - [Python](#python)
+    - [Protocol Language Implementation Comparison](#protocol-language-implementation-comparison)
+      - [Go: Native Structs](#go-native-structs)
+      - [TypeScript: Type-Safe Builders](#typescript-type-safe-builders)
+      - [Python: Dataclass Patterns](#python-dataclass-patterns)
+      - [Rust: Zero-Cost Abstractions](#rust-zero-cost-abstractions)
+    - [Why This Matters](#why-this-matters)
   - [Registry \& Tool Resolution](#registry--tool-resolution)
   - [CLI • HTTP • MCP — One Brain](#cli--http--mcp--one-brain)
   - [Extending BeemFlow](#extending-beemflow)
@@ -35,6 +36,7 @@ Write a single YAML file → run it locally, over REST, or through the Model Con
   - [Security \& Secrets](#security--secrets)
   - [Roadmap](#roadmap)
   - [Contributing](#contributing)
+    - [Code Quality Standards](#code-quality-standards)
   - [License](#license)
 
 ---
@@ -566,272 +568,151 @@ Full grammar ➜ [SPEC.md](./docs/SPEC.md).
 
 ## Flows as Functions: Universal, Protocolized, and Language-Native
 
-> **Define flows in YAML, or as native data structures in your favorite language. Compose, generate, and run flows as code—unlocking the power of "flows as functions" and true protocolization.**
+> **BeemFlow is a protocol, not a YAML format. Build flows as native structs in any language—no YAML marshaling required.**
 
-The BeemFlow protocol is not just for YAML. You can define flows as native structs or objects in any language, and run them using the same universal grammar. This means you can build, compose, and share automations as code—making BeemFlow the most flexible, programmable workflow engine for both devs and non-devs.
+The true power of BeemFlow isn't in YAML files—it's in the **universal protocol** that lets you define workflows as native data structures in any language. Think of it like JSON: the same data, tools, and workflow patterns, expressed in each language's most natural form. Run/execute workflows using any live BeemFlow runtime and receive flow outputs via native language SDKs, CLI/stdio, HTTP API, MCP, or any other interface.
 
-Below, see the same flow defined in YAML, Go, TypeScript, Rust, and Python:
+> **Coming soon**: a Protobuf-based protocol spec with reference implementation and generated language bindings
 
 ---
 
-### YAML
+### Protocol Language Implementation Comparison
+
+**YAML-Native (Template-Centric):**
 ```yaml
-name: fetch_and_summarize
-on: cli.manual
-vars:
-  URL: "https://en.wikipedia.org/wiki/Artificial_intelligence"
+name: research_flow
 steps:
-  - id: fetch
+  - id: search
     use: http.fetch
     with:
-      url: "{{ URL }}"
+      url: "{{ topic }}"
   - id: summarize
     use: openai.chat_completion
     with:
       model: "gpt-4o"
       messages:
         - role: system
-          content: "Summarize the following text in 3 bullet points."
+          content: "Summarize in 3 bullets."
         - role: user
-          content: "{{ outputs.fetch.body }}"
-  - id: print
-    use: core.echo
-    with:
-      text: "{{ summarize.choices.0.message.content }}"
+          content: "{{ outputs.search.body }}"
 ```
 
-### Go
+**Protocol-Native (Language-Centric):**
+
+#### Go: Native Structs
 ```go
 package main
 
 import (
+  "context"
   "fmt"
-  "gopkg.in/yaml.v3"
-  "net/http"
-  "bytes"
-  "io/ioutil"
+  "github.com/awantoch/beemflow/api"
   "github.com/awantoch/beemflow/model"
 )
 
 func main() {
   flow := model.Flow{
-    Name: "fetch_and_summarize",
-    On:   "cli.manual",
-    Vars: map[string]interface{}{
-      "URL": "https://en.wikipedia.org/wiki/Artificial_intelligence",
-    },
+    Name: "research_flow",
     Steps: []model.Step{
-      {
-        ID:  "fetch",
-        Use: "http.fetch",
-        With: map[string]interface{}{
-          "url": "{{ URL }}",
-        },
-      },
-      {
-        ID:  "summarize",
-        Use: "openai.chat_completion",
-        With: map[string]interface{}{
-          "model": "gpt-4o",
-          "messages": []interface{}{
-            map[string]interface{}{ "role": "system", "content": "Summarize in 3 bullets." },
-            map[string]interface{}{ "role": "user",   "content": "{{ outputs.fetch.body }}" },
-          },
-        },
-      },
-      {
-        ID:  "print",
-        Use: "core.echo",
-        With: map[string]interface{}{
-          "text": "{{ summarize.choices.0.message.content }}",
-        },
-      },
+      {ID: "search", Use: "http.fetch", With: map[string]interface{}{"url": "{{ topic }}"}},
+      {ID: "summarize", Use: "openai.chat_completion", With: map[string]interface{}{
+        "model": "gpt-4o",
+        "messages": []interface{}{ /* ... */ },
+      }},
     },
   }
 
-  out, err := yaml.Marshal(flow)
+  runID, outputs, err := api.NewFlowService().RunSpec(context.Background(), &flow, map[string]interface{}{})
   if err != nil {
     panic(err)
   }
-  fmt.Println(string(out))
-
-  // --- Run the flow via HTTP ---
-  // (Assume BeemFlow is running at http://localhost:3333)
-  reqBody := []byte(`{"flow": "fetch_and_summarize", "event": {}}`)
-  resp, err := http.Post("http://localhost:3333/runs", "application/json", bytes.NewBuffer(reqBody))
-  if err != nil {
-    panic(err)
-  }
-  defer resp.Body.Close()
-  body, _ := ioutil.ReadAll(resp.Body)
-  fmt.Println(string(body))
+  fmt.Printf("RunID: %s, Outputs: %+v\n", runID, outputs)
 }
 ```
 
-### TypeScript
+#### TypeScript: Type-Safe Builders
 ```typescript
-import * as yaml from 'js-yaml';
-import fetch from 'node-fetch';
+import { FlowBuilder, StepBuilders, BeemFlowClient } from './flow-client';
 
-interface Flow {
-  name: string;
-  on: string | object;
-  vars?: Record<string, any>;
-  steps: Step[];
-}
-
-interface Step {
-  id: string;
-  use: string;
-  with: Record<string, any>;
-}
-
-const flow: Flow = {
-  name: "fetch_and_summarize",
-  on: "cli.manual",
-  vars: {
-    URL: "https://en.wikipedia.org/wiki/Artificial_intelligence",
-  },
-  steps: [
-    { id: "fetch",     use: "http.fetch",           with: { url: "{{ URL }}" } },
-    { id: "summarize", use: "openai.chat_completion", with: {
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: "Summarize in 3 bullets." },
-          { role: "user",   content: "{{ outputs.fetch.body }}" },
-        ],
-      },
-    },
-    { id: "print", use: "core.echo", with: {
-        text: "{{ summarize.choices.0.message.content }}",
-      },
-    },
-  ],
-};
-
-console.log(yaml.dump(flow));
-
-// --- Run the flow via HTTP ---
 (async () => {
-  const response = await fetch('http://localhost:3333/runs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ flow: flow, event: {} }),
-  });
-  const data = await response.text();
-  console.log(data);
+  const flow = new FlowBuilder('research_flow')
+    .step({ id: 'search', use: 'http.fetch', with: { url: '{{ topic }}' } })
+    .step({ id: 'summarize', use: 'openai.chat_completion', with: { /* ... */ } })
+    .build();
+
+  const client = new BeemFlowClient();
+  const { runId, outputs } = await client.execute(flow);
+  console.log(`RunID: ${runId}`, outputs);
 })();
 ```
 
-### Rust
+#### Python: Dataclass Patterns
+```python
+from flow_client import FlowBuilder, Steps, BeemFlowClient
+
+flow = (FlowBuilder("research_flow")
+    .step(Steps.http("search", "{{ topic }}"))
+    .step(Steps.llm("summarize", messages=[ /* ... */ ]))
+    .build())
+
+client = BeemFlowClient()
+execution = client.execute(flow)
+print(f"RunID: {execution.run_id}, Outputs: {execution.outputs}")
+```
+
+#### Rust: Zero-Cost Abstractions
 ```rust
-use reqwest::blocking::Client;
-use serde_json::json;
-use serde_yaml::to_string;
-use std::error::Error;
+use beemflow_client::{FlowBuilder, Steps, BeemFlowClient};
+use std::collections::HashMap;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let flow = json!({
-        "name": "fetch_and_summarize",
-        "on":   "cli.manual",
-        "vars": { "URL": "https://en.wikipedia.org/wiki/Artificial_intelligence" },
-        "steps": [
-            {
-                "id":  "fetch",
-                "use": "http.fetch",
-                "with": { "url": "{{ URL }}" }
-            },
-            {
-                "id":  "summarize",
-                "use": "openai.chat_completion",
-                "with": {
-                    "model": "gpt-4o",
-                    "messages": [
-                        { "role": "system", "content": "Summarize in 3 bullets." },
-                        { "role": "user",   "content": "{{ outputs.fetch.body }}" }
-                    ]
-                }
-            },
-            {
-                "id":  "print",
-                "use": "core.echo",
-                "with": { "text": "{{ summarize.choices.0.message.content }}" }
-            }
-        ]
-    });
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut vars = HashMap::new();
+    vars.insert("topic".to_string(), serde_json::Value::String("...".to_string()));
 
-    // Print flow as YAML
-    println!("{}", to_string(&flow)?);
+    let flow = FlowBuilder::new("research_flow")
+        .vars(vars)
+        .step(Steps::http("search", "{{ vars.topic }}", None))
+        .step(Steps::llm("summarize", vec![ /* ... */ ], None))
+        .build();
 
-    // Fire off the run
-    let client = Client::new();
-    let resp = client
-        .post("http://localhost:3333/runs")
-        .json(&json!({ "flow": flow, "event": {} }))
-        .send()?;
-    println!("{}", resp.text()?);
-
+    let client = BeemFlowClient::new(None);
+    let execution = client.execute(&flow, None).await?;
+    println!("RunID: {}, Outputs: {:?}", execution.run_id, execution.outputs);
     Ok(())
 }
 ```
 
-> **Dependencies:**
-> ```toml
-> [dependencies]
-> reqwest        = { version = "0.11", features = ["blocking", "json"] }
-> serde          = { version = "1.0", features = ["derive"] }
-> serde_json     = "1.0"
-> serde_yaml     = "0.9"
-> ```
+---
 
-### Python
-```python
-from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Union
-import requests
-import yaml
+### Why This Matters
 
-@dataclass
-class Step:
-    id: str
-    use: str
-    with_: Dict[str, Any]
+**🔒 Type Safety**: Catch flow errors at compile time, not runtime  
+**🚀 IDE Support**: Full autocomplete, refactoring, go-to-definition  
+**⚡ Dynamic Generation**: Build workflows programmatically based on business logic  
+**🔄 Cross-Language**: All approaches produce identical JSON protocol  
+**📦 Zero YAML**: Direct execution via `/runs/inline` endpoint  
 
-@dataclass
-class Flow:
-    name: str
-    on: Union[str, dict, List[Union[str, dict]]]
-    vars: Dict[str, Any]
-    steps: List[Step]
-
-flow = Flow(
-    name="fetch_and_summarize",
-    on="cli.manual",
-    vars={"URL": "https://en.wikipedia.org/wiki/Artificial_intelligence"},
-    steps=[
-        Step("fetch",     "http.fetch",           {"url": "{{ URL }}"}),
-        Step("summarize", "openai.chat_completion", {"model": "gpt-4o", "messages":[
-            {"role":"system","content":"Summarize in 3 bullets."},
-            {"role":"user",   "content":"{{ outputs.fetch.body }}" },
-        ]}),
-        Step("print",     "core.echo",            {"text":"{{ summarize.choices.0.message.content }}"}),
-    ]
-)
-
-d = asdict(flow)
-for s in d["steps"]:
-    s["with"] = s.pop("with_")
-print(yaml.dump(d))
-
-# --- Run the flow via HTTP ---
-resp = requests.post(
-    "http://localhost:3333/runs",
-    json={"flow": d, "event": {}},
-)
-print(resp.text)
+```go
+// Generate flows dynamically
+func BuildApprovalFlow(requiresLegal, requiresFinance bool) *model.Flow {
+    builder := NewFlow("approval_process")
+    
+    if requiresLegal {
+        builder.Step("legal_review", "slack.message", map[string]any{...})
+        builder.AwaitEvent("legal_approval", "slack", map[string]any{...})
+    }
+    
+    if requiresFinance {
+        builder.Step("finance_review", "slack.message", map[string]any{...})
+        builder.AwaitEvent("finance_approval", "slack", map[string]any{...})
+    }
+    
+    return builder.Build()
+}
 ```
 
----
+**The result?** Flows become **first-class citizens** in your codebase—testable, composable, and maintainable like any other code.
 
 > **BeemFlow: One protocol, infinite languages. Program the world.**
 
