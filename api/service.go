@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
-	"os"
 
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
@@ -74,15 +72,24 @@ func (s *defaultService) RunSpec(ctx context.Context, flow *model.Flow, event ma
 	return RunSpec(ctx, flow, event)
 }
 func (s *defaultService) ListTools(ctx context.Context) ([]registry.ToolManifest, error) {
-	data, err := os.ReadFile("registry/index.json")
+	// Load tool manifests from the local registry index
+	local := registry.NewLocalRegistry("")
+	entries, err := local.ListServers(ctx, registry.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	var entries []registry.ToolManifest
-	if err := json.Unmarshal(data, &entries); err != nil {
-		return nil, err
+	var manifests []registry.ToolManifest
+	for _, entry := range entries {
+		manifests = append(manifests, registry.ToolManifest{
+			Name:        entry.Name,
+			Description: entry.Description,
+			Kind:        entry.Kind,
+			Parameters:  entry.Parameters,
+			Endpoint:    entry.Endpoint,
+			Headers:     entry.Headers,
+		})
 	}
-	return entries, nil
+	return manifests, nil
 }
 func (s *defaultService) GetToolManifest(ctx context.Context, name string) (*registry.ToolManifest, error) {
 	entries, err := s.ListTools(ctx)
