@@ -220,7 +220,9 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 		for _, step := range flow.Catch {
 			err2 := e.executeStep(ctx, &step, stepCtx, step.ID)
 			if err2 == nil {
-				catchOutputs[step.ID] = stepCtx.Outputs[step.ID]
+				if output, ok := stepCtx.GetOutput(step.ID); ok {
+					catchOutputs[step.ID] = output
+				}
 			}
 		}
 		return catchOutputs, err
@@ -653,7 +655,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 
 	stepCtx.SetOutput(stepID, outputs)
 
-	utils.Debug("Outputs map after step %s: %+v", stepID, stepCtx.Outputs)
+	utils.Debug("Outputs map after step %s: %+v", stepID, stepCtx.SnapshotOutputs())
 	return nil
 }
 
