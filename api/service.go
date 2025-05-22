@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/google/uuid"
@@ -24,7 +23,6 @@ type FlowService interface {
 	PublishEvent(ctx context.Context, topic string, payload map[string]any) error
 	ResumeRun(ctx context.Context, token string, event map[string]any) (map[string]any, error)
 	RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.UUID, map[string]any, error)
-	AssistantChat(ctx context.Context, systemPrompt string, userMessages []string) (string, []string, error)
 	ListTools(ctx context.Context) ([]registry.ToolManifest, error)
 	GetToolManifest(ctx context.Context, name string) (*registry.ToolManifest, error)
 }
@@ -74,11 +72,6 @@ func (s *defaultService) ResumeRun(ctx context.Context, token string, event map[
 }
 func (s *defaultService) RunSpec(ctx context.Context, flow *model.Flow, event map[string]any) (uuid.UUID, map[string]any, error) {
 	return RunSpec(ctx, flow, event)
-}
-func (s *defaultService) AssistantChat(ctx context.Context, systemPrompt string, userMessages []string) (string, []string, error) {
-	// Use parser for systemPrompt and adapter for call
-	draft, errs, err := adapter.Execute(ctx, userMessages)
-	return draft, errs, err
 }
 func (s *defaultService) ListTools(ctx context.Context) ([]registry.ToolManifest, error) {
 	data, err := os.ReadFile("registry/index.json")

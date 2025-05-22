@@ -52,7 +52,6 @@ func NewRootCmd() *cobra.Command {
 		newGraphCmd(),
 		newTestCmd(),
 		newToolCmd(),
-		newAssistCmd(),
 		newMCPCmd(),
 		newMetadataCmd(),
 		newSpecCmd(),

@@ -145,22 +145,6 @@ func TestHTTPServer_ListRuns(t *testing.T) {
 	}
 }
 
-func TestAssistantChatHandler(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(assistantChatHandler))
-	defer ts.Close()
-
-	body := map[string]any{"messages": []string{"Draft a flow that echoes hello"}}
-	b, _ := json.Marshal(body)
-	resp, err := http.Post(ts.URL, "application/json", bytes.NewReader(b))
-	if err != nil {
-		t.Fatalf("post failed: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 && resp.StatusCode != 500 {
-		t.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-}
-
 func TestRunsInlineHandler(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(runsInlineHandler))
 	defer ts.Close()

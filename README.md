@@ -865,7 +865,6 @@ Tools can be qualified (`smithery:airtable`) when ambiguous.
 - **Add a tool**: `flow mcp install registry:tool` or edit `.beemflow/registry.json`.
 - **Custom adapter**: implement the `Adapter` interface in your own code.
 - **Swap event bus**: set `"event.driver": "nats"` in `flow.config.json` or via `BEEMFLOW_EVENT_DRIVER=nats`.
-- **LLM autopilot**: POST `/assistant/chat` with system prompt in [SPEC.md](./docs/SPEC.md#14).
 
 ---
 

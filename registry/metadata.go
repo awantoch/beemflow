@@ -22,7 +22,6 @@ const (
 	InterfaceIDGraphFlow       = "graphFlow"
 	InterfaceIDValidateFlow    = "validateFlow"
 	InterfaceIDTestFlow        = "testFlow"
-	InterfaceIDAssistantChat   = "assistantChat"
 	InterfaceIDInlineRun       = "inlineRun"
 	InterfaceIDListTools       = "listTools"
 	InterfaceIDGetToolManifest = "getToolManifest"
@@ -43,7 +42,6 @@ const (
 	InterfaceDescGraphFlow       = "Get flow graph"
 	InterfaceDescValidateFlow    = "Validate flow"
 	InterfaceDescTestFlow        = "Test flow"
-	InterfaceDescAssistantChat   = "Assistant chat"
 	InterfaceDescInlineRun       = "Run inline flow spec"
 	InterfaceDescListTools       = "List tools"
 	InterfaceDescGetToolManifest = "Get tool manifest"
@@ -98,7 +96,6 @@ func init() {
 		InterfaceIDGraphFlow,
 		InterfaceIDValidateFlow,
 		InterfaceIDTestFlow,
-		InterfaceIDAssistantChat,
 		InterfaceIDInlineRun,
 		InterfaceIDListTools,
 		InterfaceIDGetToolManifest,

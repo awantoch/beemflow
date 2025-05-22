@@ -161,7 +161,6 @@ func StartServer(cfg *config.Config) error {
 		{ID: registry.InterfaceIDGraphFlow, Type: registry.HTTP, Use: http.MethodGet, Path: "/graph", Description: registry.InterfaceDescGraphFlow},
 		{ID: registry.InterfaceIDValidateFlow, Type: registry.HTTP, Use: http.MethodPost, Path: "/validate", Description: registry.InterfaceDescValidateFlow},
 		{ID: registry.InterfaceIDTestFlow, Type: registry.HTTP, Use: http.MethodPost, Path: "/test", Description: registry.InterfaceDescTestFlow},
-		{ID: registry.InterfaceIDAssistantChat, Type: registry.HTTP, Use: http.MethodPost, Path: "/assistant/chat", Description: registry.InterfaceDescAssistantChat},
 		{ID: registry.InterfaceIDInlineRun, Type: registry.HTTP, Use: http.MethodPost, Path: "/runs/inline", Description: registry.InterfaceDescInlineRun},
 		{ID: registry.InterfaceIDListTools, Type: registry.HTTP, Use: http.MethodGet, Path: "/tools", Description: registry.InterfaceDescListTools},
 		{ID: registry.InterfaceIDGetToolManifest, Type: registry.HTTP, Use: http.MethodGet, Path: "/tools/{name}", Description: registry.InterfaceDescGetToolManifest},
@@ -269,7 +268,6 @@ func StartServer(cfg *config.Config) error {
 	mux.HandleFunc("/graph", graphHandler)
 	mux.HandleFunc("/validate", validateHandler)
 	mux.HandleFunc("/test", testHandler)
-	mux.HandleFunc("/assistant/chat", assistantChatHandler)
 	mux.HandleFunc("/runs/inline", runsInlineHandler)
 	mux.HandleFunc("/tools", toolsIndexHandler)
 	mux.HandleFunc("/tools/", toolsManifestHandler)
@@ -568,36 +566,6 @@ func UpdateRunEvent(id uuid.UUID, newEvent map[string]any) error {
 	}
 	run.Event = newEvent
 	return nil
-}
-
-func assistantChatHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	var req struct {
-		Messages []string `json:"messages"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("invalid request body")); err != nil {
-			utils.Error("w.Write failed: %v", err)
-		}
-		return
-	}
-	draft, errors, err := svc.AssistantChat(r.Context(), "", req.Messages)
-	resp := map[string]any{
-		"draft":  draft,
-		"errors": errors,
-	}
-	if err != nil {
-		resp["error"] = err.Error()
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		utils.Error("json.Encode failed: %v", err)
-	}
 }
 
 func runsInlineHandler(w http.ResponseWriter, r *http.Request) {
