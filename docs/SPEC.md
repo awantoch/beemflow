@@ -36,7 +36,7 @@ steps:
   - id: fetch
     use: http.fetch
     with:
-      url: "{{.vars.URL}}"
+      url: "{{ vars.URL }}"
   - id: summarize
     use: openai.chat_completion
     with:
@@ -45,7 +45,7 @@ steps:
         - role: system
           content: "Summarize the following text."
         - role: user
-          content: "{{.outputs.fetch.body}}"
+          content: "{{ outputs.fetch.body }}"
 ```
 
 ---
@@ -84,7 +84,7 @@ steps:
   - id: fetch
     use: http.fetch
     with:
-      url: "{{.vars.URL}}"
+      url: "{{ vars.URL }}"
   - id: summarize
     use: openai.chat_completion
     with:
@@ -93,7 +93,7 @@ steps:
         - role: system
           content: "Summarize the following text in 3 bullet points."
         - role: user
-          content: "{{.outputs.fetch.body}}"
+          content: "{{ outputs.fetch.body }}"
   - id: print
     use: core.echo
     with:
@@ -111,7 +111,7 @@ steps:
     with:
       channel: "#ops"
       text: "All systems go!"
-      token: "{{.secrets.SLACK_TOKEN}}"
+      token: "{{ secrets.SLACK_TOKEN }}"
 ```
 
 ### 4. Parallel Steps
@@ -143,7 +143,7 @@ steps:
     await_event:
       source: airtable
       match:
-        record_id: "{{airtable_row.id}}"
+        record_id: "{{ airtable_row.id }}"
         field: Status
         equals: Approved
       timeout: 24h
@@ -200,7 +200,7 @@ steps:
   - id: greet
     use: core.echo
     with:
-      text: "Hello, {{.event.user}}!"
+      text: "Hello, {{ event.user }}!"
 ```
 
 ---
@@ -215,7 +215,7 @@ The `await_event` step pauses the flow until a matching event is received. This 
   await_event:
     source: <string>         # e.g. "airtable", "bus", "slack"
     match:                   # map of fields to match on the incoming event
-      <field>: <value>       # e.g. record_id: "{{some_id}}", field: Status, equals: Approved
+      <field>: <value>       # e.g. record_id: "{{ some_id }}", field: Status, equals: Approved
     timeout: <duration>      # (optional) e.g. "24h", "10m"
 ```
 
@@ -232,7 +232,7 @@ The `await_event` step pauses the flow until a matching event is received. This 
   await_event:
     source: airtable
     match:
-      record_id: "{{.outputs.create_airtable_record.id}}"
+      record_id: "{{ outputs.create_airtable_record.id }}"
       field: Status
       equals: Approved
     timeout: 24h
@@ -268,13 +268,13 @@ steps:
     await_event:
       source: bus
       match:
-        request_id: "{{.event.request_id}}"
+        request_id: "{{ event.request_id }}"
         status: approved
       timeout: 48h
   - id: notify
     use: core.echo
     with:
-      text: "Approval received for request {{.event.request_id}}!"
+      text: "Approval received for request {{ event.request_id }}!"
 ```
 
 ---
@@ -293,7 +293,7 @@ steps:
 - **Flow file:** Single YAML, versioned, text-first, LLM-friendly
 - **Triggers:** `on: cli.manual`, `on: schedule.cron`, etc.
 - **Steps:** Each step = tool call, logic, or wait
-- **Templating:** `{{.outputs.step.field}}`, `{{.vars.NAME}}`, helpers
+- **Templating:** `{{ outputs.step.field }}`, `{{ vars.NAME }}`, helpers
 - **Parallelism:** `parallel: true` with nested `steps:`
 - **Waits:** `await_event`, `wait`, durable and resumable
 - **Registry:** Local, MCP, remote, GitHub—all tools in one namespace
@@ -333,7 +333,7 @@ steps:
   - id: print
     use: core.echo
     with:
-      text: "{{.outputs.greet.text}}"
+      text: "{{ outputs.greet.text }}"
 ```
 
 **Why it's powerful:**
@@ -507,7 +507,7 @@ Flows can pause on `await_event` and resume via `POST /resume/{token}` (HMAC-sig
   await_event:
     source: airtable
     match:
-      record_id: "{{airtable_row.id}}"
+      record_id: "{{ airtable_row.id }}"
       field: Status
       equals: Approved
     timeout: 24h
@@ -538,7 +538,7 @@ steps:
     with:
       channel: "#ops"
       text:    "All systems go!"
-      token:   "{{.secrets.SLACK_TOKEN}}"
+      token:   "{{ secrets.SLACK_TOKEN }}"
 ```
 
 ---
@@ -558,7 +558,7 @@ steps:
   - id: print
     use: core.echo
     with:
-      text: "{{.outputs.greet.text}}"
+      text: "{{ outputs.greet.text }}"
 ```
 
 ### Fetch and Summarize
@@ -579,7 +579,7 @@ steps:
         - role: system
           content: "Summarize the following text in 3 bullet points."
         - role: user
-          content: "{{.outputs.fetch.body}}"
+          content: "{{ outputs.fetch.body }}"
   - id: print
     use: core.echo
     with:
