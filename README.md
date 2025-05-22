@@ -3,7 +3,16 @@
 > **GitHub Actions for every business process — text-first, AI-native, open-source.**
 
 BeemFlow is a **workflow protocol, runtime, and global tool registry** for the age of LLM co-workers.
-Write a single YAML file → run it locally, over REST, or through the Model Context Protocol (MCP). The same spec powers the BeemFlow agency, SaaS, and acquisition flywheel—now you can build on it too.
+
+Define workflows with YAML, JSON, or native code → execute anywhere through CLI, HTTP, or Model Context Protocol (MCP).
+
+Instantly use thousands of curated MCP servers and LLM tools with zero-config -- just define the workflow, provide secrets, and execute -- complex business workflows in just a few lines of code.
+
+Generate new workflows with natural language via BeemFlow runtime's MCP server to move even faster.
+
+The same universal protocol powers the BeemFlow agency, SaaS, and acquisition flywheel—now you can build on it too.
+
+> **BeemFlow: Program the world.**
 
 ---
 
@@ -797,8 +806,6 @@ func (s *FlowService) RunSpec(ctx context.Context, flow *model.Flow, vars map[st
 ```
 
 > 💡 **Try it yourself**: Use [our JSON schemas](./docs/) to validate workflows anywhere in your stack—CI/CD, API gateways, custom tooling, or runtime validation!
-
-> **BeemFlow: One protocol, infinite languages. Program the world.**
 
 ---
 
