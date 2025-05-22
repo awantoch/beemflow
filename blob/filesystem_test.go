@@ -1,6 +1,7 @@
 package blob
 
 import (
+	"bytes"
 	"context"
 	"path/filepath"
 	"testing"
@@ -28,7 +29,7 @@ func TestFilesystemBlobStore_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Errorf("Get failed: %v", err)
 	}
-	if string(got) != string(value) {
+	if !bytes.Equal(got, value) {
 		t.Errorf("expected %q, got %q", value, got)
 	}
 }

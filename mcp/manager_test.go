@@ -134,7 +134,7 @@ func TestWaitForMCP_Error(t *testing.T) {
 	}
 }
 
-// TestEnsureMCPServers_MissingCommand checks that missing Command yields an error
+// TestEnsureMCPServers_MissingCommand checks that missing Command yields an error.
 func TestEnsureMCPServers_MissingCommand(t *testing.T) {
 	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {Command: ""}}}
@@ -144,7 +144,7 @@ func TestEnsureMCPServers_MissingCommand(t *testing.T) {
 	}
 }
 
-// TestEnsureMCPServers_DebugLogging ensures the debug logging branch is exercised
+// TestEnsureMCPServers_DebugLogging ensures the debug logging branch is exercised.
 func TestEnsureMCPServers_DebugLogging(t *testing.T) {
 	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {Command: "true"}}}
@@ -156,7 +156,7 @@ func TestEnsureMCPServers_DebugLogging(t *testing.T) {
 	}
 }
 
-// TestEnsureMCPServers_CommandStartError ensures errors starting the command are handled
+// TestEnsureMCPServers_CommandStartError ensures errors starting the command are handled.
 func TestEnsureMCPServers_CommandStartError(t *testing.T) {
 	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {Command: "nonexistent_binary"}}}
@@ -166,7 +166,7 @@ func TestEnsureMCPServers_CommandStartError(t *testing.T) {
 	}
 }
 
-// TestEnsureMCPServers_EnvMapping exercises the env mapping logic for both literal and $env values
+// TestEnsureMCPServers_EnvMapping exercises the env mapping logic for both literal and $env values.
 func TestEnsureMCPServers_EnvMapping(t *testing.T) {
 	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {

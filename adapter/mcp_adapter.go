@@ -51,7 +51,7 @@ func (a *MCPAdapter) ID() string {
 
 var mcpRe = regexp.MustCompile(`^mcp://([^/]+)/([\w.-]+)$`)
 
-// Helper to resolve MCP server config from environment/config file
+// Helper to resolve MCP server config from environment/config file.
 func getMCPServerConfig(host string) (config.MCPServerConfig, error) {
 	cfgPath := config.DefaultConfigPath
 	cfg, err := config.LoadConfig(cfgPath)
@@ -82,8 +82,9 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 		if err != nil {
 			return nil, err
 		}
-		// HTTP transport fallback if configured
-		if cfg.Transport == "http" && cfg.Endpoint != "" {
+
+		switch {
+		case cfg.Transport == "http" && cfg.Endpoint != "":
 			// Minimal HTTP JSON-RPC fallback (tools/list and tools/call)
 			// List tools
 			listReq := map[string]any{"method": "tools/list", "params": []any{}, "id": 1}
@@ -120,7 +121,8 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 				return nil, fmt.Errorf("failed to decode call response: %w", err)
 			}
 			return callResp.Result, nil
-		} else if cfg.Command != "" {
+
+		case cfg.Command != "":
 			// stdio transport
 			a.mu.Lock()
 			cmd := a.processes[host]
@@ -159,7 +161,8 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 			a.mu.Lock()
 			a.clients[host] = client
 			a.mu.Unlock()
-		} else {
+
+		default:
 			return nil, fmt.Errorf("MCP server '%s' config is missing 'command' or 'http' transport config", host)
 		}
 	}

@@ -10,7 +10,7 @@ import (
 	"github.com/awantoch/beemflow/utils"
 )
 
-// TestMain ensures the mcp_servers folder is cleaned up before and after tests
+// TestMain ensures the mcp_servers folder is cleaned up before and after tests.
 func TestMain(m *testing.M) {
 	utils.WithCleanDirs(m, ".beemflow", DefaultConfigDir, "mcp_servers")
 }
@@ -23,7 +23,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 	defer os.Remove(tmp.Name())
 
-	if _, err := tmp.Write([]byte(cfgJSON)); err != nil {
+	if _, err := tmp.WriteString(cfgJSON); err != nil {
 		t.Fatalf("write temp: %v", err)
 	}
 	tmp.Close()
@@ -54,7 +54,7 @@ func TestLoadConfig_Partial(t *testing.T) {
 	}
 	defer os.Remove(tmp.Name())
 
-	if _, err := tmp.Write([]byte(cfgJSON)); err != nil {
+	if _, err := tmp.WriteString(cfgJSON); err != nil {
 		t.Fatalf("write temp: %v", err)
 	}
 	tmp.Close()
@@ -88,7 +88,7 @@ func TestLoadConfig_InvalidJSON(t *testing.T) {
 		t.Fatalf("create temp: %v", err)
 	}
 	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write([]byte("not a json")); err != nil {
+	if _, err := tmp.WriteString("not a json"); err != nil {
 		t.Fatalf("write temp: %v", err)
 	}
 	tmp.Close()

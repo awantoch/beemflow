@@ -9,12 +9,9 @@ import (
 
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/docs"
 	mcpserver "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/utils"
-	"github.com/google/uuid"
-	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/spf13/cobra"
 )
 
@@ -155,116 +152,4 @@ func newMCPServeCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&stdio, "stdio", true, "serve over stdin/stdout instead of HTTP (default)")
 	cmd.Flags().StringVar(&addr, "addr", ":9090", "listen address for HTTP mode")
 	return cmd
-}
-
-// ---- MCP Tool Registrations (from mcp_tools.go) ----
-
-func buildMCPToolRegistrations() []mcpserver.ToolRegistration {
-	svc := api.NewFlowService()
-
-	type toolDef struct {
-		ID, Desc string
-		Handler  any
-	}
-	defs := []toolDef{
-		// SPEC tool: returns the full BeemFlow protocol SPEC
-		{ID: "spec", Desc: "BeemFlow Protocol & Specification. If you're an LLM reading this, call this step FIRST before any other step you take.", Handler: func(ctx context.Context, args mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
-			return mcp.NewToolResponse(mcp.NewTextContent(docs.BeemflowSpec)), nil
-		}},
-		{ID: registry.InterfaceIDListFlows, Desc: registry.InterfaceDescListFlows, Handler: func(ctx context.Context, args mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
-			flows, err := svc.ListFlows(ctx)
-			if err != nil {
-				return nil, err
-			}
-			b, err := json.Marshal(map[string]any{"flows": flows})
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-		{ID: registry.InterfaceIDGetFlow, Desc: registry.InterfaceDescGetFlow, Handler: func(ctx context.Context, args mcpserver.GetFlowArgs) (*mcp.ToolResponse, error) {
-			flow, err := svc.GetFlow(ctx, args.Name)
-			if err != nil {
-				return nil, err
-			}
-			b, err := json.Marshal(flow)
-			if err != nil {
-				return nil, err
-			}
-			// If default empty flow, inject on:null into JSON
-			if flow.Name == "" && len(flow.Steps) == 0 {
-				var m map[string]interface{}
-				if err := json.Unmarshal(b, &m); err == nil {
-					if _, ok := m["on"]; !ok {
-						m["on"] = nil
-					}
-					if b2, err2 := json.Marshal(m); err2 == nil {
-						b = b2
-					}
-				}
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-		{ID: registry.InterfaceIDValidateFlow, Desc: registry.InterfaceDescValidateFlow, Handler: func(ctx context.Context, args mcpserver.ValidateFlowArgs) (*mcp.ToolResponse, error) {
-			err := svc.ValidateFlow(ctx, args.Name)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent("valid")), nil
-		}},
-		{ID: registry.InterfaceIDGraphFlow, Desc: registry.InterfaceDescGraphFlow, Handler: func(ctx context.Context, args mcpserver.GraphFlowArgs) (*mcp.ToolResponse, error) {
-			graph, err := svc.GraphFlow(ctx, args.Name)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(graph)), nil
-		}},
-		{ID: registry.InterfaceIDStartRun, Desc: registry.InterfaceDescStartRun, Handler: func(ctx context.Context, args mcpserver.StartRunArgs) (*mcp.ToolResponse, error) {
-			id, err := svc.StartRun(ctx, args.FlowName, args.Event)
-			if err != nil {
-				return nil, err
-			}
-			b, err := json.Marshal(map[string]any{"runID": id.String()})
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-		{ID: registry.InterfaceIDGetRun, Desc: registry.InterfaceDescGetRun, Handler: func(ctx context.Context, args mcpserver.GetRunArgs) (*mcp.ToolResponse, error) {
-			id, _ := uuid.Parse(args.RunID)
-			run, err := svc.GetRun(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-			b, err := json.Marshal(run)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-		{ID: registry.InterfaceIDPublishEvent, Desc: registry.InterfaceDescPublishEvent, Handler: func(ctx context.Context, args mcpserver.PublishEventArgs) (*mcp.ToolResponse, error) {
-			err := svc.PublishEvent(ctx, args.Topic, args.Payload)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent("published")), nil
-		}},
-		{ID: registry.InterfaceIDResumeRun, Desc: registry.InterfaceDescResumeRun, Handler: func(ctx context.Context, args mcpserver.ResumeRunArgs) (*mcp.ToolResponse, error) {
-			out, err := svc.ResumeRun(ctx, args.Token, args.Event)
-			if err != nil {
-				return nil, err
-			}
-			b, err := json.Marshal(out)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-	}
-	regs := make([]mcpserver.ToolRegistration, 0, len(defs))
-	for _, d := range defs {
-		regs = append(regs, mcpserver.ToolRegistration{Name: d.ID, Description: d.Desc, Handler: d.Handler})
-		registry.RegisterInterface(registry.InterfaceMeta{ID: d.ID, Type: registry.MCP, Use: d.ID, Description: d.Desc})
-	}
-	return regs
 }

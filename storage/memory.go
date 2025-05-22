@@ -3,13 +3,14 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"maps"
 	"sync"
 
 	"github.com/awantoch/beemflow/model"
 	"github.com/google/uuid"
 )
 
-// MemoryStorage implements Storage in-memory (for fallback/dev mode)
+// MemoryStorage implements Storage in-memory (for fallback/dev mode).
 type MemoryStorage struct {
 	runs   map[uuid.UUID]*model.Run
 	steps  map[uuid.UUID][]*model.StepRun // runID -> steps
@@ -86,9 +87,7 @@ func (m *MemoryStorage) LoadPausedRuns() (map[string]any, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	out := make(map[string]any, len(m.paused))
-	for k, v := range m.paused {
-		out[k] = v
-	}
+	maps.Copy(out, m.paused)
 	return out, nil
 }
 

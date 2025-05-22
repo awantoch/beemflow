@@ -21,8 +21,8 @@ type ToolRegistration struct {
 	Handler     any // must be a func(ctx, args) (*mcp.ToolResponse, error)
 }
 
-// Serve starts the BeemFlow MCP server with the given configuration and tool registrations.
-func Serve(configPath string, debug bool, stdio bool, addr string, tools []ToolRegistration) error {
+// Serve starts an MCP server with the given configuration.
+func Serve(configPath string, debug, stdio bool, addr string, tools []ToolRegistration) error {
 	// If using stdio transport and debug is disabled, silence user-facing logs on stdout; keep internal logs on stderr
 	if stdio && !debug {
 		utils.SetUserOutput(io.Discard)

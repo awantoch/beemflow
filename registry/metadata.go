@@ -11,7 +11,7 @@ const (
 	MCP  InterfaceType = "mcp"
 )
 
-// Well-known interface IDs to avoid typos and drift
+// Well-known interface IDs to avoid typos and drift.
 const (
 	InterfaceIDListRuns        = "listRuns"
 	InterfaceIDListFlows       = "listFlows"
@@ -31,7 +31,7 @@ const (
 	InterfaceIDSpec            = "spec"
 )
 
-// Well-known interface descriptions to avoid typos and drift
+// Well-known interface descriptions to avoid typos and drift.
 const (
 	InterfaceDescListRuns        = "List all runs"
 	InterfaceDescListFlows       = "List all flows"

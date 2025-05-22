@@ -11,7 +11,7 @@ import (
 	"github.com/awantoch/beemflow/registry"
 )
 
-// dummyAdapter implements Adapter for testing
+// dummyAdapter implements Adapter for testing.
 type dummyAdapter struct{}
 
 func (d *dummyAdapter) ID() string {

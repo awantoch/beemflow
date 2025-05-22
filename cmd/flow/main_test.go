@@ -29,7 +29,7 @@ func captureOutput(f func()) string {
 	return buf.String()
 }
 
-func captureStderrExit(f func()) (string, int) {
+func captureStderrExit(f func()) (output string, code int) {
 	origStderr := os.Stderr
 	origExit := exit
 	r, w, _ := os.Pipe()
@@ -100,7 +100,7 @@ steps:
 		t.Fatalf("create temp: %v", err)
 	}
 	defer os.Remove(tmpPath)
-	if _, err := tmp.Write([]byte(valid)); err != nil {
+	if _, err := tmp.WriteString(valid); err != nil {
 		t.Fatalf("write temp: %v", err)
 	}
 	tmp.Close()
@@ -145,7 +145,7 @@ steps:
 		t.Fatalf("create temp: %v", err)
 	}
 	defer os.Remove(tmp2Path)
-	if _, err := tmp2.Write([]byte(bad)); err != nil {
+	if _, err := tmp2.WriteString(bad); err != nil {
 		t.Fatalf("write temp: %v", err)
 	}
 	tmp2.Close()
@@ -168,7 +168,7 @@ steps:
 		t.Fatalf("create temp: %v", err)
 	}
 	defer os.Remove(tmp3Path)
-	if _, err := tmp3.Write([]byte(badYAML)); err != nil {
+	if _, err := tmp3.WriteString(badYAML); err != nil {
 		t.Fatalf("write temp: %v", err)
 	}
 	tmp3.Close()

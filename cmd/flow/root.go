@@ -4,14 +4,13 @@ import (
 	"os"
 	"time"
 
-	// Load environment variables from .env file
+	// Load environment variables from .env file.
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 
 	_ "github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/registry"
 )
 
 var (
@@ -66,18 +65,4 @@ func NewRootCmd() *cobra.Command {
 	api.AttachCLICommands(rootCmd, svc, constructors)
 
 	return rootCmd
-}
-
-// collectCobra recursively collects metadata for Cobra commands.
-func collectCobra(cmd *cobra.Command) []registry.InterfaceMeta {
-	metas := []registry.InterfaceMeta{{
-		ID:          cmd.CommandPath(),
-		Type:        registry.CLI,
-		Use:         cmd.Use,
-		Description: cmd.Short,
-	}}
-	for _, sub := range cmd.Commands() {
-		metas = append(metas, collectCobra(sub)...)
-	}
-	return metas
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -130,10 +131,7 @@ type LogConfig struct {
 	Level string `json:"level,omitempty"`
 }
 
-// MCPServerConfig defines installation details for an MCP server
-// Community/Claude style only
-// Only supports: command, args, env, port, transport, endpoint
-// (No install_cmd, required_env, or snake_case)
+// (No install_cmd, required_env, or snake_case).
 type MCPServerConfig struct {
 	Command   string            `json:"command"`
 	Args      []string          `json:"args,omitempty"`
@@ -186,7 +184,7 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Minimal MCP server registry loader (no import cycle)
+// Minimal MCP server registry loader (no import cycle).
 type registryEntry struct {
 	Type      string            `json:"type"`
 	Name      string            `json:"name"`
@@ -306,9 +304,7 @@ func GetMergedMCPServerConfig(cfg *Config, host string) (MCPServerConfig, error)
 			if merged.Env == nil {
 				merged.Env = map[string]string{}
 			}
-			for k, v := range override.Env {
-				merged.Env[k] = v
-			}
+			maps.Copy(merged.Env, override.Env)
 		}
 		if override.Port != 0 {
 			merged.Port = override.Port
@@ -323,7 +319,7 @@ func GetMergedMCPServerConfig(cfg *Config, host string) (MCPServerConfig, error)
 	return merged, nil
 }
 
-// Regex to match GitHub shorthand owner/repo/path[@ref]
+// Regex to match GitHub shorthand owner/repo/path[@ref].
 var githubShorthandRe = regexp.MustCompile(`^([^/]+)/([^/]+)/(.+?)(?:@([^/]+))?$`)
 
 // UnmarshalJSON allows MCPServerConfig to be specified as either a JSON object, full URL string,

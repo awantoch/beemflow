@@ -37,7 +37,7 @@ func (s *SmitheryRegistry) ListServers(ctx context.Context, opts ListOptions) ([
 	}
 	endpoint := fmt.Sprintf("%s?%s", s.BaseURL, params.Encode())
 
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (s *SmitheryRegistry) ListServers(ctx context.Context, opts ListOptions) ([
 
 func (s *SmitheryRegistry) GetServer(ctx context.Context, name string) (*RegistryEntry, error) {
 	endpoint := fmt.Sprintf("%s/%s", strings.TrimSuffix(s.BaseURL, "/"), url.PathEscape(name))
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func (s *SmitheryRegistry) GetServer(ctx context.Context, name string) (*Registr
 // GetServerSpec fetches a server and parses its stdioFunction into MCPServerConfig.
 func (s *SmitheryRegistry) GetServerSpec(ctx context.Context, name string) (config.MCPServerConfig, error) {
 	endpoint := fmt.Sprintf("%s/%s", strings.TrimSuffix(s.BaseURL, "/"), url.PathEscape(name))
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, http.NoBody)
 	if err != nil {
 		return config.MCPServerConfig{}, err
 	}
@@ -171,38 +171,40 @@ func (s *SmitheryRegistry) GetServerSpec(ctx context.Context, name string) (conf
 		return config.MCPServerConfig{}, err
 	}
 	for _, c := range data.Connections {
-		if c.Type == "stdio" && c.Published {
-			fn := c.StdioFunction
-			start := strings.Index(fn, "({")
-			end := strings.LastIndex(fn, "})")
-			if start < 0 || end < 0 || end <= start+1 {
-				return config.MCPServerConfig{}, fmt.Errorf("invalid stdioFunction format: %s", fn)
-			}
-			obj := fn[start+1 : end+1]
-			interim := strings.ReplaceAll(obj, "'", "\"")
-			re := regexp.MustCompile(`(\w+)\s*:`)
-			jsonObj := re.ReplaceAllString(interim, `"$1":`)
-			var m map[string]any
-			if err := json.Unmarshal([]byte(jsonObj), &m); err != nil {
-				return config.MCPServerConfig{}, fmt.Errorf("failed to parse stdioFunction object: %w", err)
-			}
-			cmdVal, ok := m["command"].(string)
-			if !ok {
-				return config.MCPServerConfig{}, fmt.Errorf("stdioFunction object missing command")
-			}
-			var argsList []string
-			if arr, ok2 := m["args"].([]any); ok2 {
-				for _, ai := range arr {
-					if s, sok := ai.(string); sok {
-						argsList = append(argsList, s)
-					}
+		if c.Type != "stdio" || !c.Published {
+			continue
+		}
+
+		fn := c.StdioFunction
+		start := strings.Index(fn, "({")
+		end := strings.LastIndex(fn, "})")
+		if start < 0 || end < 0 || end <= start+1 {
+			return config.MCPServerConfig{}, fmt.Errorf("invalid stdioFunction format: %s", fn)
+		}
+		obj := fn[start+1 : end+1]
+		interim := strings.ReplaceAll(obj, "'", "\"")
+		re := regexp.MustCompile(`(\w+)\s*:`)
+		jsonObj := re.ReplaceAllString(interim, `"$1":`)
+		var m map[string]any
+		if err := json.Unmarshal([]byte(jsonObj), &m); err != nil {
+			return config.MCPServerConfig{}, fmt.Errorf("failed to parse stdioFunction object: %w", err)
+		}
+		cmdVal, ok := m["command"].(string)
+		if !ok {
+			return config.MCPServerConfig{}, fmt.Errorf("stdioFunction object missing command")
+		}
+		var argsList []string
+		if arr, ok2 := m["args"].([]any); ok2 {
+			for _, ai := range arr {
+				if s, sok := ai.(string); sok {
+					argsList = append(argsList, s)
 				}
 			}
-			return config.MCPServerConfig{
-				Command: cmdVal,
-				Args:    argsList,
-			}, nil
 		}
+		return config.MCPServerConfig{
+			Command: cmdVal,
+			Args:    argsList,
+		}, nil
 	}
 	return config.MCPServerConfig{}, fmt.Errorf("no stdio connection found for server %s", name)
 }

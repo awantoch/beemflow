@@ -89,7 +89,7 @@ func TestRender_CustomFilter(t *testing.T) {
 	tpl := NewTemplater()
 	tpl.RegisterFilters(map[string]pongo2.FilterFunction{
 		"repeat": func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
-			n := int(param.Integer())
+			n := param.Integer()
 			res := ""
 			for i := 0; i < n; i++ {
 				res += in.String()

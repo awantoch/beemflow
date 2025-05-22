@@ -27,7 +27,7 @@ func TestCoreAdapter(t *testing.T) {
 	utils.SetInternalOutput(orig)
 
 	buf, _ := io.ReadAll(r)
-	if string(buf) == "" || string(buf) == "\n" {
+	if len(buf) == 0 || string(buf) == "\n" {
 		t.Errorf("expected echoed in logger output, got %q", buf)
 	}
 	if !reflect.DeepEqual(out, in) || err != nil {

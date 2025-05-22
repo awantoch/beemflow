@@ -28,7 +28,7 @@ type FlowService interface {
 // defaultService is the default implementation of FlowService.
 type defaultService struct{}
 
-// Compile-time check
+// Compile-time check.
 var _ FlowService = (*defaultService)(nil)
 
 // NewFlowService returns the default FlowService implementation.

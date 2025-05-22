@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
@@ -55,7 +56,7 @@ func HTTPPostJSON(ctx context.Context, url string, body interface{}, headers map
 
 // HTTPGetRaw performs an HTTP GET and returns the raw response body as a string.
 func HTTPGetRaw(ctx context.Context, url string, headers map[string]string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return "", err
 	}
@@ -88,8 +89,8 @@ func (a *HTTPAdapter) ID() string {
 	return a.AdapterID
 }
 
-// injectDefaults merges manifest defaults into inputs for any missing fields.
-func injectDefaults(params map[string]any, inputs map[string]any) {
+// injectDefaults fills in default values from manifest parameters.
+func injectDefaults(params, inputs map[string]any) {
 	props, ok := params["properties"].(map[string]any)
 	if !ok {
 		return
@@ -125,9 +126,7 @@ func (a *HTTPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[s
 	// Merge headers: manifest headers (with $env expansion) + step input headers (step input wins)
 	headers := map[string]string{}
 	if a.ToolManifest.Headers != nil {
-		for k, v := range expandEnvHeaders(a.ToolManifest.Headers) {
-			headers[k] = v
-		}
+		maps.Copy(headers, expandEnvHeaders(a.ToolManifest.Headers))
 	}
 	if h, ok := inputs["headers"].(map[string]any); ok {
 		for k, v := range h {
@@ -173,7 +172,7 @@ func (a *HTTPFetchAdapter) Execute(ctx context.Context, inputs map[string]any) (
 	switch method {
 	case "GET":
 		// Perform GET, then try to unmarshal JSON
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 		if err != nil {
 			return nil, err
 		}

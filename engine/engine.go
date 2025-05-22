@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"strings"
 	"sync"
@@ -20,7 +21,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Define a custom type for context keys
+// Define a custom type for context keys.
 type runIDKeyType struct{}
 
 var runIDKey = runIDKeyType{}
@@ -230,12 +231,12 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	return outputs, err
 }
 
-// Helper to get pointer to time.Time
+// Helper to get pointer to time.Time.
 func ptrTime(t time.Time) *time.Time {
 	return &t
 }
 
-// executeStepsWithPersistence executes steps, persisting each step after execution
+// executeStepsWithPersistence executes steps, persisting each step after execution.
 func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Flow, stepCtx *StepContext, startIdx int, runID uuid.UUID) (map[string]any, error) {
 	if runID == uuid.Nil {
 		runID = runIDFromContext(ctx)
@@ -271,16 +272,10 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 
 			// Flatten outputs into context for template rendering
 			outputs := stepCtx.SnapshotOutputs()
-			for id, out := range outputs {
-				data[id] = out
-			}
-			// Flatten vars into context for template rendering
-			vars := stepCtx.SnapshotVars()
-			if vars != nil {
-				for key, val := range vars {
-					data[key] = val
-				}
-			}
+			maps.Copy(data, outputs)
+
+			// Flatten vars into top-level context
+			maps.Copy(data, stepCtx.SnapshotVars())
 
 			// DEBUG: Log full context before rendering
 			utils.Debug("About to render template for step %s: data = %#v", step.ID, data)
@@ -393,15 +388,11 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 	allOutputs := make(map[string]any)
 
 	// Get previous outputs safely
-	for k, v := range paused.StepCtx.SnapshotOutputs() {
-		allOutputs[k] = v
-	}
+	maps.Copy(allOutputs, paused.StepCtx.SnapshotOutputs())
 
 	// Add new outputs
 	if outputs != nil {
-		for k, v := range outputs {
-			allOutputs[k] = v
-		}
+		maps.Copy(allOutputs, outputs)
 	} else if len(allOutputs) == 0 {
 		// If both are nil/empty, ensure we store at least an empty map
 		allOutputs = map[string]any{}
@@ -450,7 +441,7 @@ func (e *Engine) GetCompletedOutputs(token string) map[string]any {
 	return outputs
 }
 
-// executeStep runs a single step (use/with) and stores output
+// executeStep runs a single step (use/with) and stores output.
 func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
 	// Nested parallel block logic
 	if step.Parallel && len(step.Steps) > 0 {
@@ -592,19 +583,18 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	for k, v := range step.With {
 		// Prepare template data, flattening previous step outputs for direct access
 		data := make(map[string]any)
+		// Copy maps directly
 		data["event"] = event
 		data["vars"] = vars
 		data["outputs"] = outputs
 		data["secrets"] = secrets
-		for id, out := range outputs {
-			data[id] = out
-		}
-		// --- FLATTEN VARS INTO TOP-LEVEL CONTEXT ---
-		if vars != nil {
-			for key, val := range vars {
-				data[key] = val
-			}
-		}
+
+		// Flatten outputs into context for template rendering - use maps.Copy
+		maps.Copy(data, outputs)
+
+		// Flatten vars into top-level context
+		maps.Copy(data, vars)
+
 		// DEBUG: Log context keys and important values
 		varsKeys := []string{}
 		if vars, ok := data["vars"].(map[string]any); ok {
@@ -659,7 +649,7 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	return nil
 }
 
-// StepContext holds context for step execution (event, vars, outputs, secrets)
+// StepContext holds context for step execution (event, vars, outputs, secrets).
 type StepContext struct {
 	mu      sync.RWMutex
 	Event   map[string]any
@@ -688,9 +678,7 @@ func (sc *StepContext) SnapshotOutputs() map[string]any {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
 	out := make(map[string]any, len(sc.Outputs))
-	for k, v := range sc.Outputs {
-		out[k] = v
-	}
+	maps.Copy(out, sc.Outputs)
 	return out
 }
 
@@ -739,7 +727,7 @@ func (e *Engine) Close() error {
 	return nil
 }
 
-// Helper to convert PausedRun to map[string]any for storage
+// Helper to convert PausedRun to map[string]any for storage.
 func pausedRunToMap(pr *PausedRun) map[string]any {
 	return map[string]any{
 		"flow":     pr.Flow,
@@ -751,7 +739,7 @@ func pausedRunToMap(pr *PausedRun) map[string]any {
 	}
 }
 
-// Add a helper to extract runID from context (or use a global if needed)
+// Add a helper to extract runID from context (or use a global if needed).
 func runIDFromContext(ctx context.Context) uuid.UUID {
 	if v := ctx.Value(runIDKey); v != nil {
 		if id, ok := v.(uuid.UUID); ok {
@@ -761,12 +749,12 @@ func runIDFromContext(ctx context.Context) uuid.UUID {
 	return uuid.Nil
 }
 
-// ListRuns returns all runs, using storage if available, otherwise in-memory
+// ListRuns returns all runs, using storage if available, otherwise in-memory.
 func (e *Engine) ListRuns(ctx context.Context) ([]*model.Run, error) {
 	return e.Storage.ListRuns(ctx)
 }
 
-// GetRunByID returns a run by ID, using storage if available
+// GetRunByID returns a run by ID, using storage if available.
 func (e *Engine) GetRunByID(ctx context.Context, id uuid.UUID) (*model.Run, error) {
 	run, err := e.Storage.GetRun(ctx, id)
 	if err != nil {
@@ -860,7 +848,7 @@ func NewDefaultEngine(ctx context.Context) *Engine {
 	)
 }
 
-// Helper to get map keys for debug logging
+// Helper to get map keys for debug logging.
 func keys(m map[string]any) []string {
 	var out []string
 	for k := range m {
@@ -872,9 +860,7 @@ func keys(m map[string]any) []string {
 // copyMap creates a shallow copy of a map[string]any.
 func copyMap(in map[string]any) map[string]any {
 	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }
 

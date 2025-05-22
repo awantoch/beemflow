@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	mcp "github.com/metoro-io/mcp-golang"
 	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 )
+
+var mcpRe = regexp.MustCompile(`^mcp://([^/]+)/([\w.-]+)$`)
 
 // FindMCPServersInFlow scans a Flow for MCP tool usage and returns a set of required MCP server addresses.
 func FindMCPServersInFlow(flow *model.Flow) map[string]bool {
@@ -30,10 +33,9 @@ func FindMCPServersInFlow(flow *model.Flow) map[string]bool {
 
 func findMCPInStep(step model.Step, servers map[string]bool) {
 	if strings.HasPrefix(step.Use, "mcp://") {
-		// mcp://server/tool
-		parts := strings.SplitN(strings.TrimPrefix(step.Use, "mcp://"), "/", 2)
-		if len(parts) > 0 {
-			servers[parts[0]] = true
+		match := mcpRe.FindStringSubmatch(step.Use)
+		if len(match) == 3 {
+			servers[match[1]] = true
 		}
 	}
 	// Recursively check nested steps (foreach, do, etc.)
@@ -48,17 +50,18 @@ func NewMCPCommand(info config.MCPServerConfig) *exec.Cmd {
 	cmd.Env = os.Environ()
 	for k, v := range info.Env {
 		// Support "$env:VARNAME" placeholders
-		if strings.HasPrefix(v, "$env:") {
+		switch {
+		case strings.HasPrefix(v, "$env:"):
 			envKey := strings.TrimPrefix(v, "$env:")
 			if val := os.Getenv(envKey); val != "" {
 				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, val))
 			}
-		} else if v == "$env" {
+		case v == "$env":
 			// Legacy behavior: use the key as the env var name
 			if val := os.Getenv(k); val != "" {
 				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, val))
 			}
-		} else {
+		default:
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
@@ -114,7 +117,7 @@ func EnsureMCPServers(ctx context.Context, flow *model.Flow, cfg *config.Config)
 	return EnsureMCPServersWithTimeout(ctx, flow, cfg, 15*time.Second)
 }
 
-// isPortOpen checks if a TCP port is open on localhost
+// isPortOpen checks if a TCP port is open on localhost.
 func isPortOpen(port int) bool {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 	if err != nil {
@@ -124,7 +127,7 @@ func isPortOpen(port int) bool {
 	return true
 }
 
-// waitForMCP polls the MCP server until it responds to ListTools or timeout, with exponential backoff
+// waitForMCP polls the MCP server until it responds to ListTools or timeout, with exponential backoff.
 func waitForMCP(ctx context.Context, baseURL string, timeout time.Duration) error {
 	client := NewHTTPMCPClient(baseURL)
 	deadline := time.Now().Add(timeout)

@@ -906,6 +906,27 @@ make dev
 - **Docs**: PRs welcome — every example is CI-verified and BeemFlow-reviewed.
 - **Community**: Join <https://discord.gg/beemflow>.
 
+### Code Quality Standards
+
+We maintain strict code quality standards to ensure the codebase is modern, maintainable, and follows best practices.
+
+```bash
+# Run comprehensive code quality checks
+make check
+
+# Fix common issues automatically 
+make fix
+```
+
+Key standards:
+- Use `maps.Copy()` instead of map copying loops
+- Use switch statements instead of long if-else chains
+- Add periods to comments
+- Follow modern Go idioms
+- Maintain consistent code formatting with `go fmt`
+
+See our [.golangci.yml](./.golangci.yml) for the full list of linter rules we enforce.
+
 ---
 
 ## License

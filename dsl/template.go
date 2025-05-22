@@ -2,6 +2,7 @@ package dsl
 
 import (
 	"fmt"
+	"maps"
 	"time"
 
 	"encoding/base64"
@@ -80,7 +81,7 @@ func registerBuiltinFilters() {
 		case float64:
 			n = int64(v)
 		case string:
-			fmt.Sscanf(v, "%d", &n)
+			_, _ = fmt.Sscanf(v, "%d", &n)
 		}
 		suffix := unit
 		switch unit {
@@ -100,10 +101,8 @@ func registerBuiltinFilters() {
 
 // flattenContext converts the map for pongo2 compatibility.
 func flattenContext(data map[string]any) pongo2.Context {
-	converted := make(pongo2.Context)
-	for k, v := range data {
-		converted[k] = v
-	}
+	converted := make(pongo2.Context, len(data))
+	maps.Copy(converted, data)
 	return converted
 }
 

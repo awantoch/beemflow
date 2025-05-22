@@ -6,7 +6,7 @@ SHELL   := /usr/bin/env bash
 BINARY   := flow
 CMD_PATH := ./cmd/flow
 # ────────────────────────────────────────────────────────────────────────────
-.PHONY: all clean build install test fmt vet lint deps coverage run e2e serve
+.PHONY: all clean build install test fmt vet lint deps coverage run e2e serve check fix
 
 all: clean test build install 
 
@@ -41,6 +41,9 @@ e2e:
 	go run $(CMD_PATH) run flows/parallel_openai.flow.yaml
 	go run $(CMD_PATH) run flows/list_airtable_bases.flow.yaml
 
+# master check target that runs all code quality checks
+check: fmt vet lint tidy
+
 # format all Go files
 fmt:
 	go fmt ./...
@@ -49,7 +52,16 @@ fmt:
 vet:
 	go vet ./...
 
+# run linter with our custom configuration
+lint:
+	golangci-lint run -c .golangci.yml ./...
+
 # tidy & verify modules
 tidy:
 	go mod tidy
 	go mod verify
+
+# auto-fix issues where possible
+fix:
+	@golangci-lint run --fix -c .golangci.yml ./...
+	@go fmt ./...

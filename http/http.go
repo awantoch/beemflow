@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -30,8 +31,6 @@ import (
 )
 
 var (
-	eng               *beemengine.Engine
-	svc               = api.NewFlowService()
 	httpRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "beemflow_http_requests_total",
@@ -193,7 +192,8 @@ func StartServer(cfg *config.Config) error {
 		blobStore = nil
 	}
 
-	eng = beemengine.NewEngine(adapters, templ, bus, blobStore, store)
+	// Create engine but don't need to store it globally
+	_ = beemengine.NewEngine(adapters, templ, bus, blobStore, store)
 
 	addr := ":3333"
 	if cfg.HTTP != nil {
@@ -209,8 +209,9 @@ func StartServer(cfg *config.Config) error {
 	wrappedMux := otelhttp.NewHandler(requestIDMiddleware(metricsMiddleware("root", mux)), "http.root")
 
 	server := &http.Server{
-		Addr:    addr,
-		Handler: wrappedMux,
+		Addr:              addr,
+		Handler:           wrappedMux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	// Channel to listen for errors from ListenAndServe
@@ -236,7 +237,7 @@ func StartServer(cfg *config.Config) error {
 		utils.Info("HTTP server shutdown complete.")
 		return nil
 	case err := <-errChan:
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			utils.Error("HTTP server error: %v", err)
 			return err
 		}

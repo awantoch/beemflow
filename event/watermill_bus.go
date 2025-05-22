@@ -27,7 +27,7 @@ func NewWatermillInMemBus() *WatermillEventBus {
 	return &WatermillEventBus{publisher: ps, subscriber: ps}
 }
 
-// (Optional) NewWatermillNATSBUS returns a NATS-backed bus:
+// (Optional) NewWatermillNATSBUS returns a NATS-backed bus:.
 func NewWatermillNATSBUS(clusterID, clientID, url string) *WatermillEventBus {
 	logger := watermill.NewStdLogger(false, false)
 	pub, _ := nats.NewStreamingPublisher(nats.StreamingPublisherConfig{

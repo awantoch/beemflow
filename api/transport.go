@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// CommandConstructors holds functions that create CLI commands
+// CommandConstructors holds functions that create CLI commands.
 type CommandConstructors struct {
 	NewServeCmd    func() *cobra.Command
 	NewRunCmd      func() *cobra.Command
@@ -57,7 +57,7 @@ func AttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 	// Metadata discovery endpoint
 	registry.RegisterRoute(mux, "GET", "/metadata", registry.InterfaceDescMetadata, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(registry.AllInterfaces())
+		_ = json.NewEncoder(w).Encode(registry.AllInterfaces())
 	})
 
 	// Health check endpoint
@@ -284,7 +284,7 @@ func collectCobra(cmd *cobra.Command) []registry.InterfaceMeta {
 
 // HTTP handler implementations
 
-// GET /runs (list all runs)
+// GET /runs (list all runs).
 func runsListHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -304,7 +304,7 @@ func runsListHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	}
 }
 
-// POST /runs { flow: <filename>, event: <object> }
+// POST /runs { flow: <filename>, event: <object> }.
 func runsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -339,7 +339,7 @@ func runsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	}
 }
 
-// GET /runs/{id}
+// GET /runs/{id}.
 func runStatusHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	if r.Method == http.MethodGet {
 		idStr := r.URL.Path[len("/runs/"):]
@@ -391,7 +391,7 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
-// POST /resume/{token}
+// POST /resume/{token}.
 func resumeHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -520,7 +520,7 @@ func validateHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	}
 }
 
-func testHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
+func testHandler(w http.ResponseWriter, _ *http.Request, _ FlowService) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -610,7 +610,7 @@ func toolsManifestHandler(w http.ResponseWriter, r *http.Request, svc FlowServic
 	}
 }
 
-// Handler: GET /flows (list all flow specs), POST /flows (upload/update flow)
+// Handler: GET /flows (list all flow specs), POST /flows (upload/update flow).
 func flowsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	if r.Method == http.MethodGet {
 		// List all flow specs
@@ -646,7 +646,7 @@ func flowsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
-// Handler: GET /flows/{name} (get flow spec), DELETE /flows/{name} (delete flow)
+// Handler: GET /flows/{name} (get flow spec), DELETE /flows/{name} (delete flow).
 func flowSpecHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	name := strings.TrimPrefix(r.URL.Path, "/flows/")
 	if name == "" {
@@ -681,7 +681,7 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
-// Handler: POST /events (publish event)
+// Handler: POST /events (publish event).
 func eventsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
