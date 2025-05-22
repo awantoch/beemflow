@@ -2,13 +2,12 @@
 
 > **How to use BeemFlow as an LLM agent:**
 >
-> 1. **List Capabilities:** Call `describe` to see all available tools and commands.
-> 2. **Fetch the Protocol Spec:** Call `spec` to get the full YAML grammar, config, and API reference.
-> 3. **Act on User Intent:**
+> 1. **Fetch the Protocol Spec:** Call `spec` to get the full YAML grammar, config, and API reference.
+> 2. **Act on User Intent:**
 >    - If the user asks for a new flow, generate a complete YAML using the spec and template below.
 >    - If the user wants to run or list flows, use `listFlows`, `startRun`, etc.
 >    - Always show the YAML or result, and ask if the user wants to install/run/customize it.
-> 4. **Don't ask for permission to fetch the spec or describe—just do it.**
+> 3. **Don't ask for permission to fetch the spec or describe—just do it.**
 
 ---
 

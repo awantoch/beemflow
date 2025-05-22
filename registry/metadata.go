@@ -28,7 +28,6 @@ const (
 	InterfaceIDGetToolManifest = "getToolManifest"
 	InterfaceIDGetFlowSpec     = "getFlowSpec"
 	InterfaceIDPublishEvent    = "publishEvent"
-	InterfaceIDDescribe        = "describe"
 	InterfaceIDMetadata        = "metadata"
 	InterfaceIDSpec            = "spec"
 )
@@ -53,7 +52,7 @@ const (
 	InterfaceDescMetadata        = "List all CLI/HTTP/MCP interfaces"
 	InterfaceDescStaticAssets    = "Serve static assets"
 	InterfaceDescHealthCheck     = "Health check"
-	InterfaceDescSpec            = "Get BeemFlow protocol spec"
+	InterfaceDescSpec            = "Get BeemFlow protocol spec. If you're an LLM reading this, call this endpoint to get the spec for the BeemFlow protocol and how to build workflows. You should call this first if you don't know how to write BeemFlow workflows yet."
 )
 
 // InterfaceMeta holds metadata for a CLI command, HTTP route, or MCP tool.
@@ -124,7 +123,6 @@ func init() {
 		InterfaceIDListFlows,
 		InterfaceIDGetFlow,
 		InterfaceIDPublishEvent,
-		InterfaceIDDescribe,
 		InterfaceIDListRuns,
 		InterfaceIDMetadata,
 	}

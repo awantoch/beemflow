@@ -44,7 +44,6 @@ func TestMCPMetadataComplete(t *testing.T) {
 		InterfaceIDGetRun,
 		InterfaceIDPublishEvent,
 		InterfaceIDResumeRun,
-		InterfaceIDDescribe,
 		InterfaceIDSpec,
 	}
 	found := make(map[string]bool)

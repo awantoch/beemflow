@@ -14,7 +14,7 @@ import (
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
 )
 
-// ToolRegistration describes a tool's registration info for the MCP server.
+// ToolRegistration holds a tool's registration info for the MCP server.
 type ToolRegistration struct {
 	Name        string
 	Description string

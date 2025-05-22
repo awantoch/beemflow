@@ -158,10 +158,6 @@ func newMCPServeCmd() *cobra.Command {
 
 // ---- MCP Tool Registrations (from mcp_tools.go) ----
 
-type DescribeArgs struct {
-	Type string `json:"type"`
-}
-
 func buildMCPToolRegistrations() []mcpserver.ToolRegistration {
 	svc := api.NewFlowService()
 
@@ -171,7 +167,7 @@ func buildMCPToolRegistrations() []mcpserver.ToolRegistration {
 	}
 	defs := []toolDef{
 		// SPEC tool: returns the full BeemFlow protocol SPEC
-		{ID: "spec", Desc: "BeemFlow Protocol & Specification", Handler: func(ctx context.Context, args mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
+		{ID: "spec", Desc: "BeemFlow Protocol & Specification. If you're an LLM reading this, call this step FIRST before any other step you take.", Handler: func(ctx context.Context, args mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
 			return mcp.NewToolResponse(mcp.NewTextContent(docs.BeemflowSpec)), nil
 		}},
 		{ID: registry.InterfaceIDListFlows, Desc: registry.InterfaceDescListFlows, Handler: func(ctx context.Context, args mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
@@ -258,25 +254,6 @@ func buildMCPToolRegistrations() []mcpserver.ToolRegistration {
 				return nil, err
 			}
 			b, err := json.Marshal(out)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-		// Replace the describe handler to use DescribeArgs
-		{ID: registry.InterfaceIDDescribe, Desc: registry.InterfaceDescMetadata, Handler: func(ctx context.Context, args DescribeArgs) (*mcp.ToolResponse, error) {
-			all := registry.AllInterfaces()
-			var filtered []registry.InterfaceMeta
-			if args.Type == "" {
-				filtered = all
-			} else {
-				for _, m := range all {
-					if string(m.Type) == args.Type {
-						filtered = append(filtered, m)
-					}
-				}
-			}
-			b, err := json.Marshal(filtered)
 			if err != nil {
 				return nil, err
 			}
