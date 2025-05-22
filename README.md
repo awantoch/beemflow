@@ -669,8 +669,22 @@ import { FlowBuilder, StepBuilders, BeemFlowClient } from './flow-client';
 
 (async () => {
   const flow = new FlowBuilder('research_flow')
-    .step({ id: 'search', use: 'http.fetch', with: { url: '{{ topic }}' } })
-    .step({ id: 'summarize', use: 'openai.chat_completion', with: { /* ... */ } })
+    .step({ 
+      id: 'search', 
+      use: 'http.fetch', 
+      with: { url: '{{ topic }}' } 
+    })
+    .step({ 
+      id: 'summarize', 
+      use: 'openai.chat_completion', 
+      with: {
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'Summarize in 3 bullets.' },
+          { role: 'user', content: '{{ outputs.search.body }}' }
+        ]
+      }
+    })
     .build();
 
   const client = new BeemFlowClient();
@@ -681,11 +695,25 @@ import { FlowBuilder, StepBuilders, BeemFlowClient } from './flow-client';
 
 #### Python: Dataclass Patterns
 ```python
-from flow_client import FlowBuilder, Steps, BeemFlowClient
+from flow_client import FlowBuilder, BeemFlowClient
 
 flow = (FlowBuilder("research_flow")
-    .step(Steps.http("search", "{{ topic }}"))
-    .step(Steps.llm("summarize", messages=[ /* ... */ ]))
+    .step({
+        "id": "search",
+        "use": "http.fetch", 
+        "with": {"url": "{{ topic }}"}
+    })
+    .step({
+        "id": "summarize",
+        "use": "openai.chat_completion",
+        "with": {
+            "model": "gpt-4o",
+            "messages": [
+                {"role": "system", "content": "Summarize in 3 bullets."},
+                {"role": "user", "content": "{{ outputs.search.body }}"}
+            ]
+        }
+    })
     .build())
 
 client = BeemFlowClient()
@@ -695,18 +723,22 @@ print(f"RunID: {execution.run_id}, Outputs: {execution.outputs}")
 
 #### Rust: Zero-Cost Abstractions
 ```rust
-use beemflow_client::{FlowBuilder, Steps, BeemFlowClient};
-use std::collections::HashMap;
+use beemflow_client::{FlowBuilder, BeemFlowClient};
+use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut vars = HashMap::new();
-    vars.insert("topic".to_string(), serde_json::Value::String("...".to_string()));
-
     let flow = FlowBuilder::new("research_flow")
-        .vars(vars)
-        .step(Steps::http("search", "{{ vars.topic }}", None))
-        .step(Steps::llm("summarize", vec![ /* ... */ ], None))
+        .step("search", "http.fetch", json!({
+            "url": "{{ topic }}"
+        }))
+        .step("summarize", "openai.chat_completion", json!({
+            "model": "gpt-4o",
+            "messages": [
+                {"role": "system", "content": "Summarize in 3 bullets."},
+                {"role": "user", "content": "{{ outputs.search.body }}"}
+            ]
+        }))
         .build();
 
     let client = BeemFlowClient::new(None);
@@ -725,6 +757,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 **⚡ Dynamic Generation**: Build workflows programmatically based on business logic  
 **🔄 Cross-Language**: All approaches produce identical JSON protocol  
 **📦 Zero YAML**: Direct execution via `/runs/inline` endpoint  
+**📋 Schema Validation**: Runtime validation via [JSON Schema](./docs/beemflow.schema.json) ensures protocol compliance
 
 ```go
 // Generate flows dynamically
@@ -746,6 +779,19 @@ func BuildApprovalFlow(requiresLegal, requiresFinance bool) *model.Flow {
 ```
 
 **The result?** Flows become **first-class citizens** in your codebase—testable, composable, and maintainable like any other code.
+
+**Schema-First Validation:**
+```go
+// Every flow is validated against the JSON Schema
+func (s *FlowService) RunSpec(ctx context.Context, flow *model.Flow, vars map[string]interface{}) (string, map[string]interface{}, error) {
+    if err := dsl.Validate(flow); err != nil {
+        return "", nil, fmt.Errorf("flow validation failed: %w", err)
+    }
+    // ... execute flow
+}
+```
+
+> 💡 **Try it yourself**: Use [our JSON schemas](./docs/) to validate workflows anywhere in your stack—CI/CD, API gateways, custom tooling, or runtime validation!
 
 > **BeemFlow: One protocol, infinite languages. Program the world.**
 
