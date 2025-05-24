@@ -6,6 +6,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-24.04
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      AIRTABLE_API_KEY: ${{ secrets.AIRTABLE_API_KEY }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,5 +24,3 @@ jobs:
 
       - name: Run example workflows
         run: make e2e
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
