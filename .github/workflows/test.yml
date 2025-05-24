@@ -5,7 +5,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       AIRTABLE_API_KEY: ${{ secrets.AIRTABLE_API_KEY }}
