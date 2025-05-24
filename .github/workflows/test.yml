@@ -17,3 +17,6 @@ jobs:
 
       - name: Run tests
         run: make test
+
+      - name: Run example workflows
+        run: make e2e
