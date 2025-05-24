@@ -5,7 +5,7 @@ import (
 
 	"github.com/awantoch/beemflow/model"
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type Storage interface {

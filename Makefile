@@ -18,6 +18,11 @@ clean:
 build:
 	go build -o $(BINARY) $(CMD_PATH)
 
+build-static:
+	CGO_ENABLED=0 \
+	GOOS=$(GOOS) GOARCH=$(GOARCH) \
+	go build -ldflags="-s -w" -o $(BINARY) $(CMD_PATH)
+
 # start the HTTP server
 serve:
 	go run $(CMD_PATH) serve

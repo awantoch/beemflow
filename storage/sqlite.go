@@ -46,7 +46,7 @@ func NewSqliteStorage(dsn string) (*SqliteStorage, error) {
 			return nil, utils.Errorf("failed to create db directory %q: %w", dir, err)
 		}
 	}
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
