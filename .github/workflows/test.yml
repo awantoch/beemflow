@@ -20,3 +20,5 @@ jobs:
 
       - name: Run example workflows
         run: make e2e
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
