@@ -50,18 +50,12 @@ func NewMCPCommand(info config.MCPServerConfig) *exec.Cmd {
 	cmd.Env = os.Environ()
 	for k, v := range info.Env {
 		// Support "$env:VARNAME" placeholders
-		switch {
-		case strings.HasPrefix(v, "$env:"):
+		if strings.HasPrefix(v, "$env:") {
 			envKey := strings.TrimPrefix(v, "$env:")
 			if val := os.Getenv(envKey); val != "" {
 				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, val))
 			}
-		case v == "$env":
-			// Legacy behavior: use the key as the env var name
-			if val := os.Getenv(k); val != "" {
-				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, val))
-			}
-		default:
+		} else {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
@@ -78,11 +72,20 @@ func EnsureMCPServersWithTimeout(ctx context.Context, flow *model.Flow, cfg *con
 		}
 		// Validate required environment variables (community style: env map)
 		missingVars := []string{}
-		for k := range info.Env {
-			val := os.Getenv(k)
-			utils.InfoCtx(ctx, "MCP server expects env", "server", server, "env_var", k)
+		for _, v := range info.Env {
+			var envVarToCheck string
+			if strings.HasPrefix(v, "$env:") {
+				// For $env:VARNAME syntax, check the referenced environment variable
+				envVarToCheck = strings.TrimPrefix(v, "$env:")
+			} else {
+				// For literal values, no environment variable check needed
+				continue
+			}
+
+			val := os.Getenv(envVarToCheck)
+			utils.InfoCtx(ctx, "MCP server expects env", "server", server, "env_var", envVarToCheck)
 			if val == "" {
-				missingVars = append(missingVars, k)
+				missingVars = append(missingVars, envVarToCheck)
 			}
 		}
 		if len(missingVars) > 0 {

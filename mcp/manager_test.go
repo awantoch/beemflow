@@ -59,7 +59,7 @@ func TestEnsureMCPServers_MissingEnv(t *testing.T) {
 	}
 	cfg := &config.Config{
 		MCPServers: map[string]config.MCPServerConfig{
-			"foo": {Command: "true", Env: map[string]string{"FOO": "bar"}},
+			"foo": {Command: "true", Env: map[string]string{"FOO": "$env:MISSING_VAR"}},
 		},
 	}
 	err := EnsureMCPServers(context.Background(), flow, cfg)
@@ -166,18 +166,18 @@ func TestEnsureMCPServers_CommandStartError(t *testing.T) {
 	}
 }
 
-// TestEnsureMCPServers_EnvMapping exercises the env mapping logic for both literal and $env values.
+// TestEnsureMCPServers_EnvMapping exercises the env mapping logic for both literal and $env:VARNAME values.
 func TestEnsureMCPServers_EnvMapping(t *testing.T) {
 	flow := &model.Flow{Steps: []model.Step{{Use: "mcp://foo/tool"}}}
 	cfg := &config.Config{MCPServers: map[string]config.MCPServerConfig{"foo": {
 		Command: "true",
-		Env:     map[string]string{"FOO_LIT": "val1", "FOO_SHELL": "$env"},
+		Env:     map[string]string{"FOO_LIT": "val1", "FOO_SHELL": "$env:FOO_SHELL_VAR"},
 	}}}
-	// Set both literal and $env variables
+	// Set both literal and $env:VARNAME variables
 	os.Setenv("FOO_LIT", "val1")
-	os.Setenv("FOO_SHELL", "shellval")
+	os.Setenv("FOO_SHELL_VAR", "shellval")
 	defer os.Unsetenv("FOO_LIT")
-	defer os.Unsetenv("FOO_SHELL")
+	defer os.Unsetenv("FOO_SHELL_VAR")
 	err := EnsureMCPServers(context.Background(), flow, cfg)
 	if err != nil {
 		t.Errorf("expected no error with env mapping, got %v", err)

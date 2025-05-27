@@ -118,12 +118,3 @@ func (t *Templater) EvaluateExpression(tmpl string, data map[string]any) (any, e
 	// Fallback to string rendering for complex expressions
 	return t.Render(tmpl, data)
 }
-
-// Helper function to get map keys for debugging
-func keys(m map[string]any) []string {
-	var result []string
-	for k := range m {
-		result = append(result, k)
-	}
-	return result
-}
