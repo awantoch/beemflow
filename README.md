@@ -20,6 +20,8 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
 - [BeemFlow](#beemflow)
   - [Table of Contents](#table-of-contents)
   - [Why BeemFlow?](#why-beemflow)
+    - [Why Now?](#why-now)
+    - [The Hidden Opportunity](#the-hidden-opportunity)
   - [Getting Started: BeemFlow by Example](#getting-started-beemflow-by-example)
     - [🟢 Example 1: Hello, World!](#-example-1-hello-world)
     - [🌐 Example 2: Fetch \& Summarize (LLM + HTTP)](#-example-2-fetch--summarize-llm--http)
@@ -57,13 +59,27 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
 
 ## Why BeemFlow?
 
-| Legacy "No-Code" | **BeemFlow** |
-|------------------|--------------|
-| Drag-and-drop UIs that break at scale | **Plain-text YAML** — diff-able, version-controlled, LLM-parseable |
-| Opaque SaaS black boxes | **Open runtime** + plug-in adapters |
-| Human glue work | **LLM prompts are first-class** – AI is the default worker |
-| Multiple brittle dashboards | **One spec → one run → one audit trail** |
-| Vendor lock-in | **Protocol-agnostic**: CLI, REST, MCP, library |
+**The $15 Trillion Problem:** 4.5M Baby Boomers retiring by 2030. 70% of their businesses have no succession plan. The tools to run these businesses efficiently don't exist—until now.
+
+| **The Old Way** | **The BeemFlow Way** |
+|-----------------|----------------------|
+| **Zapier/Make.com:** Drag-and-drop GUIs that break at scale | **Text-first:** Version-controlled YAML that AI can read, write, and optimize |
+| **n8n/Temporal:** Complex interfaces & infrastructure | **Universal protocol:** One workflow runs in CLI, HTTP, MCP—anywhere |
+| **Power Automate:** Vendor lock-in, enterprise pricing | **Open ecosystem:** Your workflows run forever, vendor-free |
+
+### Why Now?
+
+- **AI is ready:** Native MCP support = works with Claude, Cursor, any AI tool
+- **Market timing:** SMB automation market growing 42% annually ($2.3B → $13.8B by 2028)
+- **Real impact:** Cut operational overhead by 80%+ (we've seen 24hr → 2hr workflows)
+
+### The Hidden Opportunity
+
+BeemFlow isn't just about automation—it's about **acquisition**:
+
+> Deploy automation → Build trust → Learn the business → Acquire with creative financing
+
+We're building the infrastructure for the largest generational wealth transfer in history. One workflow at a time.
 
 ---
 
