@@ -11,21 +11,19 @@ vars:
       prompt: "Provide a data-driven, neutral analysis of the claim."
 steps:
   # Parallel Analysis from Defined Angles
-  - id: analyze_claim
+  - foreach: "{{ vars.analysis_types }}"
+    as: "analysis"
     parallel: true
-    steps:
-      - foreach: "{{ vars.analysis_types }}"
-        as: "analysis"
-        do:
-          - id: "{{ analysis.name }}_analysis"
-            use: openai.chat_completion
-            with:
-              model: "gpt-4o"
-              messages:
-                - role: system
-                  content: "{{ analysis.prompt }} Evaluate this claim: {{ vars.claim }}"
-                - role: user
-                  content: "{{ vars.claim }}"
+    do:
+      - id: "{{ analysis.name }}_analysis"
+        use: openai.chat_completion
+        with:
+          model: "gpt-4o"
+          messages:
+            - role: system
+              content: "{{ analysis.prompt }} Evaluate this claim: {{ vars.claim }}"
+            - role: user
+              content: "{{ vars.claim }}"
 
   # Synthesize Responses
   - id: synthesize

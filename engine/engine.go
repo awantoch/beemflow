@@ -893,23 +893,27 @@ func (e *Engine) renderValue(val any, data map[string]any) (any, error) {
 	case string:
 		return e.Templater.Render(x, data)
 	case []any:
+		// Create a copy to avoid race conditions
+		result := make([]any, len(x))
 		for i, elem := range x {
 			rendered, err := e.renderValue(elem, data)
 			if err != nil {
 				return nil, err
 			}
-			x[i] = rendered
+			result[i] = rendered
 		}
-		return x, nil
+		return result, nil
 	case map[string]any:
+		// Create a copy to avoid race conditions
+		result := make(map[string]any, len(x))
 		for k, elem := range x {
 			rendered, err := e.renderValue(elem, data)
 			if err != nil {
 				return nil, err
 			}
-			x[k] = rendered
+			result[k] = rendered
 		}
-		return x, nil
+		return result, nil
 	default:
 		return val, nil
 	}
