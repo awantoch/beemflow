@@ -3,9 +3,7 @@ package dsl
 import (
 	"fmt"
 	"maps"
-	"time"
-
-	"encoding/base64"
+	"strings"
 
 	"github.com/awantoch/beemflow/utils"
 	pongo2 "github.com/flosch/pongo2/v6"
@@ -14,10 +12,8 @@ import (
 // Templater provides template rendering with Jinja2-style (pongo2) for BeemFlow flows.
 type Templater struct{}
 
-// NewTemplater creates a new Templater and registers built-in filters.
+// NewTemplater creates a new Templater.
 func NewTemplater() *Templater {
-	// Register built-in filters only once
-	registerBuiltinFilters()
 	return &Templater{}
 }
 
@@ -57,48 +53,6 @@ func RegisterFilters(filters map[string]pongo2.FilterFunction) {
 	NewTemplater().RegisterFilters(filters)
 }
 
-// registerBuiltinFilters registers built-in filters for BeemFlow.
-var builtinFiltersRegistered = false
-
-func registerBuiltinFilters() {
-	if builtinFiltersRegistered {
-		return
-	}
-	_ = pongo2.RegisterFilter("base64", func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
-		return pongo2.AsValue(base64.StdEncoding.EncodeToString([]byte(in.String()))), nil
-	})
-	_ = pongo2.RegisterFilter("now", func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
-		return pongo2.AsValue(time.Now().Format(time.RFC3339)), nil
-	})
-	_ = pongo2.RegisterFilter("duration", func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
-		unit := param.String()
-		var n int64
-		switch v := in.Interface().(type) {
-		case int:
-			n = int64(v)
-		case int64:
-			n = v
-		case float64:
-			n = int64(v)
-		case string:
-			_, _ = fmt.Sscanf(v, "%d", &n)
-		}
-		suffix := unit
-		switch unit {
-		case "days", "day", "d":
-			suffix = "d"
-		case "hours", "hour", "h":
-			suffix = "h"
-		case "minutes", "minute", "min", "m":
-			suffix = "m"
-		case "seconds", "second", "sec", "s":
-			suffix = "s"
-		}
-		return pongo2.AsValue(fmt.Sprintf("%d%s", n, suffix)), nil
-	})
-	builtinFiltersRegistered = true
-}
-
 // flattenContext converts the map for pongo2 compatibility.
 func flattenContext(data map[string]any) pongo2.Context {
 	converted := make(pongo2.Context, len(data))
@@ -113,4 +67,63 @@ func contextKeys(ctx pongo2.Context) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// EvaluateExpression evaluates a template expression and returns the actual value
+// instead of rendering it to a string. This is useful for foreach expressions
+// that need to extract lists or other non-string values.
+func (t *Templater) EvaluateExpression(tmpl string, data map[string]any) (any, error) {
+	if data == nil {
+		return nil, fmt.Errorf("template data is nil")
+	}
+
+	// If it's not a template expression, return as-is
+	if !strings.Contains(tmpl, "{{") {
+		return tmpl, nil
+	}
+
+	// Check if it's a simple variable expression like {{ vars.analysis_types }} or {{ list }}
+	// We need to extract the variable path and look it up directly in the context
+	tmplTrimmed := strings.TrimSpace(tmpl)
+	if strings.HasPrefix(tmplTrimmed, "{{") && strings.HasSuffix(tmplTrimmed, "}}") {
+		// Extract the variable path from {{ vars.analysis_types }}
+		varPath := strings.TrimSpace(tmplTrimmed[2 : len(tmplTrimmed)-2])
+
+		// Create flattened context for lookup
+		ctx := flattenContext(data)
+
+		// Simple case: direct variable lookup like "vars.analysis_types"
+		if strings.Contains(varPath, ".") {
+			parts := strings.Split(varPath, ".")
+			if len(parts) == 2 {
+				if contextMap, ok := data[parts[0]].(map[string]any); ok {
+					if value, exists := contextMap[parts[1]]; exists {
+						return value, nil
+					}
+				}
+			}
+		}
+
+		// Try flattened context lookup (vars are flattened into top-level)
+		if val, exists := ctx[varPath]; exists {
+			return val, nil
+		}
+
+		// Try direct lookup in top-level data (for event variables like "list")
+		if val, exists := data[varPath]; exists {
+			return val, nil
+		}
+	}
+
+	// Fallback to string rendering for complex expressions
+	return t.Render(tmpl, data)
+}
+
+// Helper function to get map keys for debugging
+func keys(m map[string]any) []string {
+	var result []string
+	for k := range m {
+		result = append(result, k)
+	}
+	return result
 }

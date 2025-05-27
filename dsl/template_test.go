@@ -52,17 +52,22 @@ func TestRender_NestedAndFilters(t *testing.T) {
 func TestRender_BuiltinFilters(t *testing.T) {
 	tpl := NewTemplater()
 	data := map[string]any{
-		"val": 42,
+		"text": "hello world",
+		"val":  42,
 	}
-	out, err := tpl.Render(`Base64: {{ "hi"|base64 }}, Now: {{ ""|now }}, Duration: {{ val|duration:"h" }}`, data)
+	// Test pongo2's built-in filters instead of custom ones
+	out, err := tpl.Render(`Title: {{ text|title }}, Upper: {{ text|upper }}, Length: {{ text|length }}`, data)
 	if err != nil {
 		t.Errorf("Render returned error: %v", err)
 	}
-	if !strings.Contains(out, "Base64: aGk=") {
-		t.Errorf("expected base64 output, got %q", out)
+	if !strings.Contains(out, "Title: Hello World") {
+		t.Errorf("expected title filter output, got %q", out)
 	}
-	if !strings.Contains(out, "Duration: 42h") {
-		t.Errorf("expected duration output, got %q", out)
+	if !strings.Contains(out, "Upper: HELLO WORLD") {
+		t.Errorf("expected upper filter output, got %q", out)
+	}
+	if !strings.Contains(out, "Length: 11") {
+		t.Errorf("expected length filter output, got %q", out)
 	}
 }
 

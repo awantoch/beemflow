@@ -496,65 +496,149 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 
 	// Foreach logic: handle steps with Foreach and Do
 	if step.Foreach != "" {
+		// Safely get context data using thread-safe methods
 		event := stepCtx.SnapshotEvent()
+		vars := stepCtx.SnapshotVars()
+		outputs := stepCtx.SnapshotOutputs()
+		secrets := stepCtx.SnapshotSecrets()
 
-		s := strings.TrimSpace(step.Foreach)
-		if strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}") {
-			key := strings.TrimSpace(s[2 : len(s)-2])
+		// Prepare template data, same as done for step.With
+		data := make(map[string]any)
+		data["event"] = event
+		data["vars"] = vars
+		data["outputs"] = outputs
+		data["secrets"] = secrets
 
-			val, ok := event[key]
+		// Flatten outputs into context for template rendering
+		maps.Copy(data, outputs)
 
-			if !ok {
-				return utils.Errorf("foreach variable not found: %s", key)
-			}
-			list, ok := val.([]any)
-			if !ok {
-				return utils.Errorf("foreach variable %s is not a list", key)
-			}
-			if len(list) == 0 {
-				stepCtx.SetOutput(stepID, make(map[string]any))
-				return nil
-			}
-			if step.Parallel {
-				var wg sync.WaitGroup
-				errChan := make(chan error, len(list))
+		// Flatten vars into top-level context
+		maps.Copy(data, vars)
 
-				for range list {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
-						for _, inner := range step.Do {
-							// Create a copy of inner to avoid race conditions
-							innerCopy := inner
+		// Flatten event into top-level context (for foreach expressions like {{list}})
+		maps.Copy(data, event)
 
-							// No need for additional locking since executeStep will handle it
-							if err := e.executeStep(ctx, &innerCopy, stepCtx, inner.ID); err != nil {
-								errChan <- err
-								return
-							}
-						}
-					}()
-				}
-				wg.Wait()
-				close(errChan)
-				for err := range errChan {
-					if err != nil {
-						return err
-					}
-				}
-			} else {
-				for range list {
-					for _, inner := range step.Do {
-						if err := e.executeStep(ctx, &inner, stepCtx, inner.ID); err != nil {
-							return err
-						}
-					}
-				}
-			}
+		// Evaluate the foreach expression to get the actual value (not rendered as string)
+		rendered, err := e.Templater.EvaluateExpression(step.Foreach, data)
+		if err != nil {
+			return utils.Errorf("template error in foreach expression: %w", err)
+		}
+
+		// The rendered result should be a list
+		list, ok := rendered.([]any)
+		if !ok {
+			return utils.Errorf("foreach expression did not evaluate to a list, got: %T", rendered)
+		}
+
+		if len(list) == 0 {
 			stepCtx.SetOutput(stepID, make(map[string]any))
 			return nil
 		}
-		return utils.Errorf("unsupported foreach expression: %s", step.Foreach)
+
+		if step.Parallel {
+			var wg sync.WaitGroup
+			errChan := make(chan error, len(list))
+
+			for _, item := range list {
+				wg.Add(1)
+				go func(item any) {
+					defer wg.Done()
+
+					// Create a copy of the step context for this iteration
+					iterStepCtx := &StepContext{
+						Event:   stepCtx.SnapshotEvent(),
+						Vars:    stepCtx.SnapshotVars(),
+						Outputs: stepCtx.SnapshotOutputs(),
+						Secrets: stepCtx.SnapshotSecrets(),
+					}
+
+					// Set the loop variable (step.As) to the current item
+					if step.As != "" {
+						iterStepCtx.SetVar(step.As, item)
+					}
+
+					for _, inner := range step.Do {
+						// Create a copy of inner to avoid race conditions
+						innerCopy := inner
+
+						// Render the step ID as a template
+						iterEvent := iterStepCtx.SnapshotEvent()
+						iterVars := iterStepCtx.SnapshotVars()
+						iterOutputs := iterStepCtx.SnapshotOutputs()
+						iterSecrets := iterStepCtx.SnapshotSecrets()
+
+						iterData := make(map[string]any)
+						iterData["event"] = iterEvent
+						iterData["vars"] = iterVars
+						iterData["outputs"] = iterOutputs
+						iterData["secrets"] = iterSecrets
+						maps.Copy(iterData, iterOutputs)
+						maps.Copy(iterData, iterVars)
+
+						renderedStepID, err := e.Templater.Render(inner.ID, iterData)
+						if err != nil {
+							errChan <- utils.Errorf("template error in step ID %s: %w", inner.ID, err)
+							return
+						}
+
+						// Use the iteration-specific context
+						if err := e.executeStep(ctx, &innerCopy, iterStepCtx, renderedStepID); err != nil {
+							errChan <- err
+							return
+						}
+
+						// Copy outputs back to main context
+						if output, ok := iterStepCtx.GetOutput(renderedStepID); ok {
+							stepCtx.SetOutput(renderedStepID, output)
+						}
+					}
+				}(item)
+			}
+			wg.Wait()
+			close(errChan)
+			for err := range errChan {
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			for _, item := range list {
+				// Set the loop variable (step.As) to the current item
+				if step.As != "" {
+					stepCtx.SetVar(step.As, item)
+				}
+
+				for _, inner := range step.Do {
+					// Render the step ID as a template
+					event := stepCtx.SnapshotEvent()
+					vars := stepCtx.SnapshotVars()
+					outputs := stepCtx.SnapshotOutputs()
+					secrets := stepCtx.SnapshotSecrets()
+
+					data := make(map[string]any)
+					data["event"] = event
+					data["vars"] = vars
+					data["outputs"] = outputs
+					data["secrets"] = secrets
+					maps.Copy(data, outputs)
+					maps.Copy(data, vars)
+
+					renderedStepID, err := e.Templater.Render(inner.ID, data)
+					if err != nil {
+						return utils.Errorf("template error in step ID %s: %w", inner.ID, err)
+					}
+
+					if err := e.executeStep(ctx, &inner, stepCtx, renderedStepID); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		// Only set output if stepID is non-empty (foreach steps without explicit IDs shouldn't create outputs)
+		if stepID != "" {
+			stepCtx.SetOutput(stepID, make(map[string]any))
+		}
+		return nil
 	}
 	if step.Use == "" {
 		return nil
