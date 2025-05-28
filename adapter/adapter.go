@@ -48,7 +48,12 @@ func appendToLocalRegistry(entry registry.RegistryEntry, path string) error {
 	var entries []registry.RegistryEntry
 	data, err := os.ReadFile(path)
 	if err == nil {
-		_ = json.Unmarshal(data, &entries)
+		if err := json.Unmarshal(data, &entries); err != nil {
+			// If existing file is corrupted, log error but continue with empty entries
+			// This allows recovery from corrupted registry files
+			fmt.Printf("Warning: corrupted registry file %s, starting fresh: %v\n", path, err)
+			entries = []registry.RegistryEntry{}
+		}
 	}
 	// Remove any existing entry with the same name
 	newEntries := []registry.RegistryEntry{}
@@ -58,7 +63,10 @@ func appendToLocalRegistry(entry registry.RegistryEntry, path string) error {
 		}
 	}
 	newEntries = append(newEntries, entry)
-	out, _ := json.MarshalIndent(newEntries, "", "  ")
+	out, err := json.MarshalIndent(newEntries, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal registry entries: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
