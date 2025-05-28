@@ -64,7 +64,9 @@ func Serve(configPath string, debug, stdio bool, addr string, tools []ToolRegist
 // This function is generic and does not import any business logic.
 func RegisterAllTools(server *mcp.Server, tools []ToolRegistration) {
 	for _, t := range tools {
-		_ = server.RegisterTool(t.Name, t.Description, t.Handler)
+		if err := server.RegisterTool(t.Name, t.Description, t.Handler); err != nil {
+			utils.Error("Failed to register MCP tool %s: %v", t.Name, err)
+		}
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -91,15 +92,21 @@ CREATE TABLE IF NOT EXISTS paused_runs (
 }
 
 func (s *SqliteStorage) SaveRun(ctx context.Context, run *model.Run) error {
-	event, _ := json.Marshal(run.Event)
-	vars, _ := json.Marshal(run.Vars)
-	var endedAt interface{}
+	event, err := json.Marshal(run.Event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal run event: %w", err)
+	}
+	vars, err := json.Marshal(run.Vars)
+	if err != nil {
+		return fmt.Errorf("failed to marshal run vars: %w", err)
+	}
+	var endedAt any
 	if run.EndedAt != nil {
 		endedAt = run.EndedAt.Unix()
 	} else {
 		endedAt = nil
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 INSERT INTO runs (id, flow_name, event, vars, status, started_at, ended_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET flow_name=excluded.flow_name, event=excluded.event, vars=excluded.vars, status=excluded.status, started_at=excluded.started_at, ended_at=excluded.ended_at
@@ -134,14 +141,17 @@ func (s *SqliteStorage) GetRun(ctx context.Context, id uuid.UUID) (*model.Run, e
 }
 
 func (s *SqliteStorage) SaveStep(ctx context.Context, step *model.StepRun) error {
-	outputs, _ := json.Marshal(step.Outputs)
-	var endedAt interface{}
+	outputs, err := json.Marshal(step.Outputs)
+	if err != nil {
+		return fmt.Errorf("failed to marshal step outputs: %w", err)
+	}
+	var endedAt any
 	if step.EndedAt != nil {
 		endedAt = step.EndedAt.Unix()
 	} else {
 		endedAt = nil
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 INSERT INTO steps (id, run_id, step_name, status, started_at, ended_at, outputs, error)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET run_id=excluded.run_id, step_name=excluded.step_name, status=excluded.status, started_at=excluded.started_at, ended_at=excluded.ended_at, outputs=excluded.outputs, error=excluded.error

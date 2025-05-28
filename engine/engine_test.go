@@ -89,8 +89,8 @@ func TestExecute_AllStepTypes(t *testing.T) {
 		{ID: "s2", Use: "core.echo", With: map[string]interface{}{"text": "hi"}},
 	}}
 	_, err := e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
-	if err == nil || !strings.Contains(err.Error(), "missing token in match") {
-		t.Errorf("expected await_event missing token error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "missing or invalid token") {
+		t.Errorf("expected await_event missing or invalid token error, got %v", err)
 	}
 }
 

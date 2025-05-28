@@ -27,17 +27,22 @@ func NewWatermillInMemBus() *WatermillEventBus {
 	return &WatermillEventBus{publisher: ps, subscriber: ps}
 }
 
-// (Optional) NewWatermillNATSBUS returns a NATS-backed bus:.
-func NewWatermillNATSBUS(clusterID, clientID, url string) *WatermillEventBus {
+// NewWatermillNATSBUS returns a NATS-backed bus or error if setup fails.
+func NewWatermillNATSBUS(clusterID, clientID, url string) (*WatermillEventBus, error) {
 	logger := watermill.NewStdLogger(false, false)
-	pub, _ := nats.NewStreamingPublisher(nats.StreamingPublisherConfig{
+
+	pub, err := nats.NewStreamingPublisher(nats.StreamingPublisherConfig{
 		ClusterID: clusterID,
 		ClientID:  clientID,
 		StanOptions: []stan.Option{
 			stan.NatsURL(url),
 		},
 	}, logger)
-	sub, _ := nats.NewStreamingSubscriber(nats.StreamingSubscriberConfig{
+	if err != nil {
+		return nil, fmt.Errorf("failed to create NATS publisher: %w", err)
+	}
+
+	sub, err := nats.NewStreamingSubscriber(nats.StreamingSubscriberConfig{
 		ClusterID: clusterID,
 		ClientID:  clientID,
 		StanOptions: []stan.Option{
@@ -46,7 +51,11 @@ func NewWatermillNATSBUS(clusterID, clientID, url string) *WatermillEventBus {
 		CloseTimeout:   30 * time.Second,
 		AckWaitTimeout: 30 * time.Second,
 	}, logger)
-	return &WatermillEventBus{publisher: pub, subscriber: sub}
+	if err != nil {
+		return nil, fmt.Errorf("failed to create NATS subscriber: %w", err)
+	}
+
+	return &WatermillEventBus{publisher: pub, subscriber: sub}, nil
 }
 
 func (b *WatermillEventBus) Publish(topic string, payload any) error {
@@ -76,24 +85,35 @@ func (b *WatermillEventBus) Subscribe(ctx context.Context, topic string, handler
 		return
 	}
 	go func() {
-		for msg := range ch {
-			data := msg.Payload // msg.Payload is []byte
-			// Try to decode as int
-			if i, err := strconv.Atoi(string(data)); err == nil {
-				handler(i)
+		for {
+			select {
+			case <-ctx.Done():
+				// Context cancelled, exit goroutine
+				return
+			case msg, ok := <-ch:
+				if !ok {
+					// Channel closed, exit goroutine
+					return
+				}
+
+				data := msg.Payload // msg.Payload is []byte
+				// Try to decode as int
+				if i, err := strconv.Atoi(string(data)); err == nil {
+					handler(i)
+					msg.Ack()
+					continue
+				}
+				// Try to decode as map[string]any (JSON)
+				var m map[string]any
+				if err := json.Unmarshal(data, &m); err == nil && len(m) > 0 {
+					handler(m)
+					msg.Ack()
+					continue
+				}
+				// fallback: pass as string
+				handler(string(data))
 				msg.Ack()
-				continue
 			}
-			// Try to decode as map[string]any (JSON)
-			var m map[string]any
-			if err := json.Unmarshal(data, &m); err == nil && len(m) > 0 {
-				handler(m)
-				msg.Ack()
-				continue
-			}
-			// fallback: pass as string
-			handler(string(data))
-			msg.Ack()
 		}
 	}()
 }

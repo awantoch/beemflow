@@ -3,6 +3,8 @@ package adapter
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -14,12 +16,6 @@ type Adapter interface {
 	ID() string
 	Execute(ctx context.Context, inputs map[string]any) (map[string]any, error)
 	Manifest() *registry.ToolManifest
-}
-
-// ClosableAdapter is an optional interface for adapters that need cleanup.
-type ClosableAdapter interface {
-	Adapter
-	Close() error
 }
 
 // Registry holds registered adapters and provides lookup and registration methods.
@@ -66,7 +62,19 @@ func appendToLocalRegistry(entry registry.RegistryEntry, path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, out, 0644)
+	if err := os.WriteFile(path, out, 0644); err != nil {
+		return err
+	}
+	// Reload entries to verify
+	verifyData, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var verifyEntries []registry.RegistryEntry
+	if err := json.Unmarshal(verifyData, &verifyEntries); err != nil {
+		return fmt.Errorf("failed to unmarshal registry entries after write: %w", err)
+	}
+	return nil
 }
 
 // LoadAndRegisterTool loads a tool manifest from a local directory and registers an HTTPAdapter.
@@ -92,12 +100,12 @@ func (r *Registry) LoadAndRegisterTool(name, manifestPath string) error {
 	return nil
 }
 
-// Add CloseAll to Registry to close all adapters that support it.
+// CloseAll closes all adapters that implement io.Closer.
 func (r *Registry) CloseAll() error {
 	var firstErr error
 	for _, a := range r.adapters {
-		if ca, ok := a.(ClosableAdapter); ok {
-			if err := ca.Close(); err != nil && firstErr == nil {
+		if closer, ok := a.(io.Closer); ok {
+			if err := closer.Close(); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		}

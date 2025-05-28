@@ -21,7 +21,7 @@ func Validate(flow *model.Flow) error {
 		return err
 	}
 	// Unmarshal JSON into a generic interface for validation
-	var doc interface{}
+	var doc any
 	if err := json.Unmarshal(jsonBytes, &doc); err != nil {
 		return err
 	}

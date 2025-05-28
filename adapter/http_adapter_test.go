@@ -5,106 +5,82 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/awantoch/beemflow/registry"
 )
 
-// TestHTTPPostJSONAndGetRaw covers success and error cases for HTTPPostJSON and HTTPGetRaw.
-func TestHTTPPostJSONAndGetRaw(t *testing.T) {
-	// POST success
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("json.Decode failed: %v", err)
-		}
-		r.Body.Close()
-		if body["x"] != float64(1) {
-			w.WriteHeader(400)
-			return
-		}
-		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
-			t.Fatalf("w.Write failed: %v", err)
-		}
-	}))
-	defer server.Close()
-
-	var out map[string]any
-	err := HTTPPostJSON(context.Background(), server.URL, map[string]any{"x": 1}, map[string]string{"H": "V"}, &out)
-	if err != nil || out["ok"] != true {
-		t.Errorf("HTTPPostJSON success failed: %v %v", err, out)
-	}
-
-	// POST status error
-	statusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
-		if _, err := w.Write([]byte(`error`)); err != nil {
-			t.Fatalf("w.Write failed: %v", err)
-		}
-	}))
-	defer statusServer.Close()
-
-	err = HTTPPostJSON(context.Background(), statusServer.URL, map[string]any{}, nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "unexpected status code") {
-		t.Errorf("expected status code error, got %v", err)
-	}
-
-	// GET success
+// TestHTTPAdapter_Generic covers both manifest-based and generic HTTP requests.
+func TestHTTPAdapter_Generic(t *testing.T) {
+	// Test generic HTTP GET
 	getServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
-		if _, err := w.Write([]byte("hello")); err != nil {
-			t.Fatalf("w.Write failed: %v", err)
-		}
+		w.Write([]byte("hello"))
 	}))
 	defer getServer.Close()
 
-	body, err := HTTPGetRaw(context.Background(), getServer.URL, map[string]string{"A": "B"})
-	if err != nil || body != "hello" {
-		t.Errorf("HTTPGetRaw success failed: %v %v", err, body)
-	}
-
-	// GET status error
-	getErrorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(404)
-		if _, err := w.Write([]byte("not found")); err != nil {
-			t.Fatalf("w.Write failed: %v", err)
-		}
-	}))
-	defer getErrorServer.Close()
-
-	_, err = HTTPGetRaw(context.Background(), getErrorServer.URL, nil)
-	if err == nil || !strings.Contains(err.Error(), "unexpected status code") {
-		t.Errorf("expected HTTPGetRaw status error, got %v", err)
-	}
-}
-
-// TestHTTPFetchAdapter covers missing url error and successful fetch.
-func TestHTTPFetchAdapter(t *testing.T) {
-	a := &HTTPFetchAdapter{}
-	_, err := a.Execute(context.Background(), map[string]any{})
-	if err == nil || !strings.Contains(err.Error(), "missing url") {
-		t.Errorf("expected missing url error, got %v", err)
-	}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		if _, err := w.Write([]byte("data")); err != nil {
-			t.Fatalf("w.Write failed: %v", err)
-		}
-	}))
-	defer server.Close()
-
-	res, err := a.Execute(context.Background(), map[string]any{"url": server.URL})
+	adapter := &HTTPAdapter{AdapterID: "http"}
+	result, err := adapter.Execute(context.Background(), map[string]any{
+		"url":    getServer.URL,
+		"method": "GET",
+	})
 	if err != nil {
-		t.Errorf("expected no error, got %v", err)
+		t.Errorf("GET request failed: %v", err)
 	}
-	if res["body"] != "data" {
-		t.Errorf("expected body=data, got %v", res)
+	if result["body"] != "hello" {
+		t.Errorf("expected body=hello, got %v", result["body"])
+	}
+
+	// Test generic HTTP POST
+	postServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["test"] != "data" {
+			w.WriteHeader(400)
+			return
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"success": true}`))
+	}))
+	defer postServer.Close()
+
+	result, err = adapter.Execute(context.Background(), map[string]any{
+		"url":    postServer.URL,
+		"method": "POST",
+		"body":   map[string]any{"test": "data"},
+	})
+	if err != nil {
+		t.Errorf("POST request failed: %v", err)
+	}
+	if result["success"] != true {
+		t.Errorf("expected success=true, got %v", result["success"])
+	}
+
+	// Test missing URL error
+	_, err = adapter.Execute(context.Background(), map[string]any{})
+	if err == nil || !strings.Contains(err.Error(), "missing or invalid url") {
+		t.Errorf("expected missing or invalid url error, got %v", err)
+	}
+
+	// Test HTTP error status
+	errorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte("server error"))
+	}))
+	defer errorServer.Close()
+
+	_, err = adapter.Execute(context.Background(), map[string]any{
+		"url": errorServer.URL,
+	})
+	if err == nil || !strings.Contains(err.Error(), "status 500") {
+		t.Errorf("expected status 500 error, got %v", err)
 	}
 }
 
-func TestHTTPAdapter_DefaultInjection(t *testing.T) {
+// TestHTTPAdapter_ManifestBased tests manifest-based HTTP requests.
+func TestHTTPAdapter_ManifestBased(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -114,9 +90,7 @@ func TestHTTPAdapter_DefaultInjection(t *testing.T) {
 			t.Errorf("expected foo=bar in request body, got %v", body["foo"])
 		}
 		w.WriteHeader(200)
-		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
-			t.Fatalf("w.Write failed: %v", err)
-		}
+		w.Write([]byte(`{"ok":true}`))
 	}))
 	defer server.Close()
 
@@ -130,12 +104,60 @@ func TestHTTPAdapter_DefaultInjection(t *testing.T) {
 			},
 		},
 	}
-	a := &HTTPAdapter{AdapterID: "test-defaults", ToolManifest: manifest}
-	out, err := a.Execute(context.Background(), map[string]any{})
+
+	adapter := &HTTPAdapter{AdapterID: "test-defaults", ToolManifest: manifest}
+	result, err := adapter.Execute(context.Background(), map[string]any{})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if out["ok"] != true {
-		t.Errorf("expected ok=true in response, got %v", out)
+	if result["ok"] != true {
+		t.Errorf("expected ok=true in response, got %v", result)
+	}
+}
+
+// TestHTTPAdapter_EnvironmentVariableExpansion tests environment variable expansion in headers and defaults
+func TestHTTPAdapter_EnvironmentVariableExpansion(t *testing.T) {
+	// Set test environment variables
+	os.Setenv("TEST_API_KEY", "secret-key-123")
+	defer func() {
+		os.Unsetenv("TEST_API_KEY")
+	}()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check that the Authorization header was expanded correctly
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer secret-key-123" {
+			t.Errorf("expected Authorization header 'Bearer secret-key-123', got '%s'", auth)
+		}
+
+		w.WriteHeader(200)
+		w.Write([]byte(`{"success": true}`))
+	}))
+	defer server.Close()
+
+	manifest := &registry.ToolManifest{
+		Name:     "test-env-expansion",
+		Endpoint: server.URL,
+		Headers: map[string]string{
+			"Authorization": "Bearer $env:TEST_API_KEY",
+		},
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"api_key": map[string]any{
+					"type":    "string",
+					"default": "$env:TEST_API_KEY",
+				},
+			},
+		},
+	}
+
+	adapter := &HTTPAdapter{AdapterID: "test-env-expansion", ToolManifest: manifest}
+	result, err := adapter.Execute(context.Background(), map[string]any{})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result["success"] != true {
+		t.Errorf("expected success=true in response, got %v", result)
 	}
 }

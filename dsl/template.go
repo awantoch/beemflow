@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"sync"
 
 	"github.com/awantoch/beemflow/utils"
 	pongo2 "github.com/flosch/pongo2/v6"
 )
 
 // Templater provides template rendering with Jinja2-style (pongo2) for BeemFlow flows.
-type Templater struct{}
+type Templater struct {
+	mu sync.Mutex // protects pongo2 operations which are not thread-safe
+}
 
 // NewTemplater creates a new Templater.
 func NewTemplater() *Templater {
@@ -25,11 +28,17 @@ func (t *Templater) Render(tmpl string, data map[string]any) (string, error) {
 	ctx := flattenContext(data)
 	// DEBUG: Log template string and context keys before rendering
 	utils.Debug("Templater.Render: tmpl = %q, context keys = %v", tmpl, contextKeys(ctx))
+
+	// Protect pongo2 operations with mutex since they're not thread-safe
+	t.mu.Lock()
 	pl, err := pongo2.FromString(tmpl)
 	if err != nil {
+		t.mu.Unlock()
 		return "", err
 	}
 	out, err := pl.Execute(ctx)
+	t.mu.Unlock()
+
 	if err != nil {
 		return "", err
 	}
@@ -37,10 +46,15 @@ func (t *Templater) Render(tmpl string, data map[string]any) (string, error) {
 }
 
 // RegisterFilters allows registering custom pongo2 filters.
-func (t *Templater) RegisterFilters(filters map[string]pongo2.FilterFunction) {
+func (t *Templater) RegisterFilters(filters map[string]pongo2.FilterFunction) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	for name, fn := range filters {
-		_ = pongo2.RegisterFilter(name, fn)
+		if err := pongo2.RegisterFilter(name, fn); err != nil {
+			return utils.Errorf("failed to register filter %s: %w", name, err)
+		}
 	}
+	return nil
 }
 
 // Render applies templating to the given string with the provided data.
@@ -49,8 +63,8 @@ func Render(tmpl string, data map[string]any) (string, error) {
 }
 
 // RegisterFilters applies custom filters for rendering.
-func RegisterFilters(filters map[string]pongo2.FilterFunction) {
-	NewTemplater().RegisterFilters(filters)
+func RegisterFilters(filters map[string]pongo2.FilterFunction) error {
+	return NewTemplater().RegisterFilters(filters)
 }
 
 // flattenContext converts the map for pongo2 compatibility.

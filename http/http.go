@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -192,8 +193,29 @@ func StartServer(cfg *config.Config) error {
 		blobStore = nil
 	}
 
-	// Create engine but don't need to store it globally
-	_ = beemengine.NewEngine(adapters, templ, bus, blobStore, store)
+	// Create engine and store it for proper cleanup
+	engine := beemengine.NewEngine(adapters, templ, bus, blobStore, store)
+
+	// Cleanup function to properly close all resources
+	cleanup := func() {
+		if err := engine.Close(); err != nil {
+			utils.Error("Failed to close engine: %v", err)
+		}
+		if store != nil {
+			if closer, ok := store.(io.Closer); ok {
+				if err := closer.Close(); err != nil {
+					utils.Error("Failed to close storage: %v", err)
+				}
+			}
+		}
+		if blobStore != nil {
+			if closer, ok := blobStore.(io.Closer); ok {
+				if err := closer.Close(); err != nil {
+					utils.Error("Failed to close blob store: %v", err)
+				}
+			}
+		}
+	}
 
 	addr := ":3333"
 	if cfg.HTTP != nil {
@@ -232,11 +254,14 @@ func StartServer(cfg *config.Config) error {
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
 			utils.Error("HTTP server shutdown error: %v", err)
+			cleanup()
 			return err
 		}
+		cleanup()
 		utils.Info("HTTP server shutdown complete.")
 		return nil
 	case err := <-errChan:
+		cleanup()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			utils.Error("HTTP server error: %v", err)
 			return err

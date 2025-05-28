@@ -155,7 +155,7 @@ func ValidateConfig(raw []byte) error {
 	if err != nil {
 		return err
 	}
-	var doc interface{}
+	var doc any
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return err
 	}
@@ -419,9 +419,16 @@ func LoadAndInjectRegistries(path string) (*Config, error) {
 			"path": cfg.Registries[i].Path,
 		}
 		InjectEnvVarsIntoRegistry(regMap)
-		cfg.Registries[i].Type = regMap["type"].(string)
-		cfg.Registries[i].URL = regMap["url"].(string)
-		cfg.Registries[i].Path, _ = regMap["path"].(string)
+		if regType, ok := regMap["type"].(string); ok {
+			cfg.Registries[i].Type = regType
+		}
+		if regURL, ok := regMap["url"].(string); ok {
+			cfg.Registries[i].URL = regURL
+		}
+		if path, ok := regMap["path"].(string); ok {
+			cfg.Registries[i].Path = path
+		}
+		// If type assertions fail, keep the original values
 	}
 	return cfg, nil
 }

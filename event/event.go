@@ -28,8 +28,11 @@ func NewEventBusFromConfig(cfg *config.EventConfig) (EventBus, error) {
 		if cfg.URL == "" {
 			return nil, fmt.Errorf("NATS driver requires url")
 		}
-		// Use default clusterID/clientID for now
-		return NewWatermillNATSBUS("beemflow", "beemflow-client", cfg.URL), nil
+		bus, err := NewWatermillNATSBUS("beemflow", "beemflow-client", cfg.URL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create NATS event bus: %w", err)
+		}
+		return bus, nil
 	default:
 		return nil, fmt.Errorf("unsupported event bus driver: %s", cfg.Driver)
 	}

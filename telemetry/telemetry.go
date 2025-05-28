@@ -43,18 +43,23 @@ func init() {
 
 // Init sets up tracing exporter based on config.
 // Supported exporters: "stdout", "otlp".
-func Init(cfg *config.Config) {
+func Init(cfg *config.Config) error {
 	// Setup tracer provider
 	serviceName := "beemflow"
 	if cfg.Tracing != nil && cfg.Tracing.ServiceName != "" {
 		serviceName = cfg.Tracing.ServiceName
 	}
-	res, _ := resource.New(
+
+	res, err := resource.New(
 		context.Background(),
 		resource.WithAttributes(
 			semconv.ServiceName(serviceName),
 		),
 	)
+	if err != nil {
+		return fmt.Errorf("failed to create resource: %w", err)
+	}
+
 	var tp *sdktrace.TracerProvider
 	switch {
 	case cfg.Tracing != nil && cfg.Tracing.Exporter == "otlp":
@@ -63,22 +68,28 @@ func Init(cfg *config.Config) {
 			endpoint = "http://localhost:4318"
 		}
 		exp, err := otlptracehttp.New(context.Background(), otlptracehttp.WithEndpoint(endpoint), otlptracehttp.WithInsecure())
-		if err == nil {
-			tp = sdktrace.NewTracerProvider(
-				sdktrace.WithBatcher(exp),
-				sdktrace.WithResource(res),
-			)
+		if err != nil {
+			return fmt.Errorf("failed to create OTLP exporter: %w", err)
 		}
+		tp = sdktrace.NewTracerProvider(
+			sdktrace.WithBatcher(exp),
+			sdktrace.WithResource(res),
+		)
 	default: // stdout fallback
-		exp, _ := stdouttrace.New(stdouttrace.WithPrettyPrint())
+		exp, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+		if err != nil {
+			return fmt.Errorf("failed to create stdout exporter: %w", err)
+		}
 		tp = sdktrace.NewTracerProvider(
 			sdktrace.WithBatcher(exp),
 			sdktrace.WithResource(res),
 		)
 	}
+
 	if tp != nil {
 		otel.SetTracerProvider(tp)
 	}
+	return nil
 }
 
 // WrapHandler applies tracing, Prometheus metrics, and otelhttp middleware.

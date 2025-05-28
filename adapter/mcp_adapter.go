@@ -88,7 +88,10 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 			// Minimal HTTP JSON-RPC fallback (tools/list and tools/call)
 			// List tools
 			listReq := map[string]any{"method": "tools/list", "params": []any{}, "id": 1}
-			bodyBytes, _ := json.Marshal(listReq)
+			bodyBytes, err := json.Marshal(listReq)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal tools/list request: %w", err)
+			}
 			resp, err := http.Post(cfg.Endpoint, "application/json", bytes.NewReader(bodyBytes))
 			if err != nil {
 				return nil, fmt.Errorf("failed to list tools: %w", err)
@@ -110,7 +113,10 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 			}
 			// Call tool
 			callReq := map[string]any{"method": "tools/call", "params": map[string]any{"name": tool, "arguments": inputs}, "id": 1}
-			callBytes, _ := json.Marshal(callReq)
+			callBytes, err := json.Marshal(callReq)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal tools/call request: %w", err)
+			}
 			resp2, err := http.Post(cfg.Endpoint, "application/json", bytes.NewReader(callBytes))
 			if err != nil {
 				return nil, fmt.Errorf("MCP CallTool failed: %w", err)
@@ -196,9 +202,14 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 		return map[string]any{"text": resp.Content[0].TextContent.Text}, nil
 	}
 	// If the response is more complex, return as-is
-	b, _ := json.Marshal(resp)
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal MCP response: %w", err)
+	}
 	var out map[string]any
-	_ = json.Unmarshal(b, &out)
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal MCP response: %w", err)
+	}
 	return out, nil
 }
 
@@ -222,8 +233,12 @@ func (a *MCPAdapter) Close() error {
 			}
 		}
 		if pipes, ok := a.pipes[host]; ok {
-			_ = pipes.stdin.Close()
-			_ = pipes.stdout.Close()
+			if err := pipes.stdin.Close(); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("failed to close stdin for %s: %w", host, err)
+			}
+			if err := pipes.stdout.Close(); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("failed to close stdout for %s: %w", host, err)
+			}
 		}
 		delete(a.processes, host)
 		delete(a.pipes, host)

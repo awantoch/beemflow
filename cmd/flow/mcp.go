@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/awantoch/beemflow/api"
@@ -141,12 +140,10 @@ func newMCPServeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve BeemFlow as an MCP server (HTTP or stdio)",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			svc := api.NewFlowService()
 			tools := api.BuildMCPToolRegistrations(svc)
-			if err := mcpserver.Serve(configPath, debug, stdio, addr, tools); err != nil {
-				log.Fatalf("MCP server failed: %v", err)
-			}
+			return mcpserver.Serve(configPath, debug, stdio, addr, tools)
 		},
 	}
 	cmd.Flags().BoolVar(&stdio, "stdio", true, "serve over stdin/stdout instead of HTTP (default)")

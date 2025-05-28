@@ -57,14 +57,19 @@ func AttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 	// Metadata discovery endpoint
 	registry.RegisterRoute(mux, "GET", "/metadata", registry.InterfaceDescMetadata, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(registry.AllInterfaces())
+		if err := json.NewEncoder(w).Encode(registry.AllInterfaces()); err != nil {
+			utils.Error("Failed to encode metadata response: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	})
 
 	// Health check endpoint
 	registry.RegisterRoute(mux, "GET", "/healthz", registry.InterfaceDescHealthCheck, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+			utils.Error("Failed to write health check response: %v", err)
+		}
 	})
 
 	// Register handlers for each API endpoint
@@ -110,7 +115,9 @@ func AttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 	})
 	mux.HandleFunc("/spec", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/markdown")
-		_, _ = w.Write([]byte(docs.BeemflowSpec))
+		if _, err := w.Write([]byte(docs.BeemflowSpec)); err != nil {
+			utils.Error("Failed to write spec response: %v", err)
+		}
 	})
 }
 
@@ -190,7 +197,7 @@ func BuildMCPToolRegistrations(svc FlowService) []mcpserver.ToolRegistration {
 			}
 			// If default empty flow, inject on:null into JSON
 			if flow.Name == "" && len(flow.Steps) == 0 {
-				var m map[string]interface{}
+				var m map[string]any
 				if err := json.Unmarshal(b, &m); err == nil {
 					if _, ok := m["on"]; !ok {
 						m["on"] = nil
@@ -440,10 +447,12 @@ func resumeHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 
 		// Return response
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"status":  run.Status,
 			"outputs": run.Event["outputs"],
-		})
+		}); err != nil {
+			utils.Error("Failed to encode resume response: %v", err)
+		}
 		return
 	}
 

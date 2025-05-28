@@ -41,9 +41,14 @@ func initLoggers() {
 	} else {
 		internalCfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
 	}
-	if l, err := internalCfg.Build(); err == nil {
-		internalLogger = l.Sugar()
+	l, err := internalCfg.Build()
+	if err != nil {
+		// Fallback to standard library logger if zap fails
+		log.Printf("Failed to initialize zap logger: %v, falling back to standard logger", err)
+		internalLogger = nil
+		return
 	}
+	internalLogger = l.Sugar()
 }
 
 func User(format string, v ...any) {

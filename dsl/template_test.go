@@ -92,7 +92,7 @@ func TestRender_MissingKey(t *testing.T) {
 
 func TestRender_CustomFilter(t *testing.T) {
 	tpl := NewTemplater()
-	tpl.RegisterFilters(map[string]pongo2.FilterFunction{
+	err := tpl.RegisterFilters(map[string]pongo2.FilterFunction{
 		"repeat": func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
 			n := param.Integer()
 			res := ""
@@ -102,6 +102,9 @@ func TestRender_CustomFilter(t *testing.T) {
 			return pongo2.AsValue(res), nil
 		},
 	})
+	if err != nil {
+		t.Fatalf("RegisterFilters failed: %v", err)
+	}
 	out, err := tpl.Render(`{{ "ha"|repeat:3 }}!`, map[string]any{})
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -218,4 +221,21 @@ func TestRender_NestedStepOutput(t *testing.T) {
 		t.Errorf("expected 'summary here' (dot notation), got %q", out)
 	}
 	// Bracket notation (choices[0]) is not supported by pongo2 and will fail to parse.
+}
+
+func TestRegisterFilters(t *testing.T) {
+	tpl := NewTemplater()
+	err := tpl.RegisterFilters(map[string]pongo2.FilterFunction{
+		"reverse": func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+			s := in.String()
+			runes := []rune(s)
+			for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+				runes[i], runes[j] = runes[j], runes[i]
+			}
+			return pongo2.AsValue(string(runes)), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("RegisterFilters failed: %v", err)
+	}
 }

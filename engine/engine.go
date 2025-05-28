@@ -26,6 +26,34 @@ type runIDKeyType struct{}
 
 var runIDKey = runIDKeyType{}
 
+// Type aliases for better readability and type safety
+type (
+	StepInputs  = map[string]any
+	StepOutputs = map[string]any
+	EventData   = map[string]any
+	SecretsData = map[string]any
+)
+
+// Result types for better error handling and type safety
+type ExecutionResult struct {
+	Outputs StepOutputs
+	Error   error
+}
+
+type StepResult struct {
+	StepID  string
+	Outputs StepOutputs
+	Error   error
+}
+
+// Template data structure for type safety
+type TemplateData struct {
+	Event   EventData
+	Vars    map[string]any
+	Outputs StepOutputs
+	Secrets SecretsData
+}
+
 // Engine is the core runtime for executing BeemFlow flows. It manages adapters, templating, event bus, and in-memory state.
 type Engine struct {
 	Adapters  *adapter.Registry
@@ -60,39 +88,36 @@ type PausedRun struct {
 // - This is future-proofed for remote/community registries.
 func NewDefaultAdapterRegistry(ctx context.Context) *adapter.Registry {
 	reg := adapter.NewRegistry()
+
+	// Register core adapters
 	reg.Register(&adapter.CoreAdapter{})
 	reg.Register(adapter.NewMCPAdapter())
-	reg.Register(&adapter.HTTPFetchAdapter{})
+	reg.Register(&adapter.HTTPAdapter{AdapterID: "http"}) // Unified HTTP adapter
 
-	// Load config if available
-	cfg, err := config.LoadConfig(config.DefaultConfigPath)
+	// Load and merge registry tools
+	loadRegistryTools(ctx, reg)
+
+	return reg
+}
+
+// loadRegistryTools loads tools from curated and local registries
+func loadRegistryTools(ctx context.Context, reg *adapter.Registry) {
 	localRegistryPath := config.DefaultLocalRegistryPath
-	if err == nil && len(cfg.Registries) > 0 {
+
+	// Load config if available to get custom registry path
+	if cfg, err := config.LoadConfig(config.DefaultConfigPath); err == nil {
 		for _, regCfg := range cfg.Registries {
 			if regCfg.Type == "local" && regCfg.Path != "" {
 				localRegistryPath = regCfg.Path
+				break
 			}
 		}
 	}
 
-	// Load curated registry
-	curatedReg := registry.NewLocalRegistry("registry/index.json")
-	curatedMgr := registry.NewRegistryManager(curatedReg)
-	curatedTools, _ := curatedMgr.ListAllServers(ctx, registry.ListOptions{})
+	// Load and merge tools from both registries
+	toolMap := mergeRegistryTools(ctx, localRegistryPath)
 
-	// Load local registry
-	localReg := registry.NewLocalRegistry(localRegistryPath)
-	localMgr := registry.NewRegistryManager(localReg)
-	localTools, _ := localMgr.ListAllServers(ctx, registry.ListOptions{})
-
-	// Merge: local takes precedence
-	toolMap := map[string]registry.RegistryEntry{}
-	for _, entry := range curatedTools {
-		toolMap[entry.Name] = entry
-	}
-	for _, entry := range localTools {
-		toolMap[entry.Name] = entry
-	}
+	// Register HTTP adapters for each tool
 	for _, entry := range toolMap {
 		manifest := &registry.ToolManifest{
 			Name:        entry.Name,
@@ -104,7 +129,39 @@ func NewDefaultAdapterRegistry(ctx context.Context) *adapter.Registry {
 		}
 		reg.Register(&adapter.HTTPAdapter{AdapterID: entry.Name, ToolManifest: manifest})
 	}
-	return reg
+}
+
+// mergeRegistryTools loads and merges tools from curated and local registries
+func mergeRegistryTools(ctx context.Context, localRegistryPath string) map[string]registry.RegistryEntry {
+	toolMap := make(map[string]registry.RegistryEntry)
+
+	// Load curated registry
+	if curatedTools := loadRegistryFromPath(ctx, "registry/index.json"); curatedTools != nil {
+		for _, entry := range curatedTools {
+			toolMap[entry.Name] = entry
+		}
+	}
+
+	// Load local registry (takes precedence)
+	if localTools := loadRegistryFromPath(ctx, localRegistryPath); localTools != nil {
+		for _, entry := range localTools {
+			toolMap[entry.Name] = entry
+		}
+	}
+
+	return toolMap
+}
+
+// loadRegistryFromPath loads tools from a registry file path
+func loadRegistryFromPath(ctx context.Context, path string) []registry.RegistryEntry {
+	reg := registry.NewLocalRegistry(path)
+	mgr := registry.NewRegistryManager(reg)
+	tools, err := mgr.ListAllServers(ctx, registry.ListOptions{})
+	if err != nil {
+		utils.Debug("Failed to load registry from %s: %v", path, err)
+		return nil
+	}
+	return tools
 }
 
 // NewEngineWithBlobStore creates a new Engine with a custom BlobStore.
@@ -144,41 +201,21 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	if flow == nil {
 		return nil, nil
 	}
+
 	// Initialize outputs and handle empty flow as no-op
 	outputs := make(map[string]any)
 	if len(flow.Steps) == 0 {
 		return outputs, nil
 	}
+
 	// Collect env secrets and merge with event-supplied secrets
-	secretsMap := map[string]any{}
-	for _, envKV := range os.Environ() {
-		if eq := strings.Index(envKV, "="); eq != -1 {
-			k := envKV[:eq]
-			v := envKV[eq+1:]
-			secretsMap[k] = v
-		}
-	}
-	if event != nil {
-		if s, ok := event["secrets"].(map[string]any); ok {
-			for k, v := range s {
-				if _, ok2 := v.(string); ok2 {
-					secretsMap[k] = v
-				}
-			}
-		}
-	}
-	// Register a 'secrets' helper for this execution
-	// With pongo2, secrets are available as a map in the context: {{ secrets.MY_SECRET }}
-	// No need to register helpers; context flattening will expose secrets as top-level keys if needed.
-	stepCtx := &StepContext{
-		Event:   event,
-		Vars:    flow.Vars,
-		Outputs: outputs,
-		Secrets: secretsMap,
-	}
+	secretsMap := e.collectSecrets(event)
+
+	// Create step context using the new constructor
+	stepCtx := NewStepContext(event, flow.Vars, secretsMap)
 
 	// Create and persist the run
-	var runID uuid.UUID = uuid.New()
+	runID := uuid.New()
 	run := &model.Run{
 		ID:        runID,
 		FlowName:  flow.Name,
@@ -231,6 +268,33 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	return outputs, err
 }
 
+// collectSecrets gathers secrets from environment and event
+func (e *Engine) collectSecrets(event map[string]any) SecretsData {
+	secretsMap := make(SecretsData)
+
+	// Collect env secrets
+	for _, envKV := range os.Environ() {
+		if eq := strings.Index(envKV, "="); eq != -1 {
+			k := envKV[:eq]
+			v := envKV[eq+1:]
+			secretsMap[k] = v
+		}
+	}
+
+	// Merge with event-supplied secrets
+	if event != nil {
+		if s, ok := safeMapAssert(event["secrets"]); ok {
+			for k, v := range s {
+				if secretVal, ok := safeStringAssert(v); ok {
+					secretsMap[k] = secretVal
+				}
+			}
+		}
+	}
+
+	return secretsMap
+}
+
 // Helper to get pointer to time.Time.
 func ptrTime(t time.Time) *time.Time {
 	return &t
@@ -257,33 +321,21 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 		if step.AwaitEvent != nil {
 			// Render token from match (support template)
 			match := step.AwaitEvent.Match
-			tokenRaw, _ := match["token"].(string)
-			if tokenRaw == "" {
-				return nil, utils.Errorf("await_event step missing token in match")
+			tokenRaw, ok := safeStringAssert(match["token"])
+			if !ok || tokenRaw == "" {
+				return nil, utils.Errorf("await_event step missing or invalid token in match")
 			}
-			// Render the token template
-			data := make(map[string]any)
 
-			// Safely get context data using thread-safe methods
-			data["event"] = stepCtx.SnapshotEvent()
-			data["vars"] = stepCtx.SnapshotVars()
-			data["outputs"] = stepCtx.SnapshotOutputs()
-			data["secrets"] = stepCtx.SnapshotSecrets()
+			// Use the simplified template data preparation
+			data := e.prepareTemplateDataAsMap(stepCtx)
 
-			// Flatten outputs into context for template rendering
-			outputs := stepCtx.SnapshotOutputs()
-			maps.Copy(data, outputs)
-
-			// Flatten vars into top-level context
-			maps.Copy(data, stepCtx.SnapshotVars())
-
-			// DEBUG: Log full context before rendering
 			utils.Debug("About to render template for step %s: data = %#v", step.ID, data)
 			renderedToken, err := e.Templater.Render(tokenRaw, data)
 			if err != nil {
 				return nil, utils.Errorf("failed to render token template: %w", err)
 			}
 			token := renderedToken
+
 			// Pause: store state and subscribe for resume
 			e.mu.Lock()
 			// If an existing paused run uses this token, mark it skipped and remove it
@@ -292,25 +344,34 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 					if existingRun, err := e.Storage.GetRun(ctx, old.RunID); err == nil {
 						existingRun.Status = model.RunSkipped
 						existingRun.EndedAt = ptrTime(time.Now())
-						_ = e.Storage.SaveRun(ctx, existingRun)
+						if err := e.Storage.SaveRun(ctx, existingRun); err != nil {
+							utils.ErrorCtx(ctx, "Failed to mark existing run as skipped: %v", "error", err)
+						}
 					}
-					_ = e.Storage.DeletePausedRun(token)
+					if err := e.Storage.DeletePausedRun(token); err != nil {
+						utils.ErrorCtx(ctx, "Failed to delete existing paused run: %v", "error", err)
+					}
 				}
 				delete(e.waiting, token)
 			}
-			// Register new paused run
+
+			// Register new paused run using snapshot
+			snapshot := stepCtx.Snapshot()
 			e.waiting[token] = &PausedRun{
 				Flow:    flow,
 				StepIdx: i,
 				StepCtx: stepCtx,
-				Outputs: stepCtx.SnapshotOutputs(), // Use snapshot here
+				Outputs: snapshot.Outputs,
 				Token:   token,
 				RunID:   runID,
 			}
 			if e.Storage != nil {
-				_ = e.Storage.SavePausedRun(token, pausedRunToMap(e.waiting[token]))
+				if err := e.Storage.SavePausedRun(token, pausedRunToMap(e.waiting[token])); err != nil {
+					utils.ErrorCtx(ctx, "Failed to save paused run: %v", "error", err)
+				}
 			}
 			e.mu.Unlock()
+
 			e.EventBus.Subscribe(ctx, "resume:"+token, func(payload any) {
 				resumeEvent, ok := payload.(map[string]any)
 				if !ok {
@@ -320,7 +381,9 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 			})
 			return nil, utils.Errorf("step %s is waiting for event (await_event pause)", step.ID)
 		}
+
 		err := e.executeStep(ctx, step, stepCtx, step.ID)
+
 		// Persist the step after execution
 		if e.Storage != nil {
 			var stepOutputs map[string]any
@@ -348,13 +411,11 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 			}
 		}
 		if err != nil {
-			// Return a snapshot of outputs to avoid race conditions
-			return stepCtx.SnapshotOutputs(), err
+			return stepCtx.Snapshot().Outputs, err
 		}
 	}
 
-	// Return a snapshot of outputs to avoid race conditions
-	return stepCtx.SnapshotOutputs(), nil
+	return stepCtx.Snapshot().Outputs, nil
 }
 
 // Resume resumes a paused run with the given token and event.
@@ -368,7 +429,9 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 	}
 	delete(e.waiting, token)
 	if e.Storage != nil {
-		_ = e.Storage.DeletePausedRun(token)
+		if err := e.Storage.DeletePausedRun(token); err != nil {
+			utils.ErrorCtx(ctx, "Failed to delete paused run during resume: %v", "error", err)
+		}
 	}
 	e.mu.Unlock()
 
@@ -378,17 +441,16 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 	}
 
 	// Log outputs map before resume (with safe access)
-	utils.Debug("Outputs map before resume for token %s: %+v", token, paused.StepCtx.SnapshotOutputs())
+	utils.Debug("Outputs map before resume for token %s: %+v", token, paused.StepCtx.Snapshot().Outputs)
 
 	// Continue execution from next step
 	ctx = context.WithValue(ctx, runIDKey, paused.RunID)
 	outputs, err := e.executeStepsWithPersistence(ctx, paused.Flow, paused.StepCtx, paused.StepIdx+1, paused.RunID)
 
 	// Merge outputs from before and after resume
+	snapshot := paused.StepCtx.Snapshot()
 	allOutputs := make(map[string]any)
-
-	// Get previous outputs safely
-	maps.Copy(allOutputs, paused.StepCtx.SnapshotOutputs())
+	maps.Copy(allOutputs, snapshot.Outputs)
 
 	// Add new outputs
 	if outputs != nil {
@@ -411,15 +473,11 @@ func (e *Engine) Resume(ctx context.Context, token string, resumeEvent map[strin
 			status = model.RunFailed
 		}
 
-		// Safely get event and vars
-		event := paused.StepCtx.SnapshotEvent()
-		vars := paused.StepCtx.SnapshotVars()
-
 		run := &model.Run{
 			ID:        paused.RunID,
 			FlowName:  paused.Flow.Name,
-			Event:     event,
-			Vars:      vars,
+			Event:     snapshot.Event,
+			Vars:      snapshot.Vars,
 			Status:    status,
 			StartedAt: time.Now(),
 			EndedAt:   ptrTime(time.Now()),
@@ -445,204 +503,189 @@ func (e *Engine) GetCompletedOutputs(token string) map[string]any {
 func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
 	// Nested parallel block logic
 	if step.Parallel && len(step.Steps) > 0 {
-		var wg sync.WaitGroup
-		errChan := make(chan error, len(step.Steps))
-		outputs := make(map[string]any)
-
-		for i := range step.Steps {
-			child := &step.Steps[i]
-			wg.Add(1)
-			go func(child *model.Step) {
-				defer wg.Done()
-				if err := e.executeStep(ctx, child, stepCtx, child.ID); err != nil {
-					errChan <- err
-					return
-				}
-				// Safely get the output using StepContext
-				if childOutput, ok := stepCtx.GetOutput(child.ID); ok {
-					outputs[child.ID] = childOutput
-				}
-			}(child)
-		}
-		wg.Wait()
-		close(errChan)
-		for err := range errChan {
-			if err != nil {
-				return err
-			}
-		}
-
-		// Store the combined outputs
-		stepCtx.SetOutput(stepID, outputs)
-		return nil
+		return e.executeParallelBlock(ctx, step, stepCtx, stepID)
 	}
 
 	// Sequential block (non-parallel) for steps
 	if !step.Parallel && len(step.Steps) > 0 {
-		outputs := make(map[string]any)
-		for i := range step.Steps {
-			child := &step.Steps[i]
-			if err := e.executeStep(ctx, child, stepCtx, child.ID); err != nil {
-				return err
-			}
-			childOutput, ok := stepCtx.GetOutput(child.ID)
-			if ok {
-				outputs[child.ID] = childOutput
-			}
-		}
-		stepCtx.SetOutput(stepID, outputs)
-		return nil
+		return e.executeSequentialBlock(ctx, step, stepCtx, stepID)
 	}
 
 	// Foreach logic: handle steps with Foreach and Do
 	if step.Foreach != "" {
-		// Safely get context data using thread-safe methods
-		event := stepCtx.SnapshotEvent()
-		vars := stepCtx.SnapshotVars()
-		outputs := stepCtx.SnapshotOutputs()
-		secrets := stepCtx.SnapshotSecrets()
+		return e.executeForeachBlock(ctx, step, stepCtx, stepID)
+	}
 
-		// Prepare template data, same as done for step.With
-		data := make(map[string]any)
-		data["event"] = event
-		data["vars"] = vars
-		data["outputs"] = outputs
-		data["secrets"] = secrets
+	// Tool execution
+	return e.executeToolCall(ctx, step, stepCtx, stepID)
+}
 
-		// Flatten outputs into context for template rendering
-		maps.Copy(data, outputs)
+// executeParallelBlock handles parallel execution of nested steps
+func (e *Engine) executeParallelBlock(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(step.Steps))
+	outputs := make(map[string]any)
 
-		// Flatten vars into top-level context
-		maps.Copy(data, vars)
-
-		// Flatten event into top-level context (for foreach expressions like {{list}})
-		maps.Copy(data, event)
-
-		// Evaluate the foreach expression to get the actual value (not rendered as string)
-		rendered, err := e.Templater.EvaluateExpression(step.Foreach, data)
+	for i := range step.Steps {
+		child := &step.Steps[i]
+		wg.Add(1)
+		go func(child *model.Step) {
+			defer wg.Done()
+			if err := e.executeStep(ctx, child, stepCtx, child.ID); err != nil {
+				errChan <- err
+				return
+			}
+			// Safely get the output using StepContext
+			if childOutput, ok := stepCtx.GetOutput(child.ID); ok {
+				outputs[child.ID] = childOutput
+			}
+		}(child)
+	}
+	wg.Wait()
+	close(errChan)
+	for err := range errChan {
 		if err != nil {
-			return utils.Errorf("template error in foreach expression: %w", err)
+			return err
 		}
+	}
 
-		// The rendered result should be a list
-		list, ok := rendered.([]any)
-		if !ok {
-			return utils.Errorf("foreach expression did not evaluate to a list, got: %T", rendered)
+	// Store the combined outputs
+	stepCtx.SetOutput(stepID, outputs)
+	return nil
+}
+
+// executeSequentialBlock handles sequential execution of nested steps
+func (e *Engine) executeSequentialBlock(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
+	outputs := make(map[string]any)
+	for i := range step.Steps {
+		child := &step.Steps[i]
+		if err := e.executeStep(ctx, child, stepCtx, child.ID); err != nil {
+			return err
 		}
-
-		if len(list) == 0 {
-			stepCtx.SetOutput(stepID, make(map[string]any))
-			return nil
+		childOutput, ok := stepCtx.GetOutput(child.ID)
+		if ok {
+			outputs[child.ID] = childOutput
 		}
+	}
+	stepCtx.SetOutput(stepID, outputs)
+	return nil
+}
 
-		if step.Parallel {
-			var wg sync.WaitGroup
-			errChan := make(chan error, len(list))
+// executeForeachBlock handles foreach loop execution
+func (e *Engine) executeForeachBlock(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
+	// Prepare template data for foreach evaluation
+	data := e.prepareTemplateDataAsMap(stepCtx)
 
-			for _, item := range list {
-				wg.Add(1)
-				go func(item any) {
-					defer wg.Done()
+	// Evaluate the foreach expression to get the actual value (not rendered as string)
+	rendered, err := e.Templater.EvaluateExpression(step.Foreach, data)
+	if err != nil {
+		return utils.Errorf("template error in foreach expression: %w", err)
+	}
 
-					// Create a copy of the step context for this iteration
-					iterStepCtx := &StepContext{
-						Event:   stepCtx.SnapshotEvent(),
-						Vars:    stepCtx.SnapshotVars(),
-						Outputs: stepCtx.SnapshotOutputs(),
-						Secrets: stepCtx.SnapshotSecrets(),
-					}
+	// The rendered result should be a list
+	list, ok := rendered.([]any)
+	if !ok {
+		return utils.Errorf("foreach expression did not evaluate to a list, got: %T", rendered)
+	}
 
-					// Set the loop variable (step.As) to the current item
-					if step.As != "" {
-						iterStepCtx.SetVar(step.As, item)
-					}
-
-					for _, inner := range step.Do {
-						// Create a copy of inner to avoid race conditions
-						innerCopy := inner
-
-						// Render the step ID as a template
-						iterEvent := iterStepCtx.SnapshotEvent()
-						iterVars := iterStepCtx.SnapshotVars()
-						iterOutputs := iterStepCtx.SnapshotOutputs()
-						iterSecrets := iterStepCtx.SnapshotSecrets()
-
-						iterData := make(map[string]any)
-						iterData["event"] = iterEvent
-						iterData["vars"] = iterVars
-						iterData["outputs"] = iterOutputs
-						iterData["secrets"] = iterSecrets
-						maps.Copy(iterData, iterOutputs)
-						maps.Copy(iterData, iterVars)
-
-						renderedStepID, err := e.Templater.Render(inner.ID, iterData)
-						if err != nil {
-							errChan <- utils.Errorf("template error in step ID %s: %w", inner.ID, err)
-							return
-						}
-
-						// Use the iteration-specific context
-						if err := e.executeStep(ctx, &innerCopy, iterStepCtx, renderedStepID); err != nil {
-							errChan <- err
-							return
-						}
-
-						// Copy outputs back to main context
-						if output, ok := iterStepCtx.GetOutput(renderedStepID); ok {
-							stepCtx.SetOutput(renderedStepID, output)
-						}
-					}
-				}(item)
-			}
-			wg.Wait()
-			close(errChan)
-			for err := range errChan {
-				if err != nil {
-					return err
-				}
-			}
-		} else {
-			for _, item := range list {
-				// Set the loop variable (step.As) to the current item
-				if step.As != "" {
-					stepCtx.SetVar(step.As, item)
-				}
-
-				for _, inner := range step.Do {
-					// Render the step ID as a template
-					event := stepCtx.SnapshotEvent()
-					vars := stepCtx.SnapshotVars()
-					outputs := stepCtx.SnapshotOutputs()
-					secrets := stepCtx.SnapshotSecrets()
-
-					data := make(map[string]any)
-					data["event"] = event
-					data["vars"] = vars
-					data["outputs"] = outputs
-					data["secrets"] = secrets
-					maps.Copy(data, outputs)
-					maps.Copy(data, vars)
-
-					renderedStepID, err := e.Templater.Render(inner.ID, data)
-					if err != nil {
-						return utils.Errorf("template error in step ID %s: %w", inner.ID, err)
-					}
-
-					if err := e.executeStep(ctx, &inner, stepCtx, renderedStepID); err != nil {
-						return err
-					}
-				}
-			}
-		}
-		// Only set output if stepID is non-empty (foreach steps without explicit IDs shouldn't create outputs)
-		if stepID != "" {
-			stepCtx.SetOutput(stepID, make(map[string]any))
-		}
+	if len(list) == 0 {
+		stepCtx.SetOutput(stepID, make(map[string]any))
 		return nil
 	}
+
+	if step.Parallel {
+		return e.executeForeachParallel(ctx, step, stepCtx, stepID, list)
+	}
+	return e.executeForeachSequential(ctx, step, stepCtx, stepID, list)
+}
+
+// executeForeachParallel handles parallel foreach execution
+func (e *Engine) executeForeachParallel(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string, list []any) error {
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(list))
+
+	for _, item := range list {
+		wg.Add(1)
+		go func(item any) {
+			defer wg.Done()
+
+			// Create a copy of the step context for this iteration
+			iterStepCtx := e.createIterationContext(stepCtx, step.As, item)
+
+			for _, inner := range step.Do {
+				// Create a copy of inner to avoid race conditions
+				innerCopy := inner
+
+				// Render the step ID as a template
+				iterData := e.prepareTemplateDataAsMap(iterStepCtx)
+				renderedStepID, err := e.Templater.Render(inner.ID, iterData)
+				if err != nil {
+					errChan <- utils.Errorf("template error in step ID %s: %w", inner.ID, err)
+					return
+				}
+
+				// Use the iteration-specific context
+				if err := e.executeStep(ctx, &innerCopy, iterStepCtx, renderedStepID); err != nil {
+					errChan <- err
+					return
+				}
+
+				// Copy outputs back to main context
+				if output, ok := iterStepCtx.GetOutput(renderedStepID); ok {
+					stepCtx.SetOutput(renderedStepID, output)
+				}
+			}
+		}(item)
+	}
+	wg.Wait()
+	close(errChan)
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+
+	// Only set output if stepID is non-empty
+	if stepID != "" {
+		stepCtx.SetOutput(stepID, make(map[string]any))
+	}
+	return nil
+}
+
+// executeForeachSequential handles sequential foreach execution
+func (e *Engine) executeForeachSequential(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string, list []any) error {
+	for _, item := range list {
+		// Set the loop variable (step.As) to the current item
+		if step.As != "" {
+			stepCtx.SetVar(step.As, item)
+		}
+
+		for _, inner := range step.Do {
+			// Render the step ID as a template
+			data := e.prepareTemplateDataAsMap(stepCtx)
+			renderedStepID, err := e.Templater.Render(inner.ID, data)
+			if err != nil {
+				return utils.Errorf("template error in step ID %s: %w", inner.ID, err)
+			}
+
+			if err := e.executeStep(ctx, &inner, stepCtx, renderedStepID); err != nil {
+				return err
+			}
+		}
+	}
+	// Only set output if stepID is non-empty
+	if stepID != "" {
+		stepCtx.SetOutput(stepID, make(map[string]any))
+	}
+	return nil
+}
+
+// executeToolCall handles individual tool execution
+func (e *Engine) executeToolCall(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
 	if step.Use == "" {
 		return nil
 	}
+
 	adapterInst, ok := e.Adapters.Get(step.Use)
 	if !ok {
 		if strings.HasPrefix(step.Use, "mcp://") {
@@ -657,28 +700,93 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		}
 	}
 
-	// Safely get context data using thread-safe methods
-	event := stepCtx.SnapshotEvent()
-	vars := stepCtx.SnapshotVars()
-	outputs := stepCtx.SnapshotOutputs()
-	secrets := stepCtx.SnapshotSecrets()
+	// Prepare inputs for the tool
+	inputs, err := e.prepareToolInputs(step, stepCtx, stepID)
+	if err != nil {
+		return err
+	}
 
+	// Auto-fill missing required parameters from manifest defaults
+	e.autoFillRequiredParams(adapterInst, inputs, stepCtx)
+
+	// Execute the tool
+	payload, err := json.Marshal(inputs)
+	if err != nil {
+		utils.ErrorCtx(ctx, "Failed to marshal tool inputs: %v", "error", err)
+		payload = []byte("{}")
+	}
+	utils.Debug("tool %s payload: %s", step.Use, payload)
+
+	if strings.HasPrefix(step.Use, "mcp://") {
+		inputs["__use"] = step.Use
+	}
+
+	outputs, err := adapterInst.Execute(ctx, inputs)
+	if err != nil {
+		stepCtx.SetOutput(stepID, outputs)
+		return utils.Errorf("step %s failed: %w", stepID, err)
+	}
+
+	utils.Debug("Writing outputs for step %s: %+v", stepID, outputs)
+	stepCtx.SetOutput(stepID, outputs)
+	utils.Debug("Outputs map after step %s: %+v", stepID, stepCtx.Snapshot().Outputs)
+	return nil
+}
+
+// prepareTemplateData creates template data from step context
+func (e *Engine) prepareTemplateData(stepCtx *StepContext) TemplateData {
+	snapshot := stepCtx.Snapshot()
+
+	return TemplateData{
+		Event:   snapshot.Event,
+		Vars:    snapshot.Vars,
+		Outputs: snapshot.Outputs,
+		Secrets: snapshot.Secrets,
+	}
+}
+
+// prepareTemplateDataAsMap creates template data as map for templating system
+func (e *Engine) prepareTemplateDataAsMap(stepCtx *StepContext) map[string]any {
+	templateData := e.prepareTemplateData(stepCtx)
+
+	data := make(map[string]any)
+	data["event"] = templateData.Event
+	data["vars"] = templateData.Vars
+	data["outputs"] = templateData.Outputs
+	data["secrets"] = templateData.Secrets
+
+	// Flatten outputs and vars into context for template rendering
+	maps.Copy(data, templateData.Outputs)
+	maps.Copy(data, templateData.Vars)
+	maps.Copy(data, templateData.Event) // For foreach expressions like {{list}}
+
+	return data
+}
+
+// createIterationContext creates a new context for foreach iterations
+func (e *Engine) createIterationContext(stepCtx *StepContext, asVar string, item any) *StepContext {
+	snapshot := stepCtx.Snapshot()
+	iterStepCtx := NewStepContext(snapshot.Event, snapshot.Vars, snapshot.Secrets)
+
+	// Copy existing outputs
+	for k, v := range snapshot.Outputs {
+		iterStepCtx.SetOutput(k, v)
+	}
+
+	// Set the loop variable to the current item
+	if asVar != "" {
+		iterStepCtx.SetVar(asVar, item)
+	}
+
+	return iterStepCtx
+}
+
+// prepareToolInputs prepares inputs for tool execution
+func (e *Engine) prepareToolInputs(step *model.Step, stepCtx *StepContext, stepID string) (map[string]any, error) {
+	data := e.prepareTemplateDataAsMap(stepCtx)
 	inputs := make(map[string]any)
+
 	for k, v := range step.With {
-		// Prepare template data, flattening previous step outputs for direct access
-		data := make(map[string]any)
-		// Copy maps directly
-		data["event"] = event
-		data["vars"] = vars
-		data["outputs"] = outputs
-		data["secrets"] = secrets
-
-		// Flatten outputs into context for template rendering - use maps.Copy
-		maps.Copy(data, outputs)
-
-		// Flatten vars into top-level context
-		maps.Copy(data, vars)
-
 		// DEBUG: Log context keys and important values
 		varsKeys := []string{}
 		if vars, ok := data["vars"].(map[string]any); ok {
@@ -687,24 +795,43 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			}
 		}
 		utils.Debug("Template context keys: %v, vars keys: %v, vars: %+v", keys(data), varsKeys, data["vars"])
-		// DEBUG: Log full context before rendering
 		utils.Debug("About to render template for step %s: data = %#v", stepID, data)
+
 		rendered, err := e.renderValue(v, data)
 		if err != nil {
-			return utils.Errorf("template error in step %s: %w", stepID, err)
+			return nil, utils.Errorf("template error in step %s: %w", stepID, err)
 		}
 		inputs[k] = rendered
 	}
-	// Auto-fill missing required parameters from manifest defaults (including $env)
+
+	return inputs, nil
+}
+
+// autoFillRequiredParams fills missing required parameters from manifest defaults
+func (e *Engine) autoFillRequiredParams(adapterInst adapter.Adapter, inputs map[string]any, stepCtx *StepContext) {
 	if manifest := adapterInst.Manifest(); manifest != nil {
-		params, _ := manifest.Parameters["properties"].(map[string]any)
-		required, _ := manifest.Parameters["required"].([]any)
+		params, ok := safeMapAssert(manifest.Parameters["properties"])
+		if !ok {
+			return
+		}
+
+		required, ok := safeSliceAssert(manifest.Parameters["required"])
+		if !ok {
+			return
+		}
+
+		secrets := stepCtx.Snapshot().Secrets
+
 		for _, req := range required {
-			key, _ := req.(string)
+			key, ok := safeStringAssert(req)
+			if !ok {
+				continue
+			}
+
 			if _, present := inputs[key]; !present {
-				if prop, ok := params[key].(map[string]any); ok {
-					if def, ok := prop["default"].(map[string]any); ok {
-						if envVar, ok := def["$env"].(string); ok {
+				if prop, ok := safeMapAssert(params[key]); ok {
+					if def, ok := safeMapAssert(prop["default"]); ok {
+						if envVar, ok := safeStringAssert(def["$env"]); ok {
 							if val, ok := secrets[envVar]; ok {
 								inputs[key] = val
 							}
@@ -714,32 +841,33 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 			}
 		}
 	}
-	// Optionally, add a generic debug log for all tool payloads if desired:
-	payload, _ := json.Marshal(inputs)
-	utils.Debug("tool %s payload: %s", step.Use, payload)
-	if strings.HasPrefix(step.Use, "mcp://") {
-		inputs["__use"] = step.Use
-	}
-	outputs, err := adapterInst.Execute(ctx, inputs)
-	if err != nil {
-		stepCtx.SetOutput(stepID, outputs)
-		return utils.Errorf("step %s failed: %w", stepID, err)
-	}
-	utils.Debug("Writing outputs for step %s: %+v", stepID, outputs)
-
-	stepCtx.SetOutput(stepID, outputs)
-
-	utils.Debug("Outputs map after step %s: %+v", stepID, stepCtx.SnapshotOutputs())
-	return nil
 }
 
 // StepContext holds context for step execution (event, vars, outputs, secrets).
 type StepContext struct {
 	mu      sync.RWMutex
-	Event   map[string]any
+	Event   EventData
 	Vars    map[string]any
-	Outputs map[string]any
-	Secrets map[string]any
+	Outputs StepOutputs
+	Secrets SecretsData
+}
+
+// ContextSnapshot returns immutable copies of all context data
+type ContextSnapshot struct {
+	Event   EventData
+	Vars    map[string]any
+	Outputs StepOutputs
+	Secrets SecretsData
+}
+
+// NewStepContext creates a new StepContext with the provided data
+func NewStepContext(event EventData, vars map[string]any, secrets SecretsData) *StepContext {
+	return &StepContext{
+		Event:   copyMap(event),
+		Vars:    copyMap(vars),
+		Outputs: make(StepOutputs),
+		Secrets: copyMap(secrets),
+	}
 }
 
 // GetOutput retrieves a stored step output in a thread-safe manner.
@@ -753,24 +881,8 @@ func (sc *StepContext) GetOutput(key string) (any, bool) {
 // SetOutput stores a step output in a thread-safe manner.
 func (sc *StepContext) SetOutput(key string, val any) {
 	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	sc.Outputs[key] = val
-	sc.mu.Unlock()
-}
-
-// SnapshotOutputs returns a copy of all outputs to avoid races.
-func (sc *StepContext) SnapshotOutputs() map[string]any {
-	sc.mu.RLock()
-	defer sc.mu.RUnlock()
-	out := make(map[string]any, len(sc.Outputs))
-	maps.Copy(out, sc.Outputs)
-	return out
-}
-
-// SnapshotSecrets returns a copy of the secrets map in a thread-safe manner.
-func (sc *StepContext) SnapshotSecrets() map[string]any {
-	sc.mu.RLock()
-	defer sc.mu.RUnlock()
-	return copyMap(sc.Secrets)
 }
 
 // SetEvent stores a value in the Event map in a thread-safe manner.
@@ -792,6 +904,18 @@ func (sc *StepContext) SetSecret(key string, val any) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	sc.Secrets[key] = val
+}
+
+// Snapshot returns a complete snapshot of the context in a thread-safe manner
+func (sc *StepContext) Snapshot() ContextSnapshot {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	return ContextSnapshot{
+		Event:   copyMap(sc.Event),
+		Vars:    copyMap(sc.Vars),
+		Outputs: copyMap(sc.Outputs),
+		Secrets: copyMap(sc.Secrets),
+	}
 }
 
 // CronScheduler is a stub for cron-based triggers.
@@ -952,16 +1076,18 @@ func copyMap(in map[string]any) map[string]any {
 	return out
 }
 
-// GetEvent returns a copy of the event map in a thread-safe manner.
-func (sc *StepContext) SnapshotEvent() map[string]any {
-	sc.mu.RLock()
-	defer sc.mu.RUnlock()
-	return copyMap(sc.Event)
+// Safe type assertion helpers to prevent panics
+func safeStringAssert(v any) (string, bool) {
+	s, ok := v.(string)
+	return s, ok
 }
 
-// SnapshotVars returns a copy of the vars map in a thread-safe manner.
-func (sc *StepContext) SnapshotVars() map[string]any {
-	sc.mu.RLock()
-	defer sc.mu.RUnlock()
-	return copyMap(sc.Vars)
+func safeMapAssert(v any) (map[string]any, bool) {
+	m, ok := v.(map[string]any)
+	return m, ok
+}
+
+func safeSliceAssert(v any) ([]any, bool) {
+	s, ok := v.([]any)
+	return s, ok
 }
