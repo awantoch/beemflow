@@ -91,6 +91,8 @@ BeemFlow isn't just about automation—it's about **acquisition**:
 
 Here's the thing: while everyone's debating UBI and government handouts, we're building the tools to **own shit**. Real businesses. Real assets. Real income streams that compound forever.
 
+(And hey, if you're team UBI—BeemFlow can automate those distribution systems too. We're infrastructure-agnostic. 😉)
+
 Every workflow you automate teaches you how a business actually works. Every process you optimize builds trust with the owner. Every efficiency you create makes acquisition financing easier.
 
 We're building the infrastructure for the largest generational wealth transfer in history. One workflow at a time.
