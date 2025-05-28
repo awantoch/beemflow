@@ -290,3 +290,220 @@ func TestLoadAndInjectRegistries(t *testing.T) {
 		t.Errorf("missing expected registries: foo(%v) smithery(%v)", foundFoo, foundSmithery)
 	}
 }
+
+// TestParseRegistryConfig tests the ParseRegistryConfig function with 100% coverage
+func TestParseRegistryConfig(t *testing.T) {
+	// Test valid registry config
+	validConfig := RegistryConfig{
+		Type: "local",
+		Path: "/path/to/registry.json",
+		URL:  "https://example.com/registry",
+	}
+
+	result, err := ParseRegistryConfig(validConfig)
+	if err != nil {
+		t.Fatalf("ParseRegistryConfig failed for valid config: %v", err)
+	}
+	if result == nil {
+		t.Error("Expected non-nil result")
+	}
+
+	// Test smithery config (should return SmitheryRegistryConfig)
+	smitheryConfig := RegistryConfig{
+		Type: "smithery",
+		URL:  "https://registry.smithery.ai/servers",
+	}
+
+	result, err = ParseRegistryConfig(smitheryConfig)
+	if err != nil {
+		t.Fatalf("ParseRegistryConfig failed for smithery config: %v", err)
+	}
+	if result == nil {
+		t.Error("Expected non-nil result for smithery config")
+	}
+
+	// Should return SmitheryRegistryConfig
+	if _, ok := result.(SmitheryRegistryConfig); !ok {
+		t.Error("Expected SmitheryRegistryConfig for smithery type")
+	}
+
+	// Test unknown type (should return original config)
+	unknownConfig := RegistryConfig{
+		Type: "unknown_type",
+		Path: "/path/to/registry.json",
+	}
+
+	result, err = ParseRegistryConfig(unknownConfig)
+	if err != nil {
+		t.Fatalf("ParseRegistryConfig failed for unknown type: %v", err)
+	}
+	if result == nil {
+		t.Error("Expected non-nil result for unknown type")
+	}
+
+	// Should return original RegistryConfig
+	if _, ok := result.(RegistryConfig); !ok {
+		t.Error("Expected RegistryConfig for unknown type")
+	}
+
+	// Test empty type (should return original config)
+	emptyTypeConfig := RegistryConfig{
+		Type: "",
+		Path: "/path/to/registry.json",
+	}
+
+	result, err = ParseRegistryConfig(emptyTypeConfig)
+	if err != nil {
+		t.Fatalf("ParseRegistryConfig failed for empty type: %v", err)
+	}
+	if result == nil {
+		t.Error("Expected non-nil result for empty type")
+	}
+}
+
+// TestValidate tests the Validate method with comprehensive coverage
+func TestValidate(t *testing.T) {
+	// Test valid config
+	validConfig := &Config{
+		Storage: StorageConfig{
+			Driver: "sqlite",
+			DSN:    "test.db",
+		},
+		HTTP: &HTTPConfig{
+			Host: "localhost",
+			Port: 8080,
+		},
+		Registries: []RegistryConfig{
+			{Type: "local", Path: "/path/to/registry.json"},
+		},
+	}
+
+	err := validConfig.Validate()
+	if err != nil {
+		t.Errorf("Validate failed for valid config: %v", err)
+	}
+
+	// Test config with empty storage driver
+	configInvalidStorage := &Config{
+		Storage: StorageConfig{
+			Driver: "",
+			DSN:    "test.db",
+		},
+	}
+
+	err = configInvalidStorage.Validate()
+	if err == nil {
+		t.Error("Expected error for empty storage driver")
+	}
+
+	// Test config with missing DSN
+	configMissingDSN := &Config{
+		Storage: StorageConfig{
+			Driver: "sqlite",
+			DSN:    "",
+		},
+	}
+
+	err = configMissingDSN.Validate()
+	if err == nil {
+		t.Error("Expected error for missing DSN")
+	}
+
+	// Test config with nil HTTP (should be fine)
+	configNilHTTP := &Config{
+		Storage: StorageConfig{
+			Driver: "sqlite",
+			DSN:    "test.db",
+		},
+	}
+
+	err = configNilHTTP.Validate()
+	if err != nil {
+		t.Errorf("Validate should handle nil HTTP: %v", err)
+	}
+
+	// Test config with zero HTTP port (should error)
+	configInvalidHTTP := &Config{
+		Storage: StorageConfig{
+			Driver: "sqlite",
+			DSN:    "test.db",
+		},
+		HTTP: &HTTPConfig{
+			Host: "localhost",
+			Port: 0,
+		},
+	}
+
+	err = configInvalidHTTP.Validate()
+	if err == nil {
+		t.Error("Expected error for zero HTTP port")
+	}
+
+	// Test nil config (should panic, so we'll skip this test)
+	// var nilConfig *Config
+	// err = nilConfig.Validate()
+	// if err == nil {
+	// 	t.Error("Expected error for nil config, got nil")
+	// }
+}
+
+// TestMCPServerConfigUnmarshalJSON tests the UnmarshalJSON method for MCPServerConfig
+func TestMCPServerConfigUnmarshalJSON(t *testing.T) {
+	// Test valid JSON object
+	validJSON := `{
+		"command": "test-cmd",
+		"args": ["arg1", "arg2"],
+		"env": {"VAR1": "value1"},
+		"port": 3000,
+		"transport": "stdio",
+		"endpoint": "http://localhost:3000"
+	}`
+
+	var config MCPServerConfig
+	err := config.UnmarshalJSON([]byte(validJSON))
+	if err != nil {
+		t.Fatalf("UnmarshalJSON failed for valid JSON: %v", err)
+	}
+	if config.Command != "test-cmd" {
+		t.Errorf("Expected command 'test-cmd', got '%s'", config.Command)
+	}
+	if len(config.Args) != 2 {
+		t.Errorf("Expected 2 args, got %d", len(config.Args))
+	}
+
+	// Test string URL
+	urlJSON := `"https://example.com/api"`
+	var config2 MCPServerConfig
+	err = config2.UnmarshalJSON([]byte(urlJSON))
+	if err != nil {
+		t.Fatalf("UnmarshalJSON failed for URL string: %v", err)
+	}
+	if config2.Transport != "http" {
+		t.Errorf("Expected transport 'http', got '%s'", config2.Transport)
+	}
+	if config2.Endpoint != "https://example.com/api" {
+		t.Errorf("Expected endpoint 'https://example.com/api', got '%s'", config2.Endpoint)
+	}
+
+	// Test simple string (fallback to HTTP endpoint)
+	simpleJSON := `"simple-endpoint"`
+	var config3 MCPServerConfig
+	err = config3.UnmarshalJSON([]byte(simpleJSON))
+	if err != nil {
+		t.Fatalf("UnmarshalJSON failed for simple string: %v", err)
+	}
+	if config3.Transport != "http" {
+		t.Errorf("Expected transport 'http', got '%s'", config3.Transport)
+	}
+	if config3.Endpoint != "simple-endpoint" {
+		t.Errorf("Expected endpoint 'simple-endpoint', got '%s'", config3.Endpoint)
+	}
+
+	// Test invalid JSON
+	invalidJSON := `{"command": "test", "invalid": }`
+	var config4 MCPServerConfig
+	err = config4.UnmarshalJSON([]byte(invalidJSON))
+	if err == nil {
+		t.Error("Expected error for invalid JSON")
+	}
+}

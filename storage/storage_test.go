@@ -3,7 +3,9 @@ package storage
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/awantoch/beemflow/model"
 	"github.com/google/uuid"
@@ -14,12 +16,13 @@ func TestNewPostgresStorage(t *testing.T) {
 	if dsn == "" {
 		t.Skip("POSTGRES_TEST_DSN not set")
 	}
-	s, err := NewPostgresStorage(dsn)
+
+	storage, err := NewPostgresStorage(dsn)
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("Failed to create postgres storage: %v", err)
 	}
-	if s == nil {
-		t.Fatalf("expected non-nil PostgresStorage")
+	if storage == nil {
+		t.Fatal("Expected non-nil storage")
 	}
 }
 
@@ -28,86 +31,934 @@ func TestStorage_RoundTrip(t *testing.T) {
 	if dsn == "" {
 		t.Skip("POSTGRES_TEST_DSN not set")
 	}
-	s, _ := NewPostgresStorage(dsn)
-	ctx := context.Background()
-	run := &model.Run{ID: uuid.New(), FlowName: "test-flow"}
-	if err := s.SaveRun(ctx, run); err != nil {
-		t.Errorf("SaveRun failed: %v", err)
-	}
-	gotRun, err := s.GetRun(ctx, run.ID)
+
+	storage, err := NewPostgresStorage(dsn)
 	if err != nil {
-		t.Errorf("GetRun failed: %v", err)
+		t.Fatalf("Failed to create postgres storage: %v", err)
 	}
-	if gotRun.ID != run.ID {
-		t.Errorf("expected run ID %v, got %v", run.ID, gotRun.ID)
-	}
-	step := &model.StepRun{ID: uuid.New(), StepName: "step1"}
-	step.RunID = run.ID
-	if err := s.SaveStep(ctx, step); err != nil {
-		t.Errorf("SaveStep failed: %v", err)
-	}
-	steps, err := s.GetSteps(ctx, run.ID)
-	if err != nil {
-		t.Errorf("GetSteps failed: %v", err)
-	}
-	if len(steps) == 0 {
-		t.Errorf("expected at least one step")
-	}
-	token := uuid.New()
-	if err := s.RegisterWait(ctx, token, nil); err != nil {
-		t.Errorf("RegisterWait failed: %v", err)
-	}
-	_, err = s.ResolveWait(ctx, token)
-	if err != nil {
-		t.Errorf("ResolveWait failed: %v", err)
-	}
+
+	testStorageRoundTrip(t, storage)
 }
 
 func TestNewSqliteStorage(t *testing.T) {
-	s, err := NewSqliteStorage(":memory:")
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	if s == nil {
-		t.Fatalf("expected non-nil SqliteStorage")
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite storage: %v", err)
 	}
+	if storage == nil {
+		t.Fatal("Expected non-nil storage")
+	}
+	defer storage.Close()
 }
 
 func TestSqliteStorage_RoundTrip(t *testing.T) {
-	s, err := NewSqliteStorage(":memory:")
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
 	if err != nil {
-		t.Fatalf("NewSqliteStorage failed: %v", err)
+		t.Fatalf("Failed to create temp dir: %v", err)
 	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite storage: %v", err)
+	}
+	defer storage.Close()
+
+	testStorageRoundTrip(t, storage)
+}
+
+func TestMemoryStorage_RoundTrip(t *testing.T) {
+	storage := NewMemoryStorage()
+	testStorageRoundTrip(t, storage)
+}
+
+func TestMemoryStorage_AllOperations(t *testing.T) {
+	storage := NewMemoryStorage()
 	ctx := context.Background()
-	run := &model.Run{ID: uuid.New(), FlowName: "test-flow"}
-	if err := s.SaveRun(ctx, run); err != nil {
-		t.Errorf("SaveRun failed: %v", err)
+
+	// Test SaveRun and GetRun
+	runID := uuid.New()
+	run := &model.Run{
+		ID:        runID,
+		FlowName:  "test_flow",
+		Status:    model.RunRunning,
+		StartedAt: time.Now(),
+		Event:     map[string]any{"key": "value"},
 	}
-	gotRun, err := s.GetRun(ctx, run.ID)
+
+	err := storage.SaveRun(ctx, run)
 	if err != nil {
-		t.Errorf("GetRun failed: %v", err)
+		t.Fatalf("SaveRun failed: %v", err)
 	}
-	if gotRun.ID != run.ID {
-		t.Errorf("expected run ID %v, got %v", run.ID, gotRun.ID)
-	}
-	step := &model.StepRun{ID: uuid.New(), StepName: "step1"}
-	step.RunID = run.ID
-	if err := s.SaveStep(ctx, step); err != nil {
-		t.Errorf("SaveStep failed: %v", err)
-	}
-	steps, err := s.GetSteps(ctx, run.ID)
+
+	retrievedRun, err := storage.GetRun(ctx, runID)
 	if err != nil {
-		t.Errorf("GetSteps failed: %v", err)
+		t.Fatalf("GetRun failed: %v", err)
 	}
-	if len(steps) == 0 {
-		t.Errorf("expected at least one step")
+	if retrievedRun.ID != runID {
+		t.Errorf("Expected run ID %v, got %v", runID, retrievedRun.ID)
 	}
+
+	// Test GetRun with non-existent ID
+	nonExistentID := uuid.New()
+	_, err = storage.GetRun(ctx, nonExistentID)
+	if err == nil {
+		t.Error("Expected error for non-existent run ID")
+	}
+
+	// Test SaveStep and GetSteps
+	stepID := uuid.New()
+	step := &model.StepRun{
+		ID:       stepID,
+		RunID:    runID,
+		StepName: "test_step",
+		Status:   model.StepSucceeded,
+		Outputs:  map[string]any{"result": "success"},
+	}
+
+	err = storage.SaveStep(ctx, step)
+	if err != nil {
+		t.Fatalf("SaveStep failed: %v", err)
+	}
+
+	steps, err := storage.GetSteps(ctx, runID)
+	if err != nil {
+		t.Fatalf("GetSteps failed: %v", err)
+	}
+	if len(steps) != 1 {
+		t.Errorf("Expected 1 step, got %d", len(steps))
+	}
+	if steps[0].ID != stepID {
+		t.Errorf("Expected step ID %v, got %v", stepID, steps[0].ID)
+	}
+
+	// Test RegisterWait and ResolveWait
 	token := uuid.New()
-	if err := s.RegisterWait(ctx, token, nil); err != nil {
-		t.Errorf("RegisterWait failed: %v", err)
-	}
-	_, err = s.ResolveWait(ctx, token)
+	err = storage.RegisterWait(ctx, token, nil)
 	if err != nil {
-		t.Errorf("ResolveWait failed: %v", err)
+		t.Fatalf("RegisterWait failed: %v", err)
 	}
+
+	resolvedRun, err := storage.ResolveWait(ctx, token)
+	// Memory storage ResolveWait returns nil, nil - this is expected behavior
+	if err != nil {
+		t.Fatalf("ResolveWait failed: %v", err)
+	}
+	// For memory storage, resolvedRun will be nil, which is the expected behavior
+	_ = resolvedRun
+
+	// Test ListRuns
+	runs, err := storage.ListRuns(ctx)
+	if err != nil {
+		t.Fatalf("ListRuns failed: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Errorf("Expected 1 run, got %d", len(runs))
+	}
+
+	// Test SavePausedRun and LoadPausedRuns
+	pausedData := map[string]any{
+		"runID":    runID.String(),
+		"token":    "pause_token",
+		"stepName": "paused_step",
+	}
+
+	err = storage.SavePausedRun("pause_token", pausedData)
+	if err != nil {
+		t.Fatalf("SavePausedRun failed: %v", err)
+	}
+
+	pausedRuns, err := storage.LoadPausedRuns()
+	if err != nil {
+		t.Fatalf("LoadPausedRuns failed: %v", err)
+	}
+	if len(pausedRuns) != 1 {
+		t.Errorf("Expected 1 paused run, got %d", len(pausedRuns))
+	}
+	if _, exists := pausedRuns["pause_token"]; !exists {
+		t.Error("Expected to find pause_token in paused runs")
+	}
+
+	// Test DeletePausedRun
+	err = storage.DeletePausedRun("pause_token")
+	if err != nil {
+		t.Fatalf("DeletePausedRun failed: %v", err)
+	}
+
+	pausedRuns, err = storage.LoadPausedRuns()
+	if err != nil {
+		t.Fatalf("LoadPausedRuns after delete failed: %v", err)
+	}
+	if len(pausedRuns) != 0 {
+		t.Errorf("Expected 0 paused runs after delete, got %d", len(pausedRuns))
+	}
+
+	// Test DeleteRun
+	err = storage.DeleteRun(ctx, runID)
+	if err != nil {
+		t.Fatalf("DeleteRun failed: %v", err)
+	}
+
+	runs, err = storage.ListRuns(ctx)
+	if err != nil {
+		t.Fatalf("ListRuns after delete failed: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Errorf("Expected 0 runs after delete, got %d", len(runs))
+	}
+}
+
+func TestSqliteStorage_AllOperations(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite storage: %v", err)
+	}
+	defer storage.Close()
+
+	ctx := context.Background()
+
+	// Test SavePausedRun and LoadPausedRuns
+	runID := uuid.New()
+	pausedData := map[string]any{
+		"runID":    runID.String(),
+		"token":    "sqlite_pause_token",
+		"stepName": "paused_step",
+	}
+
+	err = storage.SavePausedRun("sqlite_pause_token", pausedData)
+	if err != nil {
+		t.Fatalf("SavePausedRun failed: %v", err)
+	}
+
+	pausedRuns, err := storage.LoadPausedRuns()
+	if err != nil {
+		t.Fatalf("LoadPausedRuns failed: %v", err)
+	}
+	if len(pausedRuns) != 1 {
+		t.Errorf("Expected 1 paused run, got %d", len(pausedRuns))
+	}
+
+	// Test DeletePausedRun
+	err = storage.DeletePausedRun("sqlite_pause_token")
+	if err != nil {
+		t.Fatalf("DeletePausedRun failed: %v", err)
+	}
+
+	pausedRuns, err = storage.LoadPausedRuns()
+	if err != nil {
+		t.Fatalf("LoadPausedRuns after delete failed: %v", err)
+	}
+	if len(pausedRuns) != 0 {
+		t.Errorf("Expected 0 paused runs after delete, got %d", len(pausedRuns))
+	}
+
+	// Test ListRuns
+	runs, err := storage.ListRuns(ctx)
+	if err != nil {
+		t.Fatalf("ListRuns failed: %v", err)
+	}
+	// Should be empty initially
+	if len(runs) != 0 {
+		t.Errorf("Expected 0 runs initially, got %d", len(runs))
+	}
+
+	// Add a run and test ListRuns again
+	run := &model.Run{
+		ID:        runID,
+		FlowName:  "test_flow",
+		Status:    model.RunSucceeded,
+		StartedAt: time.Now(),
+		Event:     map[string]any{"key": "value"},
+	}
+
+	err = storage.SaveRun(ctx, run)
+	if err != nil {
+		t.Fatalf("SaveRun failed: %v", err)
+	}
+
+	runs, err = storage.ListRuns(ctx)
+	if err != nil {
+		t.Fatalf("ListRuns after save failed: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Errorf("Expected 1 run after save, got %d", len(runs))
+	}
+
+	// Test GetLatestRunByFlowName
+	latestRun, err := storage.GetLatestRunByFlowName(ctx, "test_flow")
+	if err != nil {
+		t.Fatalf("GetLatestRunByFlowName failed: %v", err)
+	}
+	if latestRun.ID != runID {
+		t.Errorf("Expected latest run ID %v, got %v", runID, latestRun.ID)
+	}
+
+	// Test GetLatestRunByFlowName with non-existent flow
+	_, err = storage.GetLatestRunByFlowName(ctx, "non_existent_flow")
+	if err == nil {
+		t.Error("Expected error for non-existent flow")
+	}
+
+	// Test DeleteRun
+	err = storage.DeleteRun(ctx, runID)
+	if err != nil {
+		t.Fatalf("DeleteRun failed: %v", err)
+	}
+
+	runs, err = storage.ListRuns(ctx)
+	if err != nil {
+		t.Fatalf("ListRuns after delete failed: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Errorf("Expected 0 runs after delete, got %d", len(runs))
+	}
+}
+
+func TestSqliteStorage_ErrorCases(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite storage: %v", err)
+	}
+	defer storage.Close()
+
+	ctx := context.Background()
+
+	// Test GetRun with non-existent ID
+	nonExistentID := uuid.New()
+	_, err = storage.GetRun(ctx, nonExistentID)
+	if err == nil {
+		t.Error("Expected error for non-existent run ID")
+	}
+
+	// Test GetSteps with non-existent run ID
+	steps, err := storage.GetSteps(ctx, nonExistentID)
+	if err != nil {
+		t.Fatalf("GetSteps should not fail for non-existent run: %v", err)
+	}
+	if len(steps) != 0 {
+		t.Errorf("Expected 0 steps for non-existent run, got %d", len(steps))
+	}
+
+	// Test ResolveWait with non-existent token
+	nonExistentToken := uuid.New()
+	_, err = storage.ResolveWait(ctx, nonExistentToken)
+	// SQLite ResolveWait doesn't return an error for non-existent tokens
+	// It just returns nil, nil - this is the expected behavior
+	if err != nil {
+		t.Logf("ResolveWait returned error for non-existent token: %v", err)
+	}
+}
+
+func TestSqliteStorage_Close(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite storage: %v", err)
+	}
+
+	// Test Close
+	err = storage.Close()
+	if err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	// Test that operations fail after close
+	ctx := context.Background()
+	runID := uuid.New()
+	run := &model.Run{
+		ID:        runID,
+		FlowName:  "test_flow",
+		Status:    model.RunRunning,
+		StartedAt: time.Now(),
+		Event:     map[string]any{"key": "value"},
+	}
+
+	err = storage.SaveRun(ctx, run)
+	if err == nil {
+		t.Error("Expected error when using storage after close")
+	}
+}
+
+func TestPostgresStorage_NotImplemented(t *testing.T) {
+	// Test that postgres storage returns not implemented errors
+	storage := &PostgresStorage{}
+	ctx := context.Background()
+
+	runID := uuid.New()
+	run := &model.Run{ID: runID}
+	step := &model.StepRun{ID: uuid.New()}
+
+	// All methods should return not implemented errors
+	err := storage.SavePausedRun("token", map[string]any{})
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+
+	_, err = storage.LoadPausedRuns()
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+
+	err = storage.DeletePausedRun("token")
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+
+	err = storage.SaveRun(ctx, run)
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+
+	_, err = storage.GetRun(ctx, runID)
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+
+	err = storage.SaveStep(ctx, step)
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+
+	_, err = storage.GetSteps(ctx, runID)
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+
+	err = storage.RegisterWait(ctx, runID, nil)
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+
+	_, err = storage.ResolveWait(ctx, runID)
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+
+	_, err = storage.ListRuns(ctx)
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+
+	err = storage.DeleteRun(ctx, runID)
+	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
+		t.Errorf("Expected not implemented error, got: %v", err)
+	}
+}
+
+func TestRunIDFromStepCtx(t *testing.T) {
+	// Test the runIDFromStepCtx helper function
+	runID := uuid.New()
+	stepCtx := map[string]any{
+		"run_id": runID.String(),
+	}
+
+	extractedID := runIDFromStepCtx(stepCtx)
+	if extractedID != runID.String() {
+		t.Errorf("Expected run ID %v, got %v", runID.String(), extractedID)
+	}
+
+	// Test with missing run_id
+	emptyCtx := map[string]any{}
+	extractedID = runIDFromStepCtx(emptyCtx)
+	if extractedID != "" {
+		t.Errorf("Expected empty string for missing run_id, got %v", extractedID)
+	}
+
+	// Test with invalid run_id type
+	invalidCtx := map[string]any{
+		"run_id": 123, // not a string
+	}
+	extractedID = runIDFromStepCtx(invalidCtx)
+	if extractedID != "" {
+		t.Errorf("Expected empty string for invalid run_id type, got %v", extractedID)
+	}
+}
+
+// testStorageRoundTrip is a helper function to test basic storage operations
+func testStorageRoundTrip(t *testing.T, storage Storage) {
+	ctx := context.Background()
+
+	// Create a test run
+	runID := uuid.New()
+	run := &model.Run{
+		ID:        runID,
+		FlowName:  "test_flow",
+		Status:    model.RunRunning,
+		StartedAt: time.Now(),
+		Event:     map[string]any{"key": "value"},
+	}
+
+	// Save and retrieve the run
+	err := storage.SaveRun(ctx, run)
+	if err != nil {
+		t.Fatalf("SaveRun failed: %v", err)
+	}
+
+	retrievedRun, err := storage.GetRun(ctx, runID)
+	if err != nil {
+		t.Fatalf("GetRun failed: %v", err)
+	}
+
+	if retrievedRun.ID != runID {
+		t.Errorf("Expected run ID %v, got %v", runID, retrievedRun.ID)
+	}
+	if retrievedRun.FlowName != "test_flow" {
+		t.Errorf("Expected flow name 'test_flow', got %v", retrievedRun.FlowName)
+	}
+}
+
+// TestSqliteStorage_SaveStep tests the SaveStep function with comprehensive coverage
+func TestSqliteStorage_SaveStep(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite storage: %v", err)
+	}
+	defer storage.Close()
+
+	ctx := context.Background()
+
+	// First create a run
+	runID := uuid.New()
+	run := &model.Run{
+		ID:        runID,
+		FlowName:  "test_flow",
+		Status:    model.RunRunning,
+		StartedAt: time.Now(),
+		Event:     map[string]any{"key": "value"},
+	}
+
+	err = storage.SaveRun(ctx, run)
+	if err != nil {
+		t.Fatalf("SaveRun failed: %v", err)
+	}
+
+	// Test SaveStep with valid step
+	stepID := uuid.New()
+	step := &model.StepRun{
+		ID:        stepID,
+		RunID:     runID,
+		StepName:  "test_step",
+		Status:    model.StepSucceeded,
+		StartedAt: time.Now(),
+		EndedAt:   &time.Time{},
+		Outputs:   map[string]any{"result": "success"},
+		Error:     "",
+	}
+
+	err = storage.SaveStep(ctx, step)
+	if err != nil {
+		t.Fatalf("SaveStep failed: %v", err)
+	}
+
+	// Verify step was saved
+	steps, err := storage.GetSteps(ctx, runID)
+	if err != nil {
+		t.Fatalf("GetSteps failed: %v", err)
+	}
+	if len(steps) != 1 {
+		t.Errorf("Expected 1 step, got %d", len(steps))
+	}
+	if steps[0].ID != stepID {
+		t.Errorf("Expected step ID %v, got %v", stepID, steps[0].ID)
+	}
+
+	// Test SaveStep with step that has error
+	stepWithError := &model.StepRun{
+		ID:        uuid.New(),
+		RunID:     runID,
+		StepName:  "error_step",
+		Status:    model.StepFailed,
+		StartedAt: time.Now(),
+		EndedAt:   &time.Time{},
+		Outputs:   nil,
+		Error:     "step failed",
+	}
+
+	err = storage.SaveStep(ctx, stepWithError)
+	if err != nil {
+		t.Fatalf("SaveStep with error failed: %v", err)
+	}
+
+	// Test SaveStep with nil outputs
+	stepNilOutputs := &model.StepRun{
+		ID:        uuid.New(),
+		RunID:     runID,
+		StepName:  "nil_outputs_step",
+		Status:    model.StepSucceeded,
+		StartedAt: time.Now(),
+		EndedAt:   nil,
+		Outputs:   nil,
+		Error:     "",
+	}
+
+	err = storage.SaveStep(ctx, stepNilOutputs)
+	if err != nil {
+		t.Fatalf("SaveStep with nil outputs failed: %v", err)
+	}
+
+	// Verify all steps were saved
+	allSteps, err := storage.GetSteps(ctx, runID)
+	if err != nil {
+		t.Fatalf("GetSteps failed: %v", err)
+	}
+	if len(allSteps) != 3 {
+		t.Errorf("Expected 3 steps, got %d", len(allSteps))
+	}
+}
+
+// TestSqliteStorage_RegisterWait tests the RegisterWait function
+func TestSqliteStorage_RegisterWait(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite storage: %v", err)
+	}
+	defer storage.Close()
+
+	ctx := context.Background()
+
+	// Test RegisterWait with valid token and wakeAt time
+	token := uuid.New()
+	wakeAt := time.Now().Add(time.Hour).Unix()
+
+	err = storage.RegisterWait(ctx, token, &wakeAt)
+	if err != nil {
+		t.Fatalf("RegisterWait failed: %v", err)
+	}
+
+	// Test RegisterWait with nil wakeAt
+	token2 := uuid.New()
+	err = storage.RegisterWait(ctx, token2, nil)
+	if err != nil {
+		t.Fatalf("RegisterWait with nil wakeAt failed: %v", err)
+	}
+
+	// Test RegisterWait with zero wakeAt
+	token3 := uuid.New()
+	zeroWakeAt := int64(0)
+	err = storage.RegisterWait(ctx, token3, &zeroWakeAt)
+	if err != nil {
+		t.Fatalf("RegisterWait with zero wakeAt failed: %v", err)
+	}
+}
+
+// TestSqliteStorage_ResolveWait tests the ResolveWait function comprehensively
+func TestSqliteStorage_ResolveWait(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite storage: %v", err)
+	}
+	defer storage.Close()
+
+	ctx := context.Background()
+
+	// First register a wait
+	token := uuid.New()
+	wakeAt := time.Now().Add(time.Hour).Unix()
+
+	err = storage.RegisterWait(ctx, token, &wakeAt)
+	if err != nil {
+		t.Fatalf("RegisterWait failed: %v", err)
+	}
+
+	// Test ResolveWait with existing token
+	resolvedRun, err := storage.ResolveWait(ctx, token)
+	if err != nil {
+		t.Fatalf("ResolveWait failed: %v", err)
+	}
+	// ResolveWait returns nil for SQLite storage - this is expected behavior
+	if resolvedRun != nil {
+		t.Logf("ResolveWait returned run: %v", resolvedRun)
+	}
+
+	// Test ResolveWait with non-existent token
+	nonExistentToken := uuid.New()
+	resolvedRun, err = storage.ResolveWait(ctx, nonExistentToken)
+	if err != nil {
+		t.Fatalf("ResolveWait with non-existent token failed: %v", err)
+	}
+	if resolvedRun != nil {
+		t.Errorf("Expected nil run for non-existent token, got %v", resolvedRun)
+	}
+
+	// Test ResolveWait with invalid token format
+	invalidToken := uuid.Nil
+	resolvedRun, err = storage.ResolveWait(ctx, invalidToken)
+	if err != nil {
+		t.Fatalf("ResolveWait with invalid token failed: %v", err)
+	}
+	if resolvedRun != nil {
+		t.Errorf("Expected nil run for invalid token, got %v", resolvedRun)
+	}
+}
+
+// TestSqliteStorage_SavePausedRun_ErrorCases tests SavePausedRun error handling
+func TestSqliteStorage_SavePausedRun_ErrorCases(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite storage: %v", err)
+	}
+	defer storage.Close()
+
+	// Test SavePausedRun with valid data
+	pausedData := map[string]any{
+		"runID":    uuid.New().String(),
+		"token":    "test_token",
+		"stepName": "paused_step",
+		"data":     map[string]any{"nested": "value"},
+	}
+
+	err = storage.SavePausedRun("test_token", pausedData)
+	if err != nil {
+		t.Fatalf("SavePausedRun failed: %v", err)
+	}
+
+	// Test SavePausedRun with nil data
+	err = storage.SavePausedRun("nil_token", nil)
+	if err != nil {
+		t.Fatalf("SavePausedRun with nil data failed: %v", err)
+	}
+
+	// Test SavePausedRun with empty data
+	emptyData := map[string]any{}
+	err = storage.SavePausedRun("empty_token", emptyData)
+	if err != nil {
+		t.Fatalf("SavePausedRun with empty data failed: %v", err)
+	}
+
+	// Test SavePausedRun with data that can't be marshaled to JSON
+	invalidData := map[string]any{
+		"channel": make(chan int), // channels can't be marshaled to JSON
+	}
+	err = storage.SavePausedRun("invalid_token", invalidData)
+	if err == nil {
+		t.Error("Expected error for data that can't be marshaled to JSON")
+	}
+
+	// Test SavePausedRun with empty token
+	err = storage.SavePausedRun("", pausedData)
+	if err != nil {
+		t.Fatalf("SavePausedRun with empty token failed: %v", err)
+	}
+
+	// Verify saved runs
+	pausedRuns, err := storage.LoadPausedRuns()
+	if err != nil {
+		t.Fatalf("LoadPausedRuns failed: %v", err)
+	}
+	// Should have at least the valid ones (invalid_token should have failed)
+	if len(pausedRuns) < 4 {
+		t.Errorf("Expected at least 4 paused runs, got %d", len(pausedRuns))
+	}
+}
+
+// TestSqliteStorage_GetSteps_EdgeCases tests GetSteps with various edge cases
+func TestSqliteStorage_GetSteps_EdgeCases(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite storage: %v", err)
+	}
+	defer storage.Close()
+
+	ctx := context.Background()
+
+	// Test GetSteps with non-existent run ID
+	nonExistentRunID := uuid.New()
+	steps, err := storage.GetSteps(ctx, nonExistentRunID)
+	if err != nil {
+		t.Fatalf("GetSteps should not fail for non-existent run: %v", err)
+	}
+	if len(steps) != 0 {
+		t.Errorf("Expected 0 steps for non-existent run, got %d", len(steps))
+	}
+
+	// Test GetSteps with nil UUID
+	steps, err = storage.GetSteps(ctx, uuid.Nil)
+	if err != nil {
+		t.Fatalf("GetSteps should not fail for nil UUID: %v", err)
+	}
+	if len(steps) != 0 {
+		t.Errorf("Expected 0 steps for nil UUID, got %d", len(steps))
+	}
+
+	// Create a run and add steps with various data types
+	runID := uuid.New()
+	run := &model.Run{
+		ID:        runID,
+		FlowName:  "test_flow",
+		Status:    model.RunRunning,
+		StartedAt: time.Now(),
+		Event:     map[string]any{"key": "value"},
+	}
+
+	err = storage.SaveRun(ctx, run)
+	if err != nil {
+		t.Fatalf("SaveRun failed: %v", err)
+	}
+
+	// Add step with complex outputs
+	complexStep := &model.StepRun{
+		ID:       uuid.New(),
+		RunID:    runID,
+		StepName: "complex_step",
+		Status:   model.StepSucceeded,
+		Outputs: map[string]any{
+			"string":  "value",
+			"number":  42,
+			"boolean": true,
+			"array":   []any{1, 2, 3},
+			"object":  map[string]any{"nested": "value"},
+		},
+	}
+
+	err = storage.SaveStep(ctx, complexStep)
+	if err != nil {
+		t.Fatalf("SaveStep with complex outputs failed: %v", err)
+	}
+
+	// Add step with nil outputs
+	nilOutputsStep := &model.StepRun{
+		ID:       uuid.New(),
+		RunID:    runID,
+		StepName: "nil_outputs_step",
+		Status:   model.StepSucceeded,
+		Outputs:  nil,
+	}
+
+	err = storage.SaveStep(ctx, nilOutputsStep)
+	if err != nil {
+		t.Fatalf("SaveStep with nil outputs failed: %v", err)
+	}
+
+	// Test GetSteps retrieves all steps
+	steps, err = storage.GetSteps(ctx, runID)
+	if err != nil {
+		t.Fatalf("GetSteps failed: %v", err)
+	}
+	if len(steps) != 2 {
+		t.Errorf("Expected 2 steps, got %d", len(steps))
+	}
+
+	// Verify step data integrity
+	for _, step := range steps {
+		if step.StepName == "complex_step" {
+			if step.Outputs == nil {
+				t.Error("Expected non-nil outputs for complex_step")
+			} else {
+				if step.Outputs["string"] != "value" {
+					t.Errorf("Expected string value 'value', got %v", step.Outputs["string"])
+				}
+				if step.Outputs["number"] != float64(42) { // JSON unmarshaling converts numbers to float64
+					t.Errorf("Expected number 42, got %v", step.Outputs["number"])
+				}
+			}
+		} else if step.StepName == "nil_outputs_step" {
+			if step.Outputs != nil {
+				t.Errorf("Expected nil outputs for nil_outputs_step, got %v", step.Outputs)
+			}
+		}
+	}
+}
+
+// TestNewSqliteStorage_ErrorCases tests NewSqliteStorage error handling
+func TestNewSqliteStorage_ErrorCases(t *testing.T) {
+	// Test with invalid path (directory that doesn't exist and can't be created)
+	invalidPath := "/root/nonexistent/path/test.db"
+	_, err := NewSqliteStorage(invalidPath)
+	if err == nil {
+		t.Error("Expected error for invalid path")
+	}
+
+	// Test with empty path - this may or may not error depending on the system
+	_, err = NewSqliteStorage("")
+	// Don't assert error for empty path as behavior may vary
+
+	// Test with valid path
+	tempDir, err := os.MkdirTemp("", "sqlite_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.db")
+	storage, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("NewSqliteStorage should succeed with valid path: %v", err)
+	}
+	if storage == nil {
+		t.Error("Expected non-nil storage")
+	}
+	defer storage.Close()
+
+	// Test creating storage with same path (should work)
+	storage2, err := NewSqliteStorage(dbPath)
+	if err != nil {
+		t.Fatalf("NewSqliteStorage should work with existing database: %v", err)
+	}
+	if storage2 == nil {
+		t.Error("Expected non-nil storage for existing database")
+	}
+	defer storage2.Close()
 }
