@@ -38,8 +38,9 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
     - [🔧 **Pattern 2: Generic HTTP Adapter (Maximum flexibility)**](#-pattern-2-generic-http-adapter-maximum-flexibility)
     - [🚀 **Pattern 3: MCP Servers (For complex integrations)**](#-pattern-3-mcp-servers-for-complex-integrations)
     - [**When to Use Which Pattern?**](#when-to-use-which-pattern)
-    - [**Creating Your Own Registry Tools**](#creating-your-own-registry-tools)
     - [**Testing All Patterns**](#testing-all-patterns)
+    - [**Creating Your Own Registry Tools**](#creating-your-own-registry-tools)
+    - [**When to Upgrade to an MCP Server**](#when-to-upgrade-to-an-mcp-server)
   - [Registry \& Tool Resolution](#registry--tool-resolution)
   - [Extending BeemFlow](#extending-beemflow)
   - [CLI • HTTP • MCP — One Brain](#cli--http--mcp--one-brain)
@@ -720,14 +721,23 @@ BeemFlow provides **three complementary ways** to integrate with HTTP APIs and e
 |--------------|-------------|-------------|
 | Fetch a web page | Registry tool | `http.fetch` |
 | Call OpenAI/Anthropic | Registry tool | `openai.chat_completion` |
-| Custom REST API | Generic HTTP | `http` with custom headers |
+| Custom REST API (simple) | Registry tool | Create JSON manifest, use `my_api.search` |
+| Custom REST API (advanced) | MCP server | `mcp://my-api/search` with caching, retries, etc. |
 | Database queries | MCP server | `mcp://postgres/query` |
 | File processing | MCP server | `mcp://filesystem/read` |
-| Webhook endpoints | Generic HTTP | `http` with POST body |
+| One-off webhook/custom request | Generic HTTP | `http` with custom headers |
+
+### **Testing All Patterns**
+
+Want to see all patterns in action? Check out [http_patterns.flow.yml](./flows/integration/http_patterns.flow.yaml).
+
+This demonstrates registry tools, generic HTTP, manifest-based APIs, and POST requests all working together.
 
 ### **Creating Your Own Registry Tools**
 
-You can easily create reusable tools by adding them to your `.beemflow/registry.json`:
+**The smart way to handle custom APIs:** Define once as a JSON manifest, reuse everywhere.
+
+Instead of repeating the same `http` configuration across multiple flows, create a reusable tool:
 
 ```json
 {
@@ -738,10 +748,13 @@ You can easily create reusable tools by adding them to your `.beemflow/registry.
     "type": "object",
     "required": ["query"],
     "properties": {
-      "query": {"type": "string", "description": "Search query"}
+      "query": {"type": "string", "description": "Search query"},
+      "limit": {"type": "integer", "default": 10, "description": "Max results"},
+      "category": {"type": "string", "enum": ["products", "users", "orders"]}
     }
   },
   "endpoint": "https://my-api.com/search",
+  "method": "POST",
   "headers": {
     "Authorization": "Bearer $env:MY_API_KEY",
     "Content-Type": "application/json"
@@ -749,25 +762,96 @@ You can easily create reusable tools by adding them to your `.beemflow/registry.
 }
 ```
 
-Then use it simply:
+**Then use it simply across all your flows:**
 ```yaml
-- id: search
+# Flow 1: Product search
+- id: search_products
   use: my_api.search
   with:
-    query: "{{ user_input }}"
+    query: "{{ product_name }}"
+    category: "products"
+
+# Flow 2: User search  
+- id: find_users
+  use: my_api.search
+  with:
+    query: "{{ email_domain }}"
+    category: "users"
+    limit: 5
 ```
 
-**Benefits:**
-- **Reusable** across all your flows
-- **Validated** parameters and responses  
-- **Documented** with descriptions and examples
-- **Shareable** with your team or the community
+**Compare this to repeating the same HTTP config everywhere:**
+```yaml
+# ❌ Bad: Repetitive and error-prone
+- id: search_products
+  use: http
+  with:
+    url: "https://my-api.com/search"
+    method: "POST"
+    headers:
+      Authorization: "Bearer {{ secrets.MY_API_KEY }}"
+      Content-Type: "application/json"
+    body: |
+      {
+        "query": "{{ product_name }}",
+        "category": "products"
+      }
 
-### **Testing All Patterns**
+# ❌ Same config repeated in every flow...
+```
 
-Want to see all patterns in action? Check out [http_patterns.flow.yml](./flows/integration/http_patterns.flow.yaml).
+**Benefits of JSON manifests:**
+- **DRY principle** - Define once, use everywhere
+- **Type safety** - Parameter validation and defaults
+- **Documentation** - Built-in descriptions and examples
+- **Maintainability** - Update API config in one place
+- **Shareability** - Team members can discover and use your APIs
+- **IDE support** - Autocomplete and validation in editors
 
-This demonstrates registry tools, generic HTTP, manifest-based APIs, and POST requests all working together.
+### **When to Upgrade to an MCP Server**
+
+For more sophisticated custom API integrations, consider creating an MCP server instead:
+
+```yaml
+# Advanced: MCP server with business logic
+- id: search_products
+  use: mcp://my-api/search
+  with:
+    query: "{{ product_name }}"
+    # MCP server handles caching, retries, rate limiting, etc.
+```
+
+**MCP servers are better when you need:**
+- **Self-discoverability** - MCP allows you to give LLMs enough context to navigate your API and choose tools appropriately
+- **Stateful operations** - Maintain connections or sessions
+- **Business logic** - Custom validation, enrichment, or workflows
+- **Multiple endpoints** - Expose many related API operations
+- **Caching** - Store API responses to reduce calls
+- **Rate limiting** - Handle API quotas intelligently  
+- **Retries & circuit breakers** - Robust error handling
+
+**Example: Shopify MCP Server**
+```yaml
+# Instead of 20+ JSON manifests for different Shopify endpoints,
+# create one MCP server that handles:
+# - Authentication refresh
+# - Rate limiting (40 calls/second)
+# - Webhook validation
+# - Inventory sync logic
+# - Order processing workflows
+
+# Use it simply:
+- id: sync_inventory
+  use: mcp://shopify/sync_inventory
+  with:
+    store_id: "{{ store.id }}"
+    # Server handles all the complexity
+```
+
+**The progression:**
+1. **Start simple** - JSON manifest for basic API calls
+2. **Add complexity** - Upgrade to MCP server when you need advanced features
+3. **Share & scale** - Publish your MCP server for others to use
 
 ## Registry & Tool Resolution
 

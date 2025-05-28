@@ -164,10 +164,11 @@ steps:
 |--------------|-------------|-----------------|-----------------|
 | Simple web page fetch | Registry Tool | `http.fetch` | Getting started, simple GET requests |
 | OpenAI/Anthropic calls | Registry Tool | `openai.chat_completion` | AI services with smart defaults |
-| Custom REST API | Generic HTTP | `http` | Need custom headers, methods, authentication |
+| Custom REST API (simple) | Registry Tool | Create JSON manifest | Basic API calls, simple reuse |
+| Custom REST API (advanced) | MCP Server | `mcp://my-api/search` | Caching, retries, business logic |
 | Database operations | MCP Server | `mcp://postgres/query` | Stateful connections, complex logic |
 | File processing | MCP Server | `mcp://filesystem/read` | File system operations |
-| Webhook endpoints | Generic HTTP | `http` with POST | Custom API integrations |
+| One-off webhook/custom request | Generic HTTP | `http` with POST | Single-use, non-reusable requests |
 
 ---
 
@@ -382,6 +383,8 @@ steps:
 
 ## Creating Custom Registry Tools
 
+**The smart way to handle custom APIs:** Define once as a JSON manifest, reuse everywhere.
+
 You can create reusable tools by adding them to `.beemflow/registry.json`:
 
 ```json
@@ -406,7 +409,7 @@ You can create reusable tools by adding them to `.beemflow/registry.json`:
 }
 ```
 
-Then use it simply:
+Then use it simply across all your flows:
 ```yaml
 - id: search
   use: my_api.search
@@ -415,6 +418,46 @@ Then use it simply:
     # limit defaults to 10 from manifest
 ```
 
+**Benefits over repeating `http` configurations:**
+- **DRY principle** - Define once, use everywhere
+- **Type safety** - Parameter validation and defaults  
+- **Maintainability** - Update API config in one place
+- **Team sharing** - Colleagues can discover and use your APIs
+- **Documentation** - Built-in descriptions and examples
+
+### **JSON Manifests vs MCP Servers for Custom APIs**
+
+**Start with JSON manifests** for simple API integrations:
+```yaml
+- id: search
+  use: my_api.search  # Simple JSON manifest
+  with:
+    query: "{{ user_input }}"
+```
+
+**Upgrade to MCP servers** when you need advanced features:
+```yaml
+- id: search
+  use: mcp://my-api/search  # Advanced MCP server
+  with:
+    query: "{{ user_input }}"
+    # Server handles caching, retries, rate limiting
+```
+
+**Choose MCP servers when you need:**
+- **Caching** - Store API responses to reduce calls
+- **Rate limiting** - Handle API quotas intelligently
+- **Retries & circuit breakers** - Robust error handling
+- **Data transformation** - Complex response processing
+- **Stateful operations** - Maintain connections or sessions
+- **Business logic** - Custom validation, enrichment, workflows
+- **Multiple endpoints** - Expose many related API operations
+
+**The progression:**
+1. **Start simple** - JSON manifest for basic API calls
+2. **Add complexity** - Upgrade to MCP server when needed
+3. **Share & scale** - Publish your MCP server for others
+
 ---
 
 ## LLM Guidelines for HTTP Pattern Selection
@@ -422,12 +465,12 @@ Then use it simply:
 ### When generating flows for users:
 
 1. **Default to Registry Tools** (`http.fetch`, `openai.chat_completion`) for common operations
-2. **Use Generic HTTP** (`http`) when users need:
-   - Custom headers or authentication
-   - Non-GET methods (POST, PUT, DELETE)
-   - Specific request body formatting
-   - Webhook integrations
-3. **Suggest MCP Servers** (`mcp://`) for:
+2. **Create JSON manifests** for custom APIs that will be reused across flows
+3. **Use Generic HTTP** (`http`) only for:
+   - One-off requests that won't be reused
+   - Quick prototyping before creating a manifest
+   - Webhook endpoints with dynamic URLs
+4. **Suggest MCP Servers** (`mcp://`) for:
    - Database operations
    - File system access
    - Stateful services
@@ -438,44 +481,42 @@ Then use it simply:
 User wants to: "Call an API"
 ├─ Is it a simple GET request? → Use `http.fetch`
 ├─ Is it OpenAI/Anthropic? → Use `openai.chat_completion` / `anthropic.chat_completion`
-├─ Need custom headers/auth? → Use `http` with full control
+├─ Is it a custom API they'll use multiple times?
+│  ├─ Simple API calls? → Create JSON manifest
+│  └─ Need caching/retries/business logic? → Create MCP server
+├─ Is it a one-off request? → Use `http` with full control
 ├─ Database operation? → Use `mcp://postgres/` or similar
 └─ File operation? → Use `mcp://filesystem/` or similar
 ```
 
-### Template Patterns:
+### Recommended Approach for Custom APIs:
 
-**Simple fetch:**
+**✅ Good: Create a reusable manifest**
 ```yaml
-- id: fetch_data
-  use: http.fetch
+# First, create .beemflow/registry.json with:
+{
+  "type": "tool", 
+  "name": "shopify.products.list",
+  "endpoint": "https://mystore.myshopify.com/admin/api/2023-01/products.json",
+  "headers": {"X-Shopify-Access-Token": "$env:SHOPIFY_TOKEN"}
+}
+
+# Then use it simply:
+- id: get_products
+  use: shopify.products.list
   with:
-    url: "{{ api_url }}"
+    limit: 50
 ```
 
-**Custom API call:**
+**❌ Avoid: Repeating HTTP config**
 ```yaml
-- id: api_call
+# Don't repeat this across multiple flows:
+- id: get_products
   use: http
   with:
-    url: "{{ api_url }}"
-    method: "{{ method | default('GET') }}"
+    url: "https://mystore.myshopify.com/admin/api/2023-01/products.json"
     headers:
-      Authorization: "Bearer {{ secrets.API_TOKEN }}"
-    body: "{{ request_body | json }}"
-```
-
-**AI completion:**
-```yaml
-- id: ai_response
-  use: openai.chat_completion
-  with:
-    model: "gpt-4o"
-    messages:
-      - role: system
-        content: "{{ system_prompt }}"
-      - role: user
-        content: "{{ user_input }}"
+      X-Shopify-Access-Token: "{{ secrets.SHOPIFY_TOKEN }}"
 ```
 
 ---
