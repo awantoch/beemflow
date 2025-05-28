@@ -525,6 +525,7 @@ func (e *Engine) executeParallelBlock(ctx context.Context, step *model.Step, ste
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(step.Steps))
 	outputs := make(map[string]any)
+	var outputsMu sync.Mutex // Protect concurrent access to outputs map
 
 	for i := range step.Steps {
 		child := &step.Steps[i]
@@ -537,7 +538,9 @@ func (e *Engine) executeParallelBlock(ctx context.Context, step *model.Step, ste
 			}
 			// Safely get the output using StepContext
 			if childOutput, ok := stepCtx.GetOutput(child.ID); ok {
+				outputsMu.Lock()
 				outputs[child.ID] = childOutput
+				outputsMu.Unlock()
 			}
 		}(child)
 	}
@@ -754,13 +757,47 @@ func (e *Engine) prepareTemplateDataAsMap(stepCtx *StepContext) map[string]any {
 	data["vars"] = templateData.Vars
 	data["outputs"] = templateData.Outputs
 	data["secrets"] = templateData.Secrets
+	data["steps"] = templateData.Outputs // Add steps namespace for step output access
 
-	// Flatten outputs and vars into context for template rendering
-	maps.Copy(data, templateData.Outputs)
+	// Flatten vars and event into context for template rendering, but be careful with outputs
 	maps.Copy(data, templateData.Vars)
 	maps.Copy(data, templateData.Event) // For foreach expressions like {{list}}
 
+	// Only flatten outputs that have valid identifier names (no template syntax)
+	for k, v := range templateData.Outputs {
+		if isValidIdentifier(k) {
+			data[k] = v
+		}
+	}
+
 	return data
+}
+
+// isValidIdentifier checks if a string is a valid template identifier
+// Valid identifiers contain only letters, numbers, and underscores, and don't contain template syntax
+func isValidIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	// Check for template syntax that would make this an invalid identifier
+	if strings.Contains(s, "{{") || strings.Contains(s, "}}") || strings.Contains(s, "{%") || strings.Contains(s, "%}") {
+		return false
+	}
+
+	// Check that it starts with a letter or underscore
+	if !((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= 'A' && s[0] <= 'Z') || s[0] == '_') {
+		return false
+	}
+
+	// Check that all characters are valid identifier characters
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+			return false
+		}
+	}
+
+	return true
 }
 
 // createIterationContext creates a new context for foreach iterations

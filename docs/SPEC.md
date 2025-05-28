@@ -35,7 +35,7 @@ steps:
   - id: fetch
     use: http.fetch
     with:
-      url: "{{ vars.URL }}"
+      url: "https://api.example.com/data"
   - id: summarize
     use: openai.chat_completion
     with:
@@ -150,6 +150,332 @@ steps:
     use: core.echo
     with:
       text: "Approval received!"
+```
+
+---
+
+# HTTP & API Integration: Three Powerful Patterns
+
+> **For LLMs:** BeemFlow provides three complementary ways to integrate with HTTP APIs and external services. Choose the right pattern based on the use case complexity and requirements.
+
+## Pattern Selection Guide for LLMs
+
+| **Use Case** | **Pattern** | **Tool/Syntax** | **When to Use** |
+|--------------|-------------|-----------------|-----------------|
+| Simple web page fetch | Registry Tool | `http.fetch` | Getting started, simple GET requests |
+| OpenAI/Anthropic calls | Registry Tool | `openai.chat_completion` | AI services with smart defaults |
+| Custom REST API | Generic HTTP | `http` | Need custom headers, methods, authentication |
+| Database operations | MCP Server | `mcp://postgres/query` | Stateful connections, complex logic |
+| File processing | MCP Server | `mcp://filesystem/read` | File system operations |
+| Webhook endpoints | Generic HTTP | `http` with POST | Custom API integrations |
+
+---
+
+## 🟢 Pattern 1: Registry Tools (Recommended Default)
+
+**Best for:** Simple APIs, getting started, common services
+
+**Key characteristics:**
+- **Zero configuration** - just provide required parameters
+- **Pre-configured** with endpoints, headers, and validation
+- **Battle-tested** - work out of the box
+- **API-specific** - each tool knows service quirks
+
+### Examples:
+
+#### Simple HTTP Fetching
+```yaml
+- id: fetch_page
+  use: http.fetch
+  with:
+    url: "https://api.example.com/data"
+```
+
+#### AI Services with Smart Defaults
+```yaml
+- id: chat
+  use: openai.chat_completion
+  with:
+    model: "gpt-4o"
+    messages:
+      - role: user
+        content: "Hello, world!"
+
+- id: anthropic_chat
+  use: anthropic.chat_completion
+  with:
+    model: "claude-3-haiku-20240307"
+    messages:
+      - role: user
+        content: "Hello, Claude!"
+```
+
+#### Other Common Registry Tools
+```yaml
+# Slack messaging
+- id: notify_team
+  use: slack.chat.postMessage
+  with:
+    channel: "#general"
+    text: "Deployment complete!"
+    token: "{{ secrets.SLACK_TOKEN }}"
+
+# Email sending
+- id: send_email
+  use: postmark.email.send
+  with:
+    to: "user@example.com"
+    subject: "Welcome!"
+    template: "welcome_template"
+```
+
+---
+
+## 🔧 Pattern 2: Generic HTTP Adapter (Maximum Flexibility)
+
+**Best for:** Complex APIs, custom authentication, non-standard requests
+
+**Key characteristics:**
+- **Complete HTTP control** - any method, headers, body
+- **No assumptions** - you specify exactly what gets sent
+- **Perfect for** - REST APIs, webhooks, custom protocols
+- **Raw power** - handles any HTTP scenario
+
+### Examples:
+
+#### Full HTTP Control
+```yaml
+- id: api_call
+  use: http
+  with:
+    url: "https://api.example.com/data"
+    method: "POST"
+    headers:
+      Authorization: "Bearer {{ secrets.API_KEY }}"
+      Content-Type: "application/json"
+      X-Custom-Header: "my-value"
+    body: |
+      {
+        "query": "{{ user_input }}",
+        "options": {
+          "format": "json",
+          "limit": 100
+        }
+      }
+```
+
+#### Different HTTP Methods
+```yaml
+# GET with custom headers
+- id: get_with_auth
+  use: http
+  with:
+    url: "https://api.example.com/protected"
+    method: "GET"
+    headers:
+      Authorization: "Bearer {{ secrets.TOKEN }}"
+
+# PUT request
+- id: update_resource
+  use: http
+  with:
+    url: "https://api.example.com/resource/123"
+    method: "PUT"
+    headers:
+      Content-Type: "application/json"
+    body: '{"status": "updated"}'
+
+# DELETE request
+- id: delete_resource
+  use: http
+  with:
+    url: "https://api.example.com/resource/123"
+    method: "DELETE"
+    headers:
+      Authorization: "Bearer {{ secrets.TOKEN }}"
+```
+
+#### Webhook Integration
+```yaml
+- id: send_webhook
+  use: http
+  with:
+    url: "{{ webhook_url }}"
+    method: "POST"
+    headers:
+      Content-Type: "application/json"
+      X-Webhook-Signature: "{{ secrets.WEBHOOK_SECRET }}"
+    body: |
+      {
+        "event": "flow_completed",
+        "data": {
+          "flow_id": "{{ flow.name }}",
+          "timestamp": "{{ now }}",
+          "results": {{ outputs | json }}
+        }
+      }
+```
+
+---
+
+## 🚀 Pattern 3: MCP Servers (Complex Integrations)
+
+**Best for:** Databases, file systems, stateful services, complex workflows
+
+**Key characteristics:**
+- **Stateful connections** - maintain database connections, file handles
+- **Rich protocols** - beyond HTTP, supports any communication pattern
+- **Ecosystem** - thousands of MCP servers available
+- **Complex logic** - servers can implement sophisticated business logic
+
+### Examples:
+
+#### Database Operations
+```yaml
+# PostgreSQL queries
+- id: query_users
+  use: mcp://postgres/query
+  with:
+    sql: "SELECT * FROM users WHERE active = true"
+    params: []
+
+# Database transactions
+- id: update_user
+  use: mcp://postgres/transaction
+  with:
+    queries:
+      - sql: "UPDATE users SET last_login = NOW() WHERE id = ?"
+        params: ["{{ user_id }}"]
+      - sql: "INSERT INTO login_log (user_id, timestamp) VALUES (?, NOW())"
+        params: ["{{ user_id }}"]
+```
+
+#### File System Operations
+```yaml
+# Read files
+- id: read_config
+  use: mcp://filesystem/read
+  with:
+    path: "/etc/app/config.json"
+
+# Process multiple files
+- id: process_reports
+  use: mcp://filesystem/glob
+  with:
+    pattern: "/data/reports/*.csv"
+    action: "read"
+```
+
+#### Complex Business Logic
+```yaml
+# Custom business logic server
+- id: calculate_pricing
+  use: mcp://pricing-engine/calculate
+  with:
+    product_id: "{{ product.id }}"
+    customer_tier: "{{ customer.tier }}"
+    quantity: "{{ order.quantity }}"
+    market_conditions: "{{ market.data }}"
+```
+
+---
+
+## Creating Custom Registry Tools
+
+You can create reusable tools by adding them to `.beemflow/registry.json`:
+
+```json
+{
+  "type": "tool",
+  "name": "my_api.search",
+  "description": "Search my custom API",
+  "parameters": {
+    "type": "object",
+    "required": ["query"],
+    "properties": {
+      "query": {"type": "string", "description": "Search query"},
+      "limit": {"type": "integer", "default": 10, "description": "Max results"}
+    }
+  },
+  "endpoint": "https://my-api.com/search",
+  "method": "POST",
+  "headers": {
+    "Authorization": "Bearer $env:MY_API_KEY",
+    "Content-Type": "application/json"
+  }
+}
+```
+
+Then use it simply:
+```yaml
+- id: search
+  use: my_api.search
+  with:
+    query: "{{ user_input }}"
+    # limit defaults to 10 from manifest
+```
+
+---
+
+## LLM Guidelines for HTTP Pattern Selection
+
+### When generating flows for users:
+
+1. **Default to Registry Tools** (`http.fetch`, `openai.chat_completion`) for common operations
+2. **Use Generic HTTP** (`http`) when users need:
+   - Custom headers or authentication
+   - Non-GET methods (POST, PUT, DELETE)
+   - Specific request body formatting
+   - Webhook integrations
+3. **Suggest MCP Servers** (`mcp://`) for:
+   - Database operations
+   - File system access
+   - Stateful services
+   - Complex business logic
+
+### Example Decision Tree:
+```
+User wants to: "Call an API"
+├─ Is it a simple GET request? → Use `http.fetch`
+├─ Is it OpenAI/Anthropic? → Use `openai.chat_completion` / `anthropic.chat_completion`
+├─ Need custom headers/auth? → Use `http` with full control
+├─ Database operation? → Use `mcp://postgres/` or similar
+└─ File operation? → Use `mcp://filesystem/` or similar
+```
+
+### Template Patterns:
+
+**Simple fetch:**
+```yaml
+- id: fetch_data
+  use: http.fetch
+  with:
+    url: "{{ api_url }}"
+```
+
+**Custom API call:**
+```yaml
+- id: api_call
+  use: http
+  with:
+    url: "{{ api_url }}"
+    method: "{{ method | default('GET') }}"
+    headers:
+      Authorization: "Bearer {{ secrets.API_TOKEN }}"
+    body: "{{ request_body | json }}"
+```
+
+**AI completion:**
+```yaml
+- id: ai_response
+  use: openai.chat_completion
+  with:
+    model: "gpt-4o"
+    messages:
+      - role: system
+        content: "{{ system_prompt }}"
+      - role: user
+        content: "{{ user_input }}"
 ```
 
 ---
@@ -568,7 +894,7 @@ steps:
   - id: fetch
     use: http.fetch
     with:
-      url: "https://en.wikipedia.org/api/rest_v1/page/summary/Artificial_intelligence"
+      url: "https://api.example.com/data"
   - id: summarize
     use: openai.chat_completion
     with:

@@ -6,7 +6,7 @@ SHELL   := /usr/bin/env bash
 BINARY   := flow
 CMD_PATH := ./cmd/flow
 # ────────────────────────────────────────────────────────────────────────────
-.PHONY: all clean build install test fmt vet lint deps coverage run e2e serve check fix
+.PHONY: all clean build install test fmt vet lint deps coverage run e2e serve check fix test-integration test-comprehensive test-edge-cases test-performance
 
 all: clean test build install 
 
@@ -33,7 +33,11 @@ install: build
 
 # run all tests with verbose output
 test:
-	go test ./...
+	go test -v ./...
+
+# run tests with race detection
+test-race:
+	go test -race -v ./...
 
 # generate a coverage report
 coverage:
@@ -42,9 +46,32 @@ coverage:
 
 # run common e2e flows
 e2e:
-	go run $(CMD_PATH) run flows/fetch_and_summarize.flow.yaml
-	go run $(CMD_PATH) run flows/parallel_openai.flow.yaml
-	go run $(CMD_PATH) run flows/list_airtable_bases.flow.yaml
+	go run $(CMD_PATH) run flows/e2e/fetch_and_summarize.flow.yaml
+	go run $(CMD_PATH) run flows/e2e/parallel_openai.flow.yaml
+	go run $(CMD_PATH) run flows/e2e/airtable_integration.flow.yaml
+
+# run comprehensive integration tests
+test-integration:
+	@echo "Running integration tests..."
+	go run ./cmd/flow run flows/integration/engine_comprehensive.flow.yaml
+	go run ./cmd/flow run flows/integration/parallel_execution.flow.yaml
+	go run ./cmd/flow run flows/integration/templating_system.flow.yaml
+	go run ./cmd/flow run flows/integration/nested_parallel.flow.yaml
+	go run ./cmd/flow run flows/integration/http_patterns.flow.yaml
+
+# run edge case tests
+test-edge-cases:
+	@echo "Running edge case tests..."
+	go run ./cmd/flow run flows/integration/edge_cases.flow.yaml
+
+# run performance tests
+test-performance:
+	@echo "Running performance tests..."
+	time go run ./cmd/flow run flows/integration/performance.flow.yaml
+
+# run comprehensive test suite including unit, integration, and e2e tests
+test-comprehensive: test test-race test-integration test-edge-cases test-performance
+	@echo "All tests completed successfully!"
 
 # master check target that runs all code quality checks
 check: fmt vet lint tidy

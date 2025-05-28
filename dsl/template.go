@@ -17,7 +17,28 @@ type Templater struct {
 
 // NewTemplater creates a new Templater.
 func NewTemplater() *Templater {
-	return &Templater{}
+	t := &Templater{}
+
+	// Register default custom filters (only if they don't already exist)
+	defaultFilters := map[string]pongo2.FilterFunction{
+		"reverse": func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+			s := in.String()
+			runes := []rune(s)
+			for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+				runes[i], runes[j] = runes[j], runes[i]
+			}
+			return pongo2.AsValue(string(runes)), nil
+		},
+	}
+
+	// Register the filters, but ignore errors if they already exist
+	err := t.RegisterFilters(defaultFilters)
+	if err != nil {
+		// Log the error but don't fail - the filter might already exist
+		utils.Debug("Filter registration warning: %v", err)
+	}
+
+	return t
 }
 
 // Render renders a template string with the provided data using pongo2.
@@ -106,15 +127,10 @@ func (t *Templater) EvaluateExpression(tmpl string, data map[string]any) (any, e
 		// Create flattened context for lookup
 		ctx := flattenContext(data)
 
-		// Simple case: direct variable lookup like "vars.analysis_types"
+		// Try nested path lookup (e.g., "nested_data.level1.level2.array")
 		if strings.Contains(varPath, ".") {
-			parts := strings.Split(varPath, ".")
-			if len(parts) == 2 {
-				if contextMap, ok := data[parts[0]].(map[string]any); ok {
-					if value, exists := contextMap[parts[1]]; exists {
-						return value, nil
-					}
-				}
+			if value, found := lookupNestedPath(varPath, data); found {
+				return value, nil
 			}
 		}
 
@@ -131,4 +147,31 @@ func (t *Templater) EvaluateExpression(tmpl string, data map[string]any) (any, e
 
 	// Fallback to string rendering for complex expressions
 	return t.Render(tmpl, data)
+}
+
+// lookupNestedPath traverses a nested path like "nested_data.level1.level2.array" in the data map
+func lookupNestedPath(path string, data map[string]any) (any, bool) {
+	parts := strings.Split(path, ".")
+	current := data
+
+	for i, part := range parts {
+		if val, exists := current[part]; exists {
+			if i == len(parts)-1 {
+				// Last part, return the value
+				return val, true
+			}
+			// Not the last part, continue traversing
+			if nextMap, ok := val.(map[string]any); ok {
+				current = nextMap
+			} else {
+				// Can't traverse further
+				return nil, false
+			}
+		} else {
+			// Part not found
+			return nil, false
+		}
+	}
+
+	return nil, false
 }

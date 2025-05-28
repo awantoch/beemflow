@@ -226,7 +226,7 @@ func TestRender_NestedStepOutput(t *testing.T) {
 func TestRegisterFilters(t *testing.T) {
 	tpl := NewTemplater()
 	err := tpl.RegisterFilters(map[string]pongo2.FilterFunction{
-		"reverse": func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+		"test_reverse": func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
 			s := in.String()
 			runes := []rune(s)
 			for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {

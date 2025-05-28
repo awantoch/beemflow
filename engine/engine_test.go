@@ -10,12 +10,14 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/utils"
+	"github.com/google/uuid"
 )
 
 func TestMain(m *testing.M) {
@@ -112,7 +114,7 @@ func TestExecute_Concurrency(t *testing.T) {
 
 func TestAwaitEventResume_RoundTrip(t *testing.T) {
 	// Load the test flow
-	f, err := os.ReadFile("../" + config.DefaultFlowsDir + "/echo_await_resume.flow.yaml")
+	f, err := os.ReadFile("../flows/examples/await_resume_demo.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to read flow: %v", err)
 	}
@@ -291,7 +293,7 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, t.Name()+"-resume_fullflow.db")
 
 	// Load the echo_await_resume flow
-	f, err := os.ReadFile("../" + config.DefaultFlowsDir + "/echo_await_resume.flow.yaml")
+	f, err := os.ReadFile("../flows/examples/await_resume_demo.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to read flow: %v", err)
 	}
@@ -396,7 +398,7 @@ func TestSqliteQueryCompletedRunAfterRestart(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), t.Name()+"-query_completed_run.db")
 
 	// Load the echo_await_resume flow and remove the await_event step for this test
-	f, err := os.ReadFile("../" + config.DefaultFlowsDir + "/echo_await_resume.flow.yaml")
+	f, err := os.ReadFile("../flows/examples/await_resume_demo.flow.yaml")
 	if err != nil {
 		t.Fatalf("failed to read flow: %v", err)
 	}
@@ -504,5 +506,428 @@ func TestInMemoryFallback_ListAndGetRun(t *testing.T) {
 	}
 	if len(runs2) != 0 {
 		t.Fatalf("expected no runs after restart in in-memory mode, got: %d", len(runs2))
+	}
+}
+
+// ============================================================================
+// COMPREHENSIVE COVERAGE TESTS
+// ============================================================================
+
+// TestExecuteParallelBlock tests the parallel block execution with 100% coverage
+func TestExecuteParallelBlock(t *testing.T) {
+	ctx := context.Background()
+	engine := NewDefaultEngine(ctx)
+
+	// Test successful parallel execution
+	step := &model.Step{
+		Steps: []model.Step{
+			{
+				ID:  "task1",
+				Use: "core.echo",
+				With: map[string]any{
+					"text": "Task 1",
+				},
+			},
+			{
+				ID:  "task2",
+				Use: "core.echo",
+				With: map[string]any{
+					"text": "Task 2",
+				},
+			},
+		},
+	}
+
+	stepCtx := NewStepContext(map[string]any{}, map[string]any{}, map[string]any{})
+	err := engine.executeParallelBlock(ctx, step, stepCtx, "parallel_test")
+	if err != nil {
+		t.Fatalf("executeParallelBlock failed: %v", err)
+	}
+
+	// Verify outputs were set
+	if _, ok := stepCtx.GetOutput("task1"); !ok {
+		t.Error("task1 output not found")
+	}
+	if _, ok := stepCtx.GetOutput("task2"); !ok {
+		t.Error("task2 output not found")
+	}
+
+	// Test parallel execution with error
+	stepWithError := &model.Step{
+		Steps: []model.Step{
+			{
+				ID:  "good_task",
+				Use: "core.echo",
+				With: map[string]any{
+					"text": "Good task",
+				},
+			},
+			{
+				ID:  "bad_task",
+				Use: "nonexistent.adapter",
+				With: map[string]any{
+					"text": "Bad task",
+				},
+			},
+		},
+	}
+
+	stepCtx2 := NewStepContext(map[string]any{}, map[string]any{}, map[string]any{})
+	err = engine.executeParallelBlock(ctx, stepWithError, stepCtx2, "parallel_error_test")
+	if err == nil {
+		t.Error("Expected error from parallel block with bad adapter")
+	}
+
+	// Test empty parallel block
+	emptyStep := &model.Step{
+		Steps: []model.Step{},
+	}
+	stepCtx3 := NewStepContext(map[string]any{}, map[string]any{}, map[string]any{})
+	err = engine.executeParallelBlock(ctx, emptyStep, stepCtx3, "empty_parallel")
+	if err != nil {
+		t.Fatalf("Empty parallel block should not error: %v", err)
+	}
+}
+
+// TestExecuteSequentialBlock tests the sequential block execution with 100% coverage
+func TestExecuteSequentialBlock(t *testing.T) {
+	ctx := context.Background()
+	engine := NewDefaultEngine(ctx)
+
+	// Test successful sequential execution
+	step := &model.Step{
+		Steps: []model.Step{
+			{
+				ID:  "seq1",
+				Use: "core.echo",
+				With: map[string]any{
+					"text": "Sequential 1",
+				},
+			},
+			{
+				ID:  "seq2",
+				Use: "core.echo",
+				With: map[string]any{
+					"text": "Sequential 2 - {{seq1.text}}",
+				},
+			},
+		},
+	}
+
+	stepCtx := NewStepContext(map[string]any{}, map[string]any{}, map[string]any{})
+	err := engine.executeSequentialBlock(ctx, step, stepCtx, "sequential_test")
+	if err != nil {
+		t.Fatalf("executeSequentialBlock failed: %v", err)
+	}
+
+	// Verify outputs were set and can reference previous steps
+	if _, ok := stepCtx.GetOutput("seq1"); !ok {
+		t.Error("seq1 output not found")
+	}
+	if _, ok := stepCtx.GetOutput("seq2"); !ok {
+		t.Error("seq2 output not found")
+	}
+
+	// Test sequential execution with error in middle
+	stepWithError := &model.Step{
+		Steps: []model.Step{
+			{
+				ID:  "good_seq1",
+				Use: "core.echo",
+				With: map[string]any{
+					"text": "Good task 1",
+				},
+			},
+			{
+				ID:  "bad_seq",
+				Use: "nonexistent.adapter",
+				With: map[string]any{
+					"text": "Bad task",
+				},
+			},
+			{
+				ID:  "never_reached",
+				Use: "core.echo",
+				With: map[string]any{
+					"text": "Never reached",
+				},
+			},
+		},
+	}
+
+	stepCtx2 := NewStepContext(map[string]any{}, map[string]any{}, map[string]any{})
+	err = engine.executeSequentialBlock(ctx, stepWithError, stepCtx2, "sequential_error_test")
+	if err == nil {
+		t.Error("Expected error from sequential block with bad adapter")
+	}
+
+	// Verify first step executed but third didn't
+	if _, ok := stepCtx2.GetOutput("good_seq1"); !ok {
+		t.Error("good_seq1 should have executed")
+	}
+	if _, ok := stepCtx2.GetOutput("never_reached"); ok {
+		t.Error("never_reached should not have executed")
+	}
+
+	// Test empty sequential block
+	emptyStep := &model.Step{
+		Steps: []model.Step{},
+	}
+	stepCtx3 := NewStepContext(map[string]any{}, map[string]any{}, map[string]any{})
+	err = engine.executeSequentialBlock(ctx, emptyStep, stepCtx3, "empty_sequential")
+	if err != nil {
+		t.Fatalf("Empty sequential block should not error: %v", err)
+	}
+}
+
+// TestExecuteForeachSequential tests sequential foreach execution with 100% coverage
+func TestExecuteForeachSequential(t *testing.T) {
+	ctx := context.Background()
+	engine := NewDefaultEngine(ctx)
+
+	// Test successful sequential foreach
+	step := &model.Step{
+		Foreach:  "{{items}}",
+		As:       "item",
+		Parallel: false,
+		Do: []model.Step{
+			{
+				ID:  "process_{{item}}",
+				Use: "core.echo",
+				With: map[string]any{
+					"text": "Processing {{item}}",
+				},
+			},
+		},
+	}
+
+	stepCtx := NewStepContext(
+		map[string]any{},
+		map[string]any{"items": []any{"alpha", "beta", "gamma"}},
+		map[string]any{},
+	)
+
+	err := engine.executeForeachSequential(ctx, step, stepCtx, "foreach_seq_test", []any{"alpha", "beta", "gamma"})
+	if err != nil {
+		t.Fatalf("executeForeachSequential failed: %v", err)
+	}
+
+	// Verify all items were processed
+	if _, ok := stepCtx.GetOutput("process_alpha"); !ok {
+		t.Error("process_alpha output not found")
+	}
+	if _, ok := stepCtx.GetOutput("process_beta"); !ok {
+		t.Error("process_beta output not found")
+	}
+	if _, ok := stepCtx.GetOutput("process_gamma"); !ok {
+		t.Error("process_gamma output not found")
+	}
+
+	// Test foreach with error in middle
+	stepWithError := &model.Step{
+		Foreach:  "{{items}}",
+		As:       "item",
+		Parallel: false,
+		Do: []model.Step{
+			{
+				ID:  "bad_{{item}}",
+				Use: "nonexistent.adapter",
+				With: map[string]any{
+					"text": "Bad {{item}}",
+				},
+			},
+		},
+	}
+
+	stepCtx2 := NewStepContext(
+		map[string]any{},
+		map[string]any{"items": []any{"one", "two"}},
+		map[string]any{},
+	)
+
+	err = engine.executeForeachSequential(ctx, stepWithError, stepCtx2, "foreach_error_test", []any{"one", "two"})
+	if err == nil {
+		t.Error("Expected error from foreach with bad adapter")
+	}
+
+	// Test empty list
+	stepCtx3 := NewStepContext(map[string]any{}, map[string]any{}, map[string]any{})
+	err = engine.executeForeachSequential(ctx, step, stepCtx3, "foreach_empty_test", []any{})
+	if err != nil {
+		t.Fatalf("Empty foreach should not error: %v", err)
+	}
+
+	// Test with empty stepID (should not set output)
+	stepCtx4 := NewStepContext(
+		map[string]any{},
+		map[string]any{"items": []any{"test"}},
+		map[string]any{},
+	)
+	err = engine.executeForeachSequential(ctx, step, stepCtx4, "", []any{"test"})
+	if err != nil {
+		t.Fatalf("foreach with empty stepID should not error: %v", err)
+	}
+
+	// Test without As variable
+	stepNoAs := &model.Step{
+		Foreach:  "{{items}}",
+		As:       "",
+		Parallel: false,
+		Do: []model.Step{
+			{
+				ID:  "no_as_test",
+				Use: "core.echo",
+				With: map[string]any{
+					"text": "No as variable",
+				},
+			},
+		},
+	}
+
+	stepCtx5 := NewStepContext(
+		map[string]any{},
+		map[string]any{"items": []any{"test"}},
+		map[string]any{},
+	)
+	err = engine.executeForeachSequential(ctx, stepNoAs, stepCtx5, "no_as_test", []any{"test"})
+	if err != nil {
+		t.Fatalf("foreach without As should not error: %v", err)
+	}
+}
+
+// TestNewEngineWithBlobStore tests engine creation with blob store
+func TestNewEngineWithBlobStore(t *testing.T) {
+	ctx := context.Background()
+	blobStore, err := blob.NewDefaultBlobStore(ctx, nil)
+	if err != nil {
+		t.Fatalf("Failed to create blob store: %v", err)
+	}
+
+	engine := NewEngineWithBlobStore(ctx, blobStore)
+	if engine == nil {
+		t.Fatal("NewEngineWithBlobStore returned nil")
+	}
+
+	if engine.BlobStore != blobStore {
+		t.Error("BlobStore not set correctly")
+	}
+
+	if engine.Adapters == nil {
+		t.Error("Adapters not initialized")
+	}
+
+	if engine.Templater == nil {
+		t.Error("Templater not initialized")
+	}
+
+	if engine.EventBus == nil {
+		t.Error("EventBus not initialized")
+	}
+
+	if engine.Storage == nil {
+		t.Error("Storage not initialized")
+	}
+}
+
+// TestSetSecret tests the SetSecret method
+func TestSetSecret(t *testing.T) {
+	stepCtx := NewStepContext(map[string]any{}, map[string]any{}, map[string]any{})
+
+	stepCtx.SetSecret("api_key", "secret_value")
+	stepCtx.SetSecret("token", "bearer_token")
+
+	snapshot := stepCtx.Snapshot()
+	if snapshot.Secrets["api_key"] != "secret_value" {
+		t.Error("api_key secret not set correctly")
+	}
+	if snapshot.Secrets["token"] != "bearer_token" {
+		t.Error("token secret not set correctly")
+	}
+
+	// Test concurrent access
+	go func() {
+		stepCtx.SetSecret("concurrent", "value")
+	}()
+	stepCtx.SetSecret("main", "value")
+
+	time.Sleep(10 * time.Millisecond) // Allow goroutine to complete
+	snapshot2 := stepCtx.Snapshot()
+	if snapshot2.Secrets["concurrent"] != "value" {
+		t.Error("concurrent secret not set")
+	}
+	if snapshot2.Secrets["main"] != "value" {
+		t.Error("main secret not set")
+	}
+}
+
+// TestClose tests the Close method
+func TestClose(t *testing.T) {
+	ctx := context.Background()
+	engine := NewDefaultEngine(ctx)
+
+	// Test closing with adapters
+	err := engine.Close()
+	if err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	// Test closing with nil adapters
+	engine.Adapters = nil
+	err = engine.Close()
+	if err != nil {
+		t.Error("Close with nil adapters should not error")
+	}
+}
+
+// TestRunIDFromContext tests the runIDFromContext utility
+func TestRunIDFromContext(t *testing.T) {
+	// Test with no run ID in context
+	ctx := context.Background()
+	runID := runIDFromContext(ctx)
+	if runID != uuid.Nil {
+		t.Error("Expected uuid.Nil for context without run ID")
+	}
+
+	// Test with run ID in context
+	testID := uuid.New()
+	ctxWithID := context.WithValue(ctx, runIDKey, testID)
+	runID = runIDFromContext(ctxWithID)
+	if runID != testID {
+		t.Error("Run ID not extracted correctly from context")
+	}
+
+	// Test with invalid value in context
+	ctxWithInvalid := context.WithValue(ctx, runIDKey, "not-a-uuid")
+	runID = runIDFromContext(ctxWithInvalid)
+	if runID != uuid.Nil {
+		t.Error("Expected uuid.Nil for invalid run ID in context")
+	}
+}
+
+// TestIsValidIdentifier tests all branches of isValidIdentifier
+func TestIsValidIdentifier(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"", false},              // empty string
+		{"valid_name", true},     // valid identifier
+		{"ValidName", true},      // valid with uppercase
+		{"_private", true},       // starts with underscore
+		{"name123", true},        // with numbers
+		{"123invalid", false},    // starts with number
+		{"{{template}}", false},  // contains template syntax
+		{"{%block%}", false},     // contains block syntax
+		{"invalid-name", false},  // contains dash
+		{"invalid.name", false},  // contains dot
+		{"invalid name", false},  // contains space
+		{"valid_name_123", true}, // complex valid name
+	}
+
+	for _, test := range tests {
+		result := isValidIdentifier(test.input)
+		if result != test.expected {
+			t.Errorf("isValidIdentifier(%q) = %v, expected %v", test.input, result, test.expected)
+		}
 	}
 }

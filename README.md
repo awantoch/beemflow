@@ -33,6 +33,16 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
     - [🛒 E-Commerce Autopilot – Dynamic Pricing \& Ads](#-e-commerce-autopilot--dynamic-pricing--ads)
     - [📬 Invoice Chaser – Recover Aged AR in \< 24 h](#-invoice-chaser--recover-aged-ar-in--24-h)
   - [Anatomy of a Flow](#anatomy-of-a-flow)
+  - [HTTP \& API Integration: Three Powerful Patterns](#http--api-integration-three-powerful-patterns)
+    - [🟢 **Pattern 1: Registry Tools (Recommended for most cases)**](#-pattern-1-registry-tools-recommended-for-most-cases)
+    - [🔧 **Pattern 2: Generic HTTP Adapter (Maximum flexibility)**](#-pattern-2-generic-http-adapter-maximum-flexibility)
+    - [🚀 **Pattern 3: MCP Servers (For complex integrations)**](#-pattern-3-mcp-servers-for-complex-integrations)
+    - [**When to Use Which Pattern?**](#when-to-use-which-pattern)
+    - [**Creating Your Own Registry Tools**](#creating-your-own-registry-tools)
+    - [**Testing All Patterns**](#testing-all-patterns)
+  - [Registry \& Tool Resolution](#registry--tool-resolution)
+  - [Extending BeemFlow](#extending-beemflow)
+  - [CLI • HTTP • MCP — One Brain](#cli--http--mcp--one-brain)
   - [Thoughts from our AI co-creators: Why BeemFlow Changes Everything 🤖](#thoughts-from-our-ai-co-creators-why-beemflow-changes-everything-)
   - [Flows as Functions: Universal, Protocolized, and Language-Native](#flows-as-functions-universal-protocolized-and-language-native)
     - [Protocol Language Implementation Comparison](#protocol-language-implementation-comparison)
@@ -41,9 +51,6 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
       - [Python: Dataclass Patterns](#python-dataclass-patterns)
       - [Rust: Zero-Cost Abstractions](#rust-zero-cost-abstractions)
     - [Why This Matters](#why-this-matters)
-  - [Registry \& Tool Resolution](#registry--tool-resolution)
-  - [CLI • HTTP • MCP — One Brain](#cli--http--mcp--one-brain)
-  - [Extending BeemFlow](#extending-beemflow)
   - [Architecture](#architecture)
   - [Security \& Secrets](#security--secrets)
   - [Roadmap](#roadmap)
@@ -152,7 +159,7 @@ on: cli.manual
 vars:
   fetch_url: "https://en.wikipedia.org/wiki/Artificial_intelligence"
 steps:
-  - id: fetch_page
+  - id: fetch
     use: http.fetch
     with:
       url: "{{ fetch_url }}"
@@ -164,7 +171,7 @@ steps:
         - role: system
           content: "Summarize the following web page in 3 bullets."
         - role: user
-          content: "{{ fetch_page.body }}"
+          content: "{{ outputs.fetch.body }}"
   - id: print
     use: core.echo
     with:
@@ -589,10 +596,10 @@ on: cli.manual
 vars:
   TOPIC: "Artificial_intelligence"
 steps:
-  - id: fetch
+  - id: search
     use: http.fetch
-    with: { url: "https://en.wikipedia.org/wiki/{{ TOPIC }}" }
-
+    with:
+      url: "{{ TOPIC }}"
   - id: summarize
     use: openai.chat_completion
     with:
@@ -601,7 +608,7 @@ steps:
         - role: system
           content: "Summarize the following text in 3 bullets."
         - role: user
-          content: "{{ outputs.fetch.body }}"
+          content: "{{ outputs.search.body }}"
 
   - id: announce
     use: slack.chat.postMessage
@@ -616,6 +623,180 @@ steps:
 🔄 **Error handling:** `catch:` block processes failures.
 
 Full grammar ➜ [SPEC.md](./docs/SPEC.md).
+
+---
+
+## HTTP & API Integration: Three Powerful Patterns
+
+BeemFlow provides **three complementary ways** to integrate with HTTP APIs and external services, each optimized for different use cases:
+
+### 🟢 **Pattern 1: Registry Tools (Recommended for most cases)**
+
+**Best for:** Simple APIs, getting started, common services
+
+```yaml
+# Simple HTTP fetching
+- id: fetch_page
+  use: http.fetch
+  with:
+    url: "https://api.example.com/data"
+
+# AI services with smart defaults
+- id: chat
+  use: openai.chat_completion
+  with:
+    model: "gpt-4o"
+    messages:
+      - role: user
+        content: "Hello, world!"
+```
+
+**How it works:**
+- Tools are **pre-configured** as OpenAI-compatible JSON tool manifests with endpoints, headers, and validation
+- **Zero configuration** - just provide the required parameters and secrets
+- **Curated & tested** - built-in tools work out of the box and have been battle-tested in production
+- **API-specific** - each tool knows its service's quirks and response format
+
+### 🔧 **Pattern 2: Generic HTTP Adapter (Maximum flexibility)**
+
+**Best for:** Complex APIs, custom authentication, non-standard requests
+
+```yaml
+# Full HTTP control
+- id: api_call
+  use: http
+  with:
+    url: "https://api.example.com/data"
+    method: "POST"
+    headers:
+      Authorization: "Bearer {{ secrets.API_KEY }}"
+      Content-Type: "application/json"
+      X-Custom-Header: "my-value"
+    body: |
+      {
+        "query": "{{ user_input }}",
+        "options": {
+          "format": "json",
+          "limit": 100
+        }
+      }
+```
+
+**How it works:**
+- **Complete HTTP control** - any method, headers, body, authentication
+- **No assumptions** - you specify exactly what gets sent
+- **Perfect for** - REST APIs, webhooks, custom protocols
+- **Raw power** - handles any HTTP scenario
+
+### 🚀 **Pattern 3: MCP Servers (For complex integrations)**
+
+**Best for:** Databases, file systems, stateful services, complex workflows
+
+```yaml
+# Database operations
+- id: query_db
+  use: mcp://postgres/query
+  with:
+    sql: "SELECT * FROM users WHERE active = true"
+
+# File operations  
+- id: process_files
+  use: mcp://filesystem/read
+  with:
+    path: "/data/reports/*.csv"
+```
+
+**How it works:**
+- **Stateful connections** - maintain database connections, file handles, etc.
+- **Rich protocols** - beyond HTTP, supports any communication pattern
+- **Ecosystem** - thousands of MCP servers available
+- **Complex logic** - servers can implement sophisticated business logic
+
+---
+
+### **When to Use Which Pattern?**
+
+| **Use Case** | **Pattern** | **Example** |
+|--------------|-------------|-------------|
+| Fetch a web page | Registry tool | `http.fetch` |
+| Call OpenAI/Anthropic | Registry tool | `openai.chat_completion` |
+| Custom REST API | Generic HTTP | `http` with custom headers |
+| Database queries | MCP server | `mcp://postgres/query` |
+| File processing | MCP server | `mcp://filesystem/read` |
+| Webhook endpoints | Generic HTTP | `http` with POST body |
+
+### **Creating Your Own Registry Tools**
+
+You can easily create reusable tools by adding them to your `.beemflow/registry.json`:
+
+```json
+{
+  "type": "tool",
+  "name": "my_api.search",
+  "description": "Search my custom API",
+  "parameters": {
+    "type": "object",
+    "required": ["query"],
+    "properties": {
+      "query": {"type": "string", "description": "Search query"}
+    }
+  },
+  "endpoint": "https://my-api.com/search",
+  "headers": {
+    "Authorization": "Bearer $env:MY_API_KEY",
+    "Content-Type": "application/json"
+  }
+}
+```
+
+Then use it simply:
+```yaml
+- id: search
+  use: my_api.search
+  with:
+    query: "{{ user_input }}"
+```
+
+**Benefits:**
+- **Reusable** across all your flows
+- **Validated** parameters and responses  
+- **Documented** with descriptions and examples
+- **Shareable** with your team or the community
+
+### **Testing All Patterns**
+
+Want to see all patterns in action? Check out [http_patterns.flow.yml](./flows/integration/http_patterns.flow.yaml).
+
+This demonstrates registry tools, generic HTTP, manifest-based APIs, and POST requests all working together.
+
+## Registry & Tool Resolution
+
+Priority:
+
+1. `$BEEMFLOW_REGISTRY`
+2. `.beemflow/registry.json`
+3. `https://hub.beemflow.com/index.json`
+
+Tools can be qualified (`smithery:airtable`) when ambiguous.
+
+---
+
+## Extending BeemFlow
+
+- **Add a tool**: `flow mcp install registry:tool` or edit `.beemflow/registry.json`.
+- **Custom adapter**: implement the `Adapter` interface in your own code.
+- **Swap event bus**: set `"event.driver": "nats"` in `flow.config.json` or via `BEEMFLOW_EVENT_DRIVER=nats`.
+
+---
+
+## CLI • HTTP • MCP — One Brain
+
+| Action        | CLI                 | HTTP            | MCP            |
+|---------------|---------------------|-----------------|----------------|
+| Validate flow | `flow lint file`    | `POST /validate`| `validateFlow` |
+| Run flow      | `flow run hello`    | `POST /runs`    | `startRun`     |
+| Status        | `flow status <id>`  | `GET /runs/{id}`| `getRun`       |
+| Graph         | `flow graph file`   | `GET /graph`    | `graphFlow`    |
 
 ---
 
@@ -785,7 +966,7 @@ from flow_client import FlowBuilder, BeemFlowClient
 flow = (FlowBuilder("research_flow")
     .step({
         "id": "search",
-        "use": "http.fetch", 
+        "use": "http.fetch",
         "with": {"url": "{{ topic }}"}
     })
     .step({
@@ -880,37 +1061,6 @@ func (s *FlowService) RunSpec(ctx context.Context, flow *model.Flow, vars map[st
 
 ---
 
-## Registry & Tool Resolution
-
-Priority:
-
-1. `$BEEMFLOW_REGISTRY`
-2. `registry/index.json`
-3. `https://hub.beemflow.com/index.json`
-
-Tools can be qualified (`smithery:airtable`) when ambiguous.
-
----
-
-## CLI • HTTP • MCP — One Brain
-
-| Action        | CLI                 | HTTP            | MCP            |
-|---------------|---------------------|-----------------|----------------|
-| Validate flow | `flow lint file`    | `POST /validate`| `validateFlow` |
-| Run flow      | `flow run hello`    | `POST /runs`    | `startRun`     |
-| Status        | `flow status <id>`  | `GET /runs/{id}`| `getRun`       |
-| Graph         | `flow graph file`   | `GET /graph`    | `graphFlow`    |
-
----
-
-## Extending BeemFlow
-
-- **Add a tool**: `flow mcp install registry:tool` or edit `.beemflow/registry.json`.
-- **Custom adapter**: implement the `Adapter` interface in your own code.
-- **Swap event bus**: set `"event.driver": "nats"` in `flow.config.json` or via `BEEMFLOW_EVENT_DRIVER=nats`.
-
----
-
 ## Architecture
 
 - Router & planner (DAG builder)
@@ -941,11 +1091,11 @@ Tools can be qualified (`smithery:airtable`) when ambiguous.
 ## Contributing
 
 ```bash
-git clone https://github.com/beemflow/beemflow
+git clone https://github.com/awantoch/beemflow
 make dev
 ```
 
-- **Code**: Go 1.22+, linted, tested.
+- **Code**: Go 1.24+, linted, tested.
 - **Docs**: PRs welcome — every example is CI-verified and BeemFlow-reviewed.
 - **Community**: Join <https://discord.gg/beemflow>.
 
@@ -960,13 +1110,6 @@ make check
 # Fix common issues automatically 
 make fix
 ```
-
-Key standards:
-- Use `maps.Copy()` instead of map copying loops
-- Use switch statements instead of long if-else chains
-- Add periods to comments
-- Follow modern Go idioms
-- Maintain consistent code formatting with `go fmt`
 
 See our [.golangci.yml](./.golangci.yml) for the full list of linter rules we enforce.
 
