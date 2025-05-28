@@ -59,9 +59,9 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
 
 ## Why BeemFlow?
 
-**The $15 Trillion Problem:** 4.5M Baby Boomers retiring by 2030. 70% of their businesses have no succession plan. The tools to run these businesses efficiently don't exist—until now.
+**The $15 Trillion Problem:** 52% of U.S. businesses are owned by people 55+ nearing retirement.¹ 74% of these employers plan to sell or transfer ownership, but only 30% of businesses successfully find buyers.² The tools to run these businesses efficiently don't exist—until now.
 
-| **The Old Way** | **The BeemFlow Way** |
+| **The Traditional Way** | **The BeemFlow Way** |
 |-----------------|----------------------|
 | **Zapier/Make.com:** Drag-and-drop GUIs that break at scale | **Text-first:** Version-controlled YAML that AI can read, write, and optimize |
 | **n8n/Temporal:** Complex interfaces & infrastructure | **Universal protocol:** One workflow runs in CLI, HTTP, MCP—anywhere |
@@ -70,7 +70,8 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
 ### Why Now?
 
 - **AI is ready:** Native MCP support = works with Claude, Cursor, any AI tool
-- **Market timing:** SMB automation market growing 42% annually ($2.3B → $13.8B by 2028)
+- **Market explosion:** AI market growing 36.6% annually ($244B → $1.8T by 2030)³
+- **Automation boom:** RPA market exploding 43.9% annually ($3.8B → $31B by 2030)⁴
 - **Real impact:** Cut operational overhead by 80%+ (we've seen 24hr → 2hr workflows)
 
 ### The Hidden Opportunity
@@ -80,6 +81,12 @@ BeemFlow isn't just about automation—it's about **acquisition**:
 > Deploy automation → Build trust → Learn the business → Acquire with creative financing
 
 We're building the infrastructure for the largest generational wealth transfer in history. One workflow at a time.
+
+---
+¹ [Gallup Pathways to Wealth Survey 2024](https://news.gallup.com/poll/657362/small-business-owners-lack-succession-plan.aspx)  
+² [Exit Planning Institute & Teamshares Research](https://www.teamshares.com/resources/succession-planning-statistics/)  
+³ [Statista AI Market Forecast](https://www.statista.com/outlook/tmo/artificial-intelligence/worldwide) & [Grand View Research AI Market Report](https://www.grandviewresearch.com/press-release/global-artificial-intelligence-ai-market)  
+⁴ [Grand View Research RPA Market Report](https://www.grandviewresearch.com/industry-analysis/robotic-process-automation-rpa-market)
 
 ---
 
