@@ -697,6 +697,13 @@ func (e *Engine) executeToolCall(ctx context.Context, step *model.Step, stepCtx 
 				stepCtx.SetOutput(stepID, make(map[string]any))
 				return utils.Errorf("MCPAdapter not registered")
 			}
+		} else if strings.HasPrefix(step.Use, "core.") {
+			// Handle core tools by routing to the core adapter
+			adapterInst, ok = e.Adapters.Get("core")
+			if !ok {
+				stepCtx.SetOutput(stepID, make(map[string]any))
+				return utils.Errorf("CoreAdapter not registered")
+			}
 		} else {
 			stepCtx.SetOutput(stepID, make(map[string]any))
 			return utils.Errorf("adapter not found: %s", step.Use)
@@ -721,6 +728,8 @@ func (e *Engine) executeToolCall(ctx context.Context, step *model.Step, stepCtx 
 	utils.Debug("tool %s payload: %s", step.Use, payload)
 
 	if strings.HasPrefix(step.Use, "mcp://") {
+		inputs["__use"] = step.Use
+	} else if strings.HasPrefix(step.Use, "core.") {
 		inputs["__use"] = step.Use
 	}
 

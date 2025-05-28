@@ -3,9 +3,11 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/docs"
 	mcpserver "github.com/awantoch/beemflow/mcp"
@@ -49,6 +51,7 @@ func AttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 		{ID: registry.InterfaceIDGetFlowSpec, Type: registry.HTTP, Use: http.MethodGet, Path: "/flows/{name}", Description: registry.InterfaceDescGetFlowSpec},
 		{ID: registry.InterfaceIDPublishEvent, Type: registry.HTTP, Use: http.MethodPost, Path: "/events", Description: registry.InterfaceDescPublishEvent},
 		{ID: registry.InterfaceIDSpec, Type: registry.HTTP, Use: http.MethodGet, Path: "/spec", Description: "Get BeemFlow protocol spec"},
+		{ID: "convertOpenAPI", Type: registry.HTTP, Use: http.MethodPost, Path: "/tools/convert", Description: "Convert OpenAPI specs to BeemFlow tool manifests"},
 	}
 	for _, m := range httpMetas {
 		registry.RegisterInterface(m)
@@ -103,6 +106,9 @@ func AttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 	})
 	mux.HandleFunc("/tools/", func(w http.ResponseWriter, r *http.Request) {
 		toolsManifestHandler(w, r, svc)
+	})
+	mux.HandleFunc("/tools/convert", func(w http.ResponseWriter, r *http.Request) {
+		convertOpenAPIHandler(w, r, svc)
 	})
 	mux.HandleFunc("/flows", func(w http.ResponseWriter, r *http.Request) {
 		flowsHandler(w, r, svc)
@@ -264,6 +270,28 @@ func BuildMCPToolRegistrations(svc FlowService) []mcpserver.ToolRegistration {
 			}
 			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
 		}},
+		{
+			ID:   "beemflow_convert_openapi",
+			Desc: "Convert OpenAPI spec to BeemFlow tool manifests",
+			Handler: func(ctx context.Context, args map[string]any) (any, error) {
+				// Extract required parameters
+				openapi, ok := args["openapi"].(string)
+				if !ok {
+					return nil, fmt.Errorf("missing required parameter: openapi")
+				}
+
+				// Extract optional parameters with defaults
+				apiName, _ := args["api_name"].(string)
+				if apiName == "" {
+					apiName = "api"
+				}
+
+				baseURL, _ := args["base_url"].(string)
+
+				// Use the DRY helper for conversion
+				return convertOpenAPISpec(ctx, openapi, apiName, baseURL)
+			},
+		},
 	}
 	regs := make([]mcpserver.ToolRegistration, 0, len(defs))
 	for _, d := range defs {
@@ -719,4 +747,67 @@ func eventsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	if _, err := w.Write([]byte("ok")); err != nil {
 		utils.Error("w.Write failed: %v", err)
 	}
+}
+
+// convertOpenAPIHandler converts OpenAPI specs to BeemFlow tool manifests
+// POST /tools/convert with JSON body: { "openapi": "...", "api_name": "my_api", "base_url": "https://..." }
+func convertOpenAPIHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		OpenAPI string `json:"openapi"`  // OpenAPI spec as JSON string
+		APIName string `json:"api_name"` // Name prefix for generated tools
+		BaseURL string `json:"base_url"` // Optional base URL override
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		if _, err := w.Write([]byte("invalid request body: " + err.Error())); err != nil {
+			utils.Error("w.Write failed: %v", err)
+		}
+		return
+	}
+
+	if req.OpenAPI == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		if _, err := w.Write([]byte("missing openapi field")); err != nil {
+			utils.Error("w.Write failed: %v", err)
+		}
+		return
+	}
+
+	if req.APIName == "" {
+		req.APIName = "api" // Default name
+	}
+
+	// Use the DRY helper for conversion
+	result, err := convertOpenAPISpec(r.Context(), req.OpenAPI, req.APIName, req.BaseURL)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		if _, err := w.Write([]byte("conversion failed: " + err.Error())); err != nil {
+			utils.Error("w.Write failed: %v", err)
+		}
+		return
+	}
+
+	// Return the result
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		utils.Error("json.Encode failed: %v", err)
+	}
+}
+
+// convertOpenAPISpec is a DRY helper that calls the core adapter for OpenAPI conversion
+func convertOpenAPISpec(ctx context.Context, openapi, apiName, baseURL string) (map[string]any, error) {
+	coreAdapter := &adapter.CoreAdapter{}
+	inputs := map[string]any{
+		"__use":    "core.convert_openapi",
+		"openapi":  openapi,
+		"api_name": apiName,
+		"base_url": baseURL,
+	}
+	return coreAdapter.Execute(ctx, inputs)
 }

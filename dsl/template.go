@@ -10,6 +10,11 @@ import (
 	pongo2 "github.com/flosch/pongo2/v6"
 )
 
+var (
+	// Global filter registration to avoid duplicate registrations
+	filterRegistrationOnce sync.Once
+)
+
 // Templater provides template rendering with Jinja2-style (pongo2) for BeemFlow flows.
 type Templater struct {
 	mu sync.Mutex // protects pongo2 operations which are not thread-safe
@@ -19,24 +24,27 @@ type Templater struct {
 func NewTemplater() *Templater {
 	t := &Templater{}
 
-	// Register default custom filters (only if they don't already exist)
-	defaultFilters := map[string]pongo2.FilterFunction{
-		"reverse": func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
-			s := in.String()
-			runes := []rune(s)
-			for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-				runes[i], runes[j] = runes[j], runes[i]
-			}
-			return pongo2.AsValue(string(runes)), nil
-		},
-	}
+	// Register default custom filters only once globally
+	filterRegistrationOnce.Do(func() {
+		defaultFilters := map[string]pongo2.FilterFunction{
+			"reverse": func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+				s := in.String()
+				runes := []rune(s)
+				for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+					runes[i], runes[j] = runes[j], runes[i]
+				}
+				return pongo2.AsValue(string(runes)), nil
+			},
+		}
 
-	// Register the filters, but ignore errors if they already exist
-	err := t.RegisterFilters(defaultFilters)
-	if err != nil {
-		// Log the error but don't fail - the filter might already exist
-		utils.Debug("Filter registration warning: %v", err)
-	}
+		// Register the filters globally
+		for name, fn := range defaultFilters {
+			if err := pongo2.RegisterFilter(name, fn); err != nil {
+				// Log the error but don't fail - the filter might already exist
+				utils.Debug("Filter registration warning: %v", err)
+			}
+		}
+	})
 
 	return t
 }
