@@ -9,6 +9,7 @@ import (
 
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/docs"
 	mcpserver "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"
@@ -59,7 +60,7 @@ func AttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 
 	// Metadata discovery endpoint
 	registry.RegisterRoute(mux, "GET", "/metadata", registry.InterfaceDescMetadata, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		if err := json.NewEncoder(w).Encode(registry.AllInterfaces()); err != nil {
 			utils.Error("Failed to encode metadata response: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -68,7 +69,7 @@ func AttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 
 	// Health check endpoint
 	registry.RegisterRoute(mux, "GET", "/healthz", registry.InterfaceDescHealthCheck, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
 			utils.Error("Failed to write health check response: %v", err)
@@ -120,7 +121,7 @@ func AttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 		eventsHandler(w, r, svc)
 	})
 	mux.HandleFunc("/spec", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/markdown")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeTextMarkdown)
 		if _, err := w.Write([]byte(docs.BeemflowSpec)); err != nil {
 			utils.Error("Failed to write spec response: %v", err)
 		}
@@ -303,6 +304,60 @@ func BuildMCPToolRegistrations(svc FlowService) []mcpserver.ToolRegistration {
 
 // Helper functions for HTTP handlers
 
+// httpResponse represents a standardized HTTP response
+type httpResponse struct {
+	StatusCode int
+	Data       any
+	Error      string
+}
+
+// writeResponse standardizes JSON response writing with proper headers and error handling
+func writeResponse(w http.ResponseWriter, r *http.Request, resp httpResponse) {
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
+	w.WriteHeader(resp.StatusCode)
+
+	var payload any
+	if resp.Error != "" {
+		payload = map[string]string{"error": resp.Error}
+	} else {
+		payload = resp.Data
+	}
+
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		utils.ErrorCtx(r.Context(), "Failed to encode JSON response", "error", err)
+	}
+}
+
+// writeTextResponse writes a plain text response with proper error handling
+func writeTextResponse(w http.ResponseWriter, r *http.Request, statusCode int, text string) {
+	w.WriteHeader(statusCode)
+	if _, err := w.Write([]byte(text)); err != nil {
+		utils.ErrorCtx(r.Context(), "Failed to write text response", "error", err)
+	}
+}
+
+// decodeJSONRequest safely decodes JSON request body
+func decodeJSONRequest(r *http.Request, target any) error {
+	return json.NewDecoder(r.Body).Decode(target)
+}
+
+// methodGuard ensures only specified HTTP methods are allowed
+func methodGuard(w http.ResponseWriter, r *http.Request, allowedMethods ...string) bool {
+	for _, method := range allowedMethods {
+		if r.Method == method {
+			return true
+		}
+	}
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	return false
+}
+
+// parseUUIDFromPath extracts and parses UUID from URL path
+func parseUUIDFromPath(path, prefix string) (uuid.UUID, error) {
+	idStr := path[len(prefix):]
+	return uuid.Parse(idStr)
+}
+
 // collectCobra recursively collects metadata for Cobra commands.
 func collectCobra(cmd *cobra.Command) []registry.InterfaceMeta {
 	metas := []registry.InterfaceMeta{{
@@ -321,115 +376,125 @@ func collectCobra(cmd *cobra.Command) []registry.InterfaceMeta {
 
 // GET /runs (list all runs).
 func runsListHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if !methodGuard(w, r, http.MethodGet) {
 		return
 	}
+
 	runs, err := svc.ListRuns(r.Context())
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		if _, err := w.Write([]byte(err.Error())); err != nil {
-			utils.ErrorCtx(r.Context(), "w.Write failed", "error", err)
-		}
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusInternalServerError,
+			Error:      err.Error(),
+		})
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(runs); err != nil {
-		utils.ErrorCtx(r.Context(), "json.Encode failed", "error", err)
-	}
+
+	writeResponse(w, r, httpResponse{
+		StatusCode: http.StatusOK,
+		Data:       runs,
+	})
 }
 
 // POST /runs { flow: <filename>, event: <object> }.
 func runsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if !methodGuard(w, r, http.MethodPost) {
 		return
 	}
+
 	var req struct {
 		Flow  string         `json:"flow"`
 		Event map[string]any `json:"event"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("invalid request body")); err != nil {
-			utils.Error("w.Write failed: %v", err)
-		}
+
+	if err := decodeJSONRequest(r, &req); err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusBadRequest,
+			Error:      "invalid request body",
+		})
 		return
 	}
+
 	id, err := svc.StartRun(r.Context(), req.Flow, req.Event)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		if _, err := w.Write([]byte(err.Error())); err != nil {
-			utils.Error("w.Write failed: %v", err)
-		}
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusInternalServerError,
+			Error:      err.Error(),
+		})
 		return
 	}
-	resp := map[string]any{
-		"run_id": id.String(),
-		"status": "STARTED",
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		utils.Error("json.Encode failed: %v", err)
-	}
+
+	writeResponse(w, r, httpResponse{
+		StatusCode: http.StatusOK,
+		Data: map[string]any{
+			"run_id": id.String(),
+			"status": "STARTED",
+		},
+	})
 }
 
 // GET /runs/{id}.
 func runStatusHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	switch r.Method {
 	case http.MethodGet:
-		idStr := r.URL.Path[len("/runs/"):]
-		id, err := uuid.Parse(idStr)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			if _, err := w.Write([]byte("invalid run ID")); err != nil {
-				utils.Error("w.Write failed: %v", err)
-			}
-			return
-		}
-		run, err := svc.GetRun(r.Context(), id)
-		if err != nil || run == nil {
-			w.WriteHeader(http.StatusNotFound)
-			if _, err := w.Write([]byte("run not found")); err != nil {
-				utils.Error("w.Write failed: %v", err)
-			}
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(run); err != nil {
-			utils.Error("json.Encode failed: %v", err)
-		}
+		handleGetRun(w, r, svc)
 	case http.MethodDelete:
-		idStr := r.URL.Path[len("/runs/"):]
-		id, err := uuid.Parse(idStr)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			if _, err := w.Write([]byte("invalid run ID")); err != nil {
-				utils.Error("w.Write failed: %v", err)
-			}
-			return
-		}
-		err = svc.DeleteRun(r.Context(), id)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			if _, err := w.Write([]byte(err.Error())); err != nil {
-				utils.Error("w.Write failed: %v", err)
-			}
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("deleted")); err != nil {
-			utils.Error("w.Write failed: %v", err)
-		}
+		handleDeleteRun(w, r, svc)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
+// handleGetRun handles GET /runs/{id}
+func handleGetRun(w http.ResponseWriter, r *http.Request, svc FlowService) {
+	id, err := parseUUIDFromPath(r.URL.Path, "/runs/")
+	if err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusBadRequest,
+			Error:      "invalid run ID",
+		})
+		return
+	}
+
+	run, err := svc.GetRun(r.Context(), id)
+	if err != nil || run == nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusNotFound,
+			Error:      "run not found",
+		})
+		return
+	}
+
+	writeResponse(w, r, httpResponse{
+		StatusCode: http.StatusOK,
+		Data:       run,
+	})
+}
+
+// handleDeleteRun handles DELETE /runs/{id}
+func handleDeleteRun(w http.ResponseWriter, r *http.Request, svc FlowService) {
+	id, err := parseUUIDFromPath(r.URL.Path, "/runs/")
+	if err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusBadRequest,
+			Error:      "invalid run ID",
+		})
+		return
+	}
+
+	if err := svc.DeleteRun(r.Context(), id); err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusInternalServerError,
+			Error:      err.Error(),
+		})
+		return
+	}
+
+	writeTextResponse(w, r, http.StatusOK, "deleted")
+}
+
 // POST /resume/{token}.
 func resumeHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if !methodGuard(w, r, http.MethodPost) {
 		return
 	}
 
@@ -437,126 +502,150 @@ func resumeHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 
 	// Parse the JSON body for event data
 	var resumeEvent map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&resumeEvent); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+	if err := decodeJSONRequest(r, &resumeEvent); err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusBadRequest,
+			Error:      "invalid request body",
+		})
 		return
 	}
 
 	// Try to parse as UUID for direct run update (used in tests)
 	if id, err := uuid.Parse(tokenOrID); err == nil {
-		// Get storage from config
-		cfg, err := config.LoadConfig(config.DefaultConfigPath)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		store, err := GetStoreFromConfig(cfg)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		// Get the run directly from storage
-		run, err := store.GetRun(r.Context(), id)
-		if err != nil {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		// Update the event in the run
-		run.Event = resumeEvent
-
-		// Save the updated run
-		if err := store.SaveRun(r.Context(), run); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		// Return response
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]any{
-			"status":  run.Status,
-			"outputs": run.Event["outputs"],
-		}); err != nil {
-			utils.Error("Failed to encode resume response: %v", err)
-		}
+		handleDirectRunUpdate(w, r, id, resumeEvent)
 		return
 	}
 
 	// Resume the run using the service
 	outputs, err := svc.ResumeRun(r.Context(), tokenOrID, resumeEvent)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		if _, err := w.Write([]byte(err.Error())); err != nil {
-			utils.Error("w.Write failed: %v", err)
-		}
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusInternalServerError,
+			Error:      err.Error(),
+		})
 		return
 	}
 
-	// Return the outputs
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{"outputs": outputs}); err != nil {
-		utils.Error("json.Encode failed: %v", err)
-	}
+	writeResponse(w, r, httpResponse{
+		StatusCode: http.StatusOK,
+		Data:       map[string]any{"outputs": outputs},
+	})
 }
 
-func graphHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+// handleDirectRunUpdate handles direct run updates for test scenarios
+func handleDirectRunUpdate(w http.ResponseWriter, r *http.Request, id uuid.UUID, resumeEvent map[string]any) {
+	// Get storage from config
+	cfg, err := config.LoadConfig(config.DefaultConfigPath)
+	if err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusInternalServerError,
+			Error:      "failed to load config",
+		})
 		return
 	}
+
+	store, err := GetStoreFromConfig(cfg)
+	if err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusInternalServerError,
+			Error:      "failed to get storage",
+		})
+		return
+	}
+
+	// Get the run directly from storage
+	run, err := store.GetRun(r.Context(), id)
+	if err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusNotFound,
+			Error:      "run not found",
+		})
+		return
+	}
+
+	// Update the event in the run
+	run.Event = resumeEvent
+
+	// Save the updated run
+	if err := store.SaveRun(r.Context(), run); err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusInternalServerError,
+			Error:      "failed to save run",
+		})
+		return
+	}
+
+	// Return response
+	writeResponse(w, r, httpResponse{
+		StatusCode: http.StatusOK,
+		Data: map[string]any{
+			"status":  run.Status,
+			"outputs": run.Event["outputs"],
+		},
+	})
+}
+
+// GET /graph?flow=<name>.
+func graphHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
+	if !methodGuard(w, r, http.MethodGet) {
+		return
+	}
+
 	flowName := r.URL.Query().Get("flow")
 	if flowName == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("missing flow name")); err != nil {
-			utils.Error("w.Write failed: %v", err)
-		}
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusBadRequest,
+			Error:      "missing flow parameter",
+		})
 		return
 	}
+
 	graph, err := svc.GraphFlow(r.Context(), flowName)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		if _, err := w.Write([]byte(err.Error())); err != nil {
-			utils.Error("w.Write failed: %v", err)
-		}
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusInternalServerError,
+			Error:      err.Error(),
+		})
 		return
 	}
-	w.Header().Set("Content-Type", "text/vnd.mermaid")
-	if _, err := w.Write([]byte(graph)); err != nil {
-		utils.Error("w.Write failed: %v", err)
-	}
+
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeTextVndMermaid)
+	writeTextResponse(w, r, http.StatusOK, graph)
 }
 
+// POST /validate.
 func validateHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if !methodGuard(w, r, http.MethodPost) {
 		return
 	}
+
 	var req struct {
 		Flow string `json:"flow"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("invalid request body")); err != nil {
-			utils.Error("w.Write failed: %v", err)
-		}
+
+	if err := decodeJSONRequest(r, &req); err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusBadRequest,
+			Error:      "invalid request body",
+		})
 		return
 	}
-	err := svc.ValidateFlow(r.Context(), req.Flow)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte(err.Error())); err != nil {
-			utils.Error("w.Write failed: %v", err)
-		}
+
+	if err := svc.ValidateFlow(r.Context(), req.Flow); err != nil {
+		writeResponse(w, r, httpResponse{
+			StatusCode: http.StatusBadRequest,
+			Error:      fmt.Sprintf("validation failed: %v", err),
+		})
 		return
 	}
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte("ok")); err != nil {
-		utils.Error("w.Write failed: %v", err)
-	}
+
+	writeResponse(w, r, httpResponse{
+		StatusCode: http.StatusOK,
+		Data:       map[string]string{"status": "valid"},
+	})
 }
 
+// GET /test (not implemented).
 func testHandler(w http.ResponseWriter, _ *http.Request, _ FlowService) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
@@ -571,6 +660,7 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request, svc FlowService) 
 		Event map[string]any `json:"event"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("invalid request body")); err != nil {
 			utils.Error("w.Write failed: %v", err)
@@ -580,6 +670,7 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request, svc FlowService) 
 	// Parse and validate the flow spec
 	flow, err := ParseFlowFromString(req.Spec)
 	if err != nil {
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("invalid flow spec: " + err.Error())); err != nil {
 			utils.Error("w.Write failed: %v", err)
@@ -599,7 +690,7 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request, svc FlowService) 
 		"run_id":  id.String(),
 		"outputs": outputs,
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		utils.Error("json.Encode failed: %v", err)
 	}
@@ -619,7 +710,7 @@ func toolsIndexHandler(w http.ResponseWriter, r *http.Request, svc FlowService) 
 		}
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(tools); err != nil {
 		utils.Error("json.Encode failed: %v", err)
 	}
@@ -641,7 +732,7 @@ func toolsManifestHandler(w http.ResponseWriter, r *http.Request, svc FlowServic
 		}
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(manifest); err != nil {
 		utils.Error("json.Encode failed: %v", err)
 	}
@@ -668,7 +759,7 @@ func flowsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 			}
 			specs = append(specs, flow)
 		}
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		if err := json.NewEncoder(w).Encode(specs); err != nil {
 			utils.Error("json.Encode failed: %v", err)
 		}
@@ -703,7 +794,7 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 			}
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		if err := json.NewEncoder(w).Encode(flow); err != nil {
 			utils.Error("json.Encode failed: %v", err)
 		}
@@ -729,6 +820,7 @@ func eventsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 		Payload map[string]any `json:"payload"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("invalid request body")); err != nil {
 			utils.Error("w.Write failed: %v", err)
@@ -777,6 +869,7 @@ func convertOpenAPIHandler(w http.ResponseWriter, r *http.Request, svc FlowServi
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte("invalid request body: " + err.Error())); err != nil {
 			utils.Error("w.Write failed: %v", err)
@@ -807,7 +900,7 @@ func convertOpenAPIHandler(w http.ResponseWriter, r *http.Request, svc FlowServi
 	}
 
 	// Return the result
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(result); err != nil {
 		utils.Error("json.Encode failed: %v", err)
 	}

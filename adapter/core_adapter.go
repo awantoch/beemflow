@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/utils"
 )
@@ -17,7 +18,7 @@ type CoreAdapter struct{}
 
 // ID returns the adapter ID.
 func (a *CoreAdapter) ID() string {
-	return "core"
+	return constants.AdapterCore
 }
 
 // Execute handles various core BeemFlow tools based on the __use field.
@@ -28,9 +29,9 @@ func (a *CoreAdapter) Execute(ctx context.Context, inputs map[string]any) (map[s
 	}
 
 	switch use {
-	case "core.echo":
+	case constants.CoreEcho:
 		return a.executeEcho(ctx, inputs)
-	case "core.convert_openapi":
+	case constants.CoreConvertOpenAPI:
 		return a.executeConvertOpenAPI(ctx, inputs)
 	default:
 		return nil, fmt.Errorf("unknown core tool: %s", use)
@@ -41,7 +42,7 @@ func (a *CoreAdapter) Execute(ctx context.Context, inputs map[string]any) (map[s
 func (a *CoreAdapter) executeEcho(ctx context.Context, inputs map[string]any) (map[string]any, error) {
 	_ = ctx // Context not needed for this operation
 	if text, ok := inputs["text"].(string); ok {
-		if os.Getenv("BEEMFLOW_DEBUG") != "" {
+		if os.Getenv(constants.EnvDebug) != "" {
 			utils.Info("%s", text)
 		}
 	}
@@ -77,7 +78,7 @@ func (a *CoreAdapter) executeConvertOpenAPI(ctx context.Context, inputs map[stri
 	// Get optional inputs with defaults
 	apiName, _ := inputs["api_name"].(string)
 	if apiName == "" {
-		apiName = "api"
+		apiName = constants.DefaultAPIName
 	}
 
 	baseURL, _ := inputs["base_url"].(string)
@@ -92,7 +93,7 @@ func (a *CoreAdapter) executeConvertOpenAPI(ctx context.Context, inputs map[stri
 			}
 		}
 		if baseURL == "" {
-			baseURL = "https://api.example.com"
+			baseURL = constants.DefaultBaseURL
 		}
 	}
 
@@ -155,8 +156,8 @@ func (a *CoreAdapter) convertOpenAPIToManifests(spec map[string]any, apiName, ba
 				"endpoint":    baseURL + path,
 				"method":      strings.ToUpper(method),
 				"headers": map[string]string{
-					"Content-Type":  a.determineContentType(opObj, method),
-					"Authorization": "Bearer $env:" + strings.ToUpper(apiName) + "_API_KEY",
+					constants.HeaderContentType:   a.determineContentType(opObj, method),
+					constants.HeaderAuthorization: "Bearer $env:" + strings.ToUpper(apiName) + "_API_KEY",
 				},
 			}
 
@@ -225,17 +226,17 @@ func (a *CoreAdapter) extractDescription(operation map[string]any, path string) 
 
 func (a *CoreAdapter) extractParameters(operation map[string]any, method string) map[string]any {
 	// For POST/PUT/PATCH, look for requestBody
-	if strings.ToUpper(method) != "GET" {
+	if strings.ToUpper(method) != constants.HTTPMethodGET {
 		if requestBody, ok := operation["requestBody"].(map[string]any); ok {
 			if content, ok := requestBody["content"].(map[string]any); ok {
 				// Try application/json first
-				if jsonContent, ok := content["application/json"].(map[string]any); ok {
+				if jsonContent, ok := content[constants.ContentTypeJSON].(map[string]any); ok {
 					if schema, ok := jsonContent["schema"].(map[string]any); ok {
 						return schema
 					}
 				}
 				// Try application/x-www-form-urlencoded
-				if formContent, ok := content["application/x-www-form-urlencoded"].(map[string]any); ok {
+				if formContent, ok := content[constants.ContentTypeForm].(map[string]any); ok {
 					if schema, ok := formContent["schema"].(map[string]any); ok {
 						return schema
 					}
@@ -293,20 +294,20 @@ func (a *CoreAdapter) extractParameters(operation map[string]any, method string)
 }
 
 func (a *CoreAdapter) determineContentType(operation map[string]any, method string) string {
-	if strings.ToUpper(method) == "GET" {
-		return "application/json"
+	if strings.ToUpper(method) == constants.HTTPMethodGET {
+		return constants.ContentTypeJSON
 	}
 
 	// Check if requestBody specifies form data
 	if requestBody, ok := operation["requestBody"].(map[string]any); ok {
 		if content, ok := requestBody["content"].(map[string]any); ok {
-			if _, hasForm := content["application/x-www-form-urlencoded"]; hasForm {
-				return "application/x-www-form-urlencoded"
+			if _, hasForm := content[constants.ContentTypeForm]; hasForm {
+				return constants.ContentTypeForm
 			}
 		}
 	}
 
-	return "application/json"
+	return constants.ContentTypeJSON
 }
 
 func (a *CoreAdapter) Manifest() *registry.ToolManifest {

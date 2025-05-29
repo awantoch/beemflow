@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/utils"
 )
@@ -69,7 +70,7 @@ func (a *HTTPAdapter) executeManifestRequest(ctx context.Context, inputs map[str
 
 	// Create request
 	req := HTTPRequest{
-		Method:  "POST",
+		Method:  constants.HTTPMethodPOST,
 		URL:     a.ToolManifest.Endpoint,
 		Headers: headers,
 	}
@@ -102,7 +103,7 @@ func (a *HTTPAdapter) executeGenericRequest(ctx context.Context, inputs map[stri
 	}
 
 	// Add body for non-GET requests
-	if method != "GET" {
+	if method != constants.HTTPMethodGET {
 		if body := inputs["body"]; body != nil {
 			bodyBytes, err := json.Marshal(body)
 			if err != nil {
@@ -134,12 +135,18 @@ func (a *HTTPAdapter) executeHTTPRequest(ctx context.Context, req HTTPRequest) (
 	}
 
 	// Set default headers if not provided
-	if req.Method != "GET" && httpReq.Header.Get("Content-Type") == "" {
-		httpReq.Header.Set("Content-Type", "application/json")
+	if req.Method != constants.HTTPMethodGET && httpReq.Header.Get(constants.HeaderContentType) == "" {
+		httpReq.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	}
-	if httpReq.Header.Get("Accept") == "" {
-		httpReq.Header.Set("Accept", "application/json, text/*;q=0.9, */*;q=0.8")
+	if httpReq.Header.Get(constants.HeaderAccept) == "" {
+		httpReq.Header.Set(constants.HeaderAccept, constants.DefaultJSONAccept)
 	}
+
+	// Set content-type if sending body
+	if len(req.Body) > 0 {
+		httpReq.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
+	}
+	httpReq.Header.Set(constants.HeaderAccept, constants.DefaultJSONAccept)
 
 	// Execute request
 	resp, err := defaultClient.Do(httpReq)
@@ -243,7 +250,7 @@ func (a *HTTPAdapter) extractMethod(inputs map[string]any) string {
 	if m, ok := safeStringAssert(inputs["method"]); ok && m != "" {
 		return strings.ToUpper(m)
 	}
-	return "GET"
+	return constants.HTTPMethodGET
 }
 
 // extractHeaders extracts headers from inputs safely
