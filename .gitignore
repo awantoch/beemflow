@@ -31,3 +31,6 @@ beemflow.db
 
 # Build artifacts
 *.log
+
+# GoReleaser
+dist/
