@@ -91,8 +91,8 @@ func TestExecute_AllStepTypes(t *testing.T) {
 		{ID: "s2", Use: "core.echo", With: map[string]interface{}{"text": "hi"}},
 	}}
 	_, err := e.Execute(context.Background(), f, map[string]any{"foo": "bar"})
-	if err == nil || !strings.Contains(err.Error(), "missing or invalid token") {
-		t.Errorf("expected await_event missing or invalid token error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "missing token in match") {
+		t.Errorf("expected await_event missing token error, got %v", err)
 	}
 }
 
@@ -126,7 +126,7 @@ func TestAwaitEventResume_RoundTrip(t *testing.T) {
 	// Start the flow with input and token
 	startEvent := map[string]any{"input": "hello world", "token": "abc123"}
 	outputs, err := engine.Execute(context.Background(), &flow, startEvent)
-	if err == nil || !strings.Contains(err.Error(), "await_event pause") {
+	if err == nil || !strings.Contains(err.Error(), "is waiting for event") {
 		t.Fatalf("expected pause on await_event, got: %v, outputs: %v", err, outputs)
 	}
 	// Wait to ensure subscription is registered
@@ -135,7 +135,7 @@ func TestAwaitEventResume_RoundTrip(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	// Simulate resume event
 	resumeEvent := map[string]any{"resume_value": "it worked!", "token": "abc123"}
-	if err := engine.EventBus.Publish("resume:abc123", resumeEvent); err != nil {
+	if err := engine.EventBus.Publish("resume.abc123", resumeEvent); err != nil {
 		t.Errorf("Publish failed: %v", err)
 	}
 	// Wait briefly to allow resume goroutine to complete
@@ -321,7 +321,7 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 	// Start the flow, should pause at await_event
 	startEvent := map[string]any{"input": "hello world", "token": "abc123"}
 	outputs, err := engine.Execute(context.Background(), &flow, startEvent)
-	if err == nil || !strings.Contains(err.Error(), "await_event pause") {
+	if err == nil || !strings.Contains(err.Error(), "is waiting for event") {
 		t.Fatalf("expected pause on await_event, got: %v, outputs: %v", err, outputs)
 	}
 
@@ -362,7 +362,7 @@ func TestSqlitePersistenceAndResume_FullFlow(t *testing.T) {
 
 	// Simulate resume event
 	resumeEvent := map[string]any{"resume_value": "it worked!", "token": "abc123"}
-	if err := engine2.EventBus.Publish("resume:abc123", resumeEvent); err != nil {
+	if err := engine2.EventBus.Publish("resume.abc123", resumeEvent); err != nil {
 		t.Errorf("Publish failed: %v", err)
 	}
 

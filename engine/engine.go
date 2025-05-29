@@ -335,9 +335,9 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 		runID = runIDFromContext(ctx)
 	}
 
-	// TODO: Add dependency map and execution order supporting block-parallel barriers
-	// This will allow block-parallel barriers and keep backward compatibility for parallel: true
-
+	// Execute steps sequentially from startIdx
+	// Note: Future enhancement could add dependency mapping for more sophisticated
+	// parallel execution patterns while maintaining backward compatibility
 	for i := startIdx; i < len(flow.Steps); i++ {
 		step := &flow.Steps[i]
 
