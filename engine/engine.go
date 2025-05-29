@@ -2,9 +2,7 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"maps"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -299,25 +297,24 @@ func (e *Engine) executeCatchBlocks(ctx context.Context, flow *model.Flow, event
 
 // collectSecrets extracts secrets from event data and environment variables
 func (e *Engine) collectSecrets(event map[string]any) SecretsData {
-	secrets := make(SecretsData)
+	secretsMap := make(SecretsData)
 
-	// First, load secrets from event data
-	if s, ok := safeMapAssert(event[constants.SecretsKey]); ok {
-		for k, v := range s {
-			secrets[k] = v
+	// Extract secrets from event using new constant
+	if eventSecrets, ok := utils.SafeMapAssert(event[constants.SecretsKey]); ok {
+		for k, v := range eventSecrets {
+			secretsMap[k] = v
 		}
 	}
 
-	// Then, load from environment variables
-	for _, envKV := range os.Environ() {
-		if eq := strings.Index(envKV, constants.FieldEqualityOperator); eq != -1 {
-			key := envKV[:eq]
-			value := envKV[eq+1:]
-			secrets[key] = value
+	// Collect environment variables starting with $env prefix
+	for k, v := range event {
+		if strings.HasPrefix(k, constants.EnvVarPrefix) {
+			envVar := strings.TrimPrefix(k, constants.EnvVarPrefix)
+			secretsMap[envVar] = v
 		}
 	}
 
-	return secrets
+	return secretsMap
 }
 
 // Helper to get pointer to time.Time.
@@ -382,7 +379,7 @@ func (e *Engine) handleAwaitEventStep(ctx context.Context, step *model.Step, flo
 func (e *Engine) extractAndRenderAwaitToken(step *model.Step, stepCtx *StepContext) (string, error) {
 	// Extract token from match configuration
 	match := step.AwaitEvent.Match
-	tokenRaw, ok := safeStringAssert(match[constants.MatchKeyToken])
+	tokenRaw, ok := utils.SafeStringAssert(match[constants.MatchKeyToken])
 	if !ok || tokenRaw == constants.EmptyString {
 		return constants.EmptyString, utils.Errorf(constants.ErrAwaitEventMissingToken)
 	}
@@ -776,7 +773,7 @@ func (e *Engine) renderStepID(stepID string, stepCtx *StepContext) (string, erro
 		return constants.EmptyString, utils.Errorf(constants.ErrTemplateErrorStepID, stepID, err)
 	}
 
-	renderedStr, ok := safeStringAssert(rendered)
+	renderedStr, ok := utils.SafeStringAssert(rendered)
 	if !ok {
 		return stepID, nil // fallback to original stepID if not a string
 	}
@@ -1032,12 +1029,12 @@ func (e *Engine) autoFillRequiredParams(adapterInst adapter.Adapter, inputs map[
 
 // extractManifestParameters extracts parameters and required fields from adapter manifest
 func (e *Engine) extractManifestParameters(manifest *registry.ToolManifest) (map[string]any, []any) {
-	params, ok := safeMapAssert(manifest.Parameters[constants.DefaultKeyProperties])
+	params, ok := utils.SafeMapAssert(manifest.Parameters[constants.DefaultKeyProperties])
 	if !ok {
 		return nil, nil
 	}
 
-	required, ok := safeSliceAssert(manifest.Parameters[constants.DefaultKeyRequired])
+	required, ok := utils.SafeSliceAssert(manifest.Parameters[constants.DefaultKeyRequired])
 	if !ok {
 		return nil, nil
 	}
@@ -1048,7 +1045,7 @@ func (e *Engine) extractManifestParameters(manifest *registry.ToolManifest) (map
 // fillMissingRequiredParameters iterates through required parameters and fills missing ones
 func (e *Engine) fillMissingRequiredParameters(inputs, params map[string]any, required []any, secrets SecretsData) {
 	for _, req := range required {
-		key, ok := safeStringAssert(req)
+		key, ok := utils.SafeStringAssert(req)
 		if !ok {
 			continue
 		}
@@ -1063,17 +1060,17 @@ func (e *Engine) fillMissingRequiredParameters(inputs, params map[string]any, re
 
 // resolveParameterDefault resolves default value from parameter definition and secrets
 func (e *Engine) resolveParameterDefault(paramDef any, secrets SecretsData) any {
-	prop, ok := safeMapAssert(paramDef)
+	prop, ok := utils.SafeMapAssert(paramDef)
 	if !ok {
 		return nil
 	}
 
-	def, ok := safeMapAssert(prop[constants.DefaultKeyDefault])
+	def, ok := utils.SafeMapAssert(prop[constants.DefaultKeyDefault])
 	if !ok {
 		return nil
 	}
 
-	envVar, ok := safeStringAssert(def[constants.EnvVarPrefix])
+	envVar, ok := utils.SafeStringAssert(def[constants.EnvVarPrefix])
 	if !ok {
 		return nil
 	}
@@ -1323,24 +1320,10 @@ func NewDefaultEngine(ctx context.Context) *Engine {
 // copyMap creates a shallow copy of a map[string]any.
 func copyMap(in map[string]any) map[string]any {
 	out := make(map[string]any, len(in))
-	maps.Copy(out, in)
+	for k, v := range in {
+		out[k] = v
+	}
 	return out
-}
-
-// Safe type assertion helpers to prevent panics
-func safeStringAssert(v any) (string, bool) {
-	s, ok := v.(string)
-	return s, ok
-}
-
-func safeMapAssert(v any) (map[string]any, bool) {
-	m, ok := v.(map[string]any)
-	return m, ok
-}
-
-func safeSliceAssert(v any) ([]any, bool) {
-	s, ok := v.([]any)
-	return s, ok
 }
 
 // =============================================================================
@@ -1356,10 +1339,11 @@ func setEmptyOutputAndError(stepCtx *StepContext, stepID, errMsg string, args ..
 
 // logToolPayload logs the tool payload for debugging, handling marshal errors gracefully
 func logToolPayload(ctx context.Context, toolName string, inputs map[string]any) {
-	if payload, err := json.Marshal(inputs); err == nil {
-		utils.Debug("tool %s payload: %s", toolName, payload)
+	result := utils.MarshalJSON(inputs)
+	if result.Err == nil {
+		utils.Debug("tool %s payload: %s", toolName, result.Data)
 	} else {
-		utils.ErrorCtx(ctx, "Failed to marshal tool inputs: %v", "error", err)
+		utils.ErrorCtx(ctx, "Failed to marshal tool inputs: %v", "error", result.Err)
 	}
 }
 
@@ -1382,8 +1366,12 @@ func flattenTemplateDataToMap(templateData TemplateData) map[string]any {
 	data[constants.TemplateFieldSteps] = templateData.Outputs // Add steps namespace for step output access
 
 	// Flatten vars and event into context for template rendering
-	maps.Copy(data, templateData.Vars)
-	maps.Copy(data, templateData.Event) // For foreach expressions like {{list}}
+	for k, v := range templateData.Vars {
+		data[k] = v
+	}
+	for k, v := range templateData.Event {
+		data[k] = v // For foreach expressions like {{list}}
+	}
 
 	// Only flatten outputs that have valid identifier names (no template syntax)
 	for k, v := range templateData.Outputs {

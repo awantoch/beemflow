@@ -958,7 +958,7 @@ func TestListMCPServers(t *testing.T) {
 func TestSafeSliceAssert(t *testing.T) {
 	// Test with valid slice
 	validSlice := []any{"item1", "item2", "item3"}
-	result, ok := safeSliceAssert(validSlice)
+	result, ok := utils.SafeSliceAssert(validSlice)
 	if !ok {
 		t.Error("Expected safeSliceAssert to return true for valid slice")
 	}
@@ -971,7 +971,7 @@ func TestSafeSliceAssert(t *testing.T) {
 
 	// Test with empty slice
 	emptySlice := []any{}
-	result, ok = safeSliceAssert(emptySlice)
+	result, ok = utils.SafeSliceAssert(emptySlice)
 	if !ok {
 		t.Error("Expected safeSliceAssert to return true for empty slice")
 	}
@@ -980,7 +980,7 @@ func TestSafeSliceAssert(t *testing.T) {
 	}
 
 	// Test with nil
-	result, ok = safeSliceAssert(nil)
+	result, ok = utils.SafeSliceAssert(nil)
 	if ok {
 		t.Error("Expected safeSliceAssert to return false for nil input")
 	}
@@ -989,7 +989,7 @@ func TestSafeSliceAssert(t *testing.T) {
 	}
 
 	// Test with non-slice type
-	result, ok = safeSliceAssert("not a slice")
+	result, ok = utils.SafeSliceAssert("not a slice")
 	if ok {
 		t.Error("Expected safeSliceAssert to return false for non-slice input")
 	}
@@ -999,7 +999,7 @@ func TestSafeSliceAssert(t *testing.T) {
 
 	// Test with interface{} slice
 	interfaceSlice := []interface{}{"a", 1, true}
-	result, ok = safeSliceAssert(interfaceSlice)
+	result, ok = utils.SafeSliceAssert(interfaceSlice)
 	if !ok {
 		t.Error("Expected safeSliceAssert to return true for interface slice")
 	}
@@ -1009,7 +1009,7 @@ func TestSafeSliceAssert(t *testing.T) {
 
 	// Test with mixed types
 	mixedSlice := []any{1, "string", map[string]any{"key": "value"}}
-	result, ok = safeSliceAssert(mixedSlice)
+	result, ok = utils.SafeSliceAssert(mixedSlice)
 	if !ok {
 		t.Error("Expected safeSliceAssert to return true for mixed slice")
 	}
