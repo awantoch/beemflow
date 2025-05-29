@@ -40,6 +40,7 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
     - [When to Use Which Pattern?](#when-to-use-which-pattern)
     - [Testing All Patterns](#testing-all-patterns)
     - [Creating Your Own Registry Tools](#creating-your-own-registry-tools)
+    - [Instant Tool Generation from OpenAPI Specs](#instant-tool-generation-from-openapi-specs)
     - [When to Upgrade to an MCP Server](#when-to-upgrade-to-an-mcp-server)
   - [Registry \& Tool Resolution](#registry--tool-resolution)
   - [Extending BeemFlow](#extending-beemflow)
@@ -807,6 +808,88 @@ Instead of repeating the same `http` configuration across multiple flows, create
 - **Maintainability** - Update API config in one place
 - **Shareability** - Team members can discover and use your APIs
 - **IDE support** - Autocomplete and validation in editors
+
+### Instant Tool Generation from OpenAPI Specs
+
+**Already have an OpenAPI spec? Generate a complete tool manifest instantly:**
+
+```bash
+# Convert OpenAPI spec file to BeemFlow tool manifest
+flow convert openapi-spec.json
+
+# Or fetch from URL and convert
+curl -s https://api.example.com/openapi.json | flow convert
+```
+
+**Input OpenAPI spec:**
+```json
+{
+  "openapi": "3.0.0",
+  "info": {"title": "Products API", "version": "1.0.0"},
+  "paths": {
+    "/products/search": {
+      "post": {
+        "summary": "Search products",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                  "query": {"type": "string"},
+                  "category": {"type": "string", "enum": ["electronics", "books"]},
+                  "limit": {"type": "integer", "default": 10}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**Generated BeemFlow tool manifest:**
+```json
+{
+  "type": "tool",
+  "name": "products_api.search",
+  "description": "Search products",
+  "parameters": {
+    "type": "object",
+    "required": ["query"],
+    "properties": {
+      "query": {"type": "string"},
+      "category": {"type": "string", "enum": ["electronics", "books"]},
+      "limit": {"type": "integer", "default": 10}
+    }
+  },
+  "endpoint": "https://api.example.com/products/search",
+  "method": "POST",
+  "headers": {
+    "Content-Type": "application/json"
+  }
+}
+```
+
+**Then use it immediately in your flows:**
+```yaml
+# products_search.flow.yaml
+- id: find_electronics
+  use: products_api.search
+  with:
+    query: "smartphones"
+    category: "electronics"
+    limit: 5
+```
+
+**Why this is game-changing:**
+- **Zero manual work** - Go from API docs to working tool in seconds
+- **Perfect fidelity** - Parameters, validation, and descriptions preserved
+- **Instant ecosystem** - Any OpenAPI-documented API becomes a BeemFlow tool
+- **Team scaling** - Share API access patterns without teaching BeemFlow syntax
 
 ### When to Upgrade to an MCP Server
 
