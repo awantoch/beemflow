@@ -33,6 +33,7 @@ func Serve(configPath string, debug, stdio bool, addr string, tools []ToolRegist
 	if err != nil && !strings.Contains(err.Error(), "no such file") {
 		return utils.Errorf("failed to load config %s: %w", configPath, err)
 	}
+
 	// Create MCP server transport
 	var server *mcp.Server
 	if stdio {
@@ -44,12 +45,15 @@ func Serve(configPath string, debug, stdio bool, addr string, tools []ToolRegist
 		transport := mcphttp.NewHTTPTransport("/mcp").WithAddr(addr)
 		server = mcp.NewServer(transport)
 	}
+
 	// Register all tools
 	RegisterAllTools(server, tools)
+
 	// Start serving
 	if err := server.Serve(); err != nil {
 		return err
 	}
+
 	// For stdio transport, wait for termination signals and exit gracefully
 	if stdio {
 		sigCh := make(chan os.Signal, 1)
@@ -68,40 +72,4 @@ func RegisterAllTools(server *mcp.Server, tools []ToolRegistration) {
 			utils.Error("Failed to register MCP tool %s: %v", t.Name, err)
 		}
 	}
-}
-
-// Argument types for MCP handlers (can be re-used by CLI)
-
-type EmptyArgs struct{}
-
-type GetFlowArgs struct {
-	Name string `json:"name"`
-}
-
-type ValidateFlowArgs struct {
-	Name string `json:"name"`
-}
-
-type GraphFlowArgs struct {
-	Name string `json:"name"`
-}
-
-type StartRunArgs struct {
-	FlowName string         `json:"flowName"`
-	Event    map[string]any `json:"event"`
-}
-
-type GetRunArgs struct {
-	RunID string `json:"runID"`
-}
-
-type PublishEventArgs struct {
-	Topic   string         `json:"topic"`
-	Payload map[string]any `json:"payload"`
-}
-
-// ResumeRunArgs are the arguments for the resumeRun MCP tool.
-type ResumeRunArgs struct {
-	Token string         `json:"token"`
-	Event map[string]any `json:"event"`
 }

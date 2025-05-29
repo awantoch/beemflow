@@ -1083,14 +1083,14 @@ func TestFlowService_ErrorCases(t *testing.T) {
 	_, err = service.GetRun(ctx, uuid.New())
 	// GetRun should error for non-existent runs, but the error depends on storage implementation
 	if err == nil {
-		t.Logf("GetRun did not error for non-existent run (may be expected depending on storage)")
+		t.Log("GetRun did not error for non-existent run (may be expected depending on storage)")
 	}
 
 	// Test DeleteRun with non-existent run - this should error
 	err = service.DeleteRun(ctx, uuid.New())
 	// DeleteRun should error for non-existent runs, but the error depends on storage implementation
 	if err == nil {
-		t.Logf("DeleteRun did not error for non-existent run (may be expected depending on storage)")
+		t.Log("DeleteRun did not error for non-existent run (may be expected depending on storage)")
 	}
 }
 

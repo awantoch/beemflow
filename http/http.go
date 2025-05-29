@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,12 +11,8 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/api"
-	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/constants"
-	"github.com/awantoch/beemflow/dsl"
-	beemengine "github.com/awantoch/beemflow/engine"
-	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
@@ -55,14 +50,100 @@ func init() {
 	prometheus.MustRegister(httpRequestDuration)
 }
 
+// StartServer starts the HTTP server with minimal setup - all the heavy lifting
+// is now done by the unified operations system
+func StartServer(cfg *config.Config) error {
+	// Initialize tracing
+	initTracerFromConfig(cfg)
+
+	// Create HTTP mux
+	mux := http.NewServeMux()
+
+	// Register static file serving
+	registry.RegisterRoute(mux, constants.HTTPMethodGET, "/", constants.InterfaceDescStaticAssets, http.FileServer(http.Dir(".")).ServeHTTP)
+
+	// Create service and attach all API handlers using the unified system
+	svc := api.NewFlowService()
+	api.UnifiedAttachHTTPHandlers(mux, svc)
+
+	// Register metrics endpoint
+	mux.Handle("/metrics", promhttp.Handler())
+
+	// Initialize all dependencies (this could be moved to a separate DI package)
+	cleanup, err := api.InitializeDependencies(cfg)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	// Determine server address
+	addr := getServerAddress(cfg)
+
+	// Create wrapped handler with middleware
+	wrappedMux := otelhttp.NewHandler(
+		requestIDMiddleware(
+			metricsMiddleware("root", mux),
+		),
+		"http.root",
+	)
+
+	// Start server with graceful shutdown
+	return startServerWithGracefulShutdown(addr, wrappedMux)
+}
+
+// getServerAddress determines the server address from config
+func getServerAddress(cfg *config.Config) string {
+	addr := ":3333" // default
+	if cfg.HTTP != nil && cfg.HTTP.Port != 0 {
+		host := cfg.HTTP.Host
+		if host == "" {
+			host = "0.0.0.0"
+		}
+		addr = fmt.Sprintf("%s:%d", host, cfg.HTTP.Port)
+	}
+	return addr
+}
+
+// startServerWithGracefulShutdown starts the HTTP server and handles graceful shutdown
+func startServerWithGracefulShutdown(addr string, handler http.Handler) error {
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	// Channel to listen for errors from ListenAndServe
+	errChan := make(chan error, 1)
+	go func() {
+		utils.Info("HTTP server starting on %s", addr)
+		errChan <- server.ListenAndServe()
+	}()
+
+	// Listen for interrupt signal for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-sigChan:
+		utils.Info("Received signal %v, shutting down HTTP server...", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			utils.Error("HTTP server shutdown error: %v", err)
+			return err
+		}
+		utils.Info("HTTP server shutdown complete.")
+		return nil
+	case err := <-errChan:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			utils.Error("HTTP server error: %v", err)
+			return err
+		}
+		return nil
+	}
+}
+
 // initTracerFromConfig sets up OpenTelemetry tracing based on config.
-// Tracing config example:
-//
-//	"tracing": {
-//	  "exporter": "otlp", // or "stdout"
-//	  "endpoint": "http://localhost:4318", // OTLP endpoint
-//	  "serviceName": "beemflow"
-//	}
 func initTracerFromConfig(cfg *config.Config) {
 	var tp *trace.TracerProvider
 	serviceName := "beemflow"
@@ -142,134 +223,9 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
-func StartServer(cfg *config.Config) error {
-	initTracerFromConfig(cfg)
-
-	// Create the HTTP mux
-	mux := http.NewServeMux()
-
-	// Serve static files
-	registry.RegisterRoute(mux, "GET", "/", constants.InterfaceDescStaticAssets, http.FileServer(http.Dir(".")).ServeHTTP)
-
-	// Create the service
-	svc := api.NewFlowService()
-
-	// Attach all API handlers
-	api.AttachHTTPHandlers(mux, svc)
-
-	// Register metrics endpoint
-	mux.Handle("/metrics", promhttp.Handler())
-
-	// Dependency injection: construct all dependencies for the engine
-	var err error
-	store, err := api.GetStoreFromConfig(cfg)
-	if err != nil {
-		return err
-	}
-
-	adapters := beemengine.NewDefaultAdapterRegistry(context.Background())
-	templ := dsl.NewTemplater()
-	var bus event.EventBus
-	if cfg.Event != nil {
-		bus, err = event.NewEventBusFromConfig(cfg.Event)
-		if err != nil {
-			utils.WarnCtx(context.Background(), "Failed to create event bus: %v, using in-memory fallback", "error", err)
-			bus = event.NewInProcEventBus()
-		}
-	} else {
-		bus = event.NewInProcEventBus()
-	}
-	var blobStore blob.BlobStore
-	blobConfig := (*blob.BlobConfig)(nil)
-	if cfg.Blob != nil {
-		// Convert config.BlobConfig to blob.BlobConfig if types differ
-		blobConfig = &blob.BlobConfig{
-			Driver: cfg.Blob.Driver,
-			Bucket: cfg.Blob.Bucket,
-		}
-	}
-	blobStore, err = blob.NewDefaultBlobStore(context.Background(), blobConfig)
-	if err != nil {
-		utils.WarnCtx(context.Background(), "Failed to create blob store: %v, using nil fallback", "error", err)
-		blobStore = nil
-	}
-
-	// Create engine and store it for proper cleanup
-	engine := beemengine.NewEngine(adapters, templ, bus, blobStore, store)
-
-	// Cleanup function to properly close all resources
-	cleanup := func() {
-		if err := engine.Close(); err != nil {
-			utils.Error("Failed to close engine: %v", err)
-		}
-		if store != nil {
-			if closer, ok := store.(io.Closer); ok {
-				if err := closer.Close(); err != nil {
-					utils.Error("Failed to close storage: %v", err)
-				}
-			}
-		}
-		if blobStore != nil {
-			if closer, ok := blobStore.(io.Closer); ok {
-				if err := closer.Close(); err != nil {
-					utils.Error("Failed to close blob store: %v", err)
-				}
-			}
-		}
-	}
-
-	addr := ":3333"
-	if cfg.HTTP != nil {
-		host := cfg.HTTP.Host
-		port := cfg.HTTP.Port
-		if port != 0 {
-			if host == "" {
-				host = "0.0.0.0"
-			}
-			addr = fmt.Sprintf("%s:%d", host, port)
-		}
-	}
-	wrappedMux := otelhttp.NewHandler(requestIDMiddleware(metricsMiddleware("root", mux)), "http.root")
-
-	server := &http.Server{
-		Addr:              addr,
-		Handler:           wrappedMux,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-
-	// Channel to listen for errors from ListenAndServe
-	errChan := make(chan error, 1)
-	go func() {
-		utils.Info("HTTP server starting on %s", addr)
-		errChan <- server.ListenAndServe()
-	}()
-
-	// Listen for interrupt signal for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case sig := <-sigChan:
-		utils.Info("Received signal %v, shutting down HTTP server...", sig)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(ctx); err != nil {
-			utils.Error("HTTP server shutdown error: %v", err)
-			cleanup()
-			return err
-		}
-		cleanup()
-		utils.Info("HTTP server shutdown complete.")
-		return nil
-	case err := <-errChan:
-		cleanup()
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			utils.Error("HTTP server error: %v", err)
-			return err
-		}
-		return nil
-	}
-}
+// ============================================================================
+// TEST UTILITIES (consolidated from test_utils.go)
+// ============================================================================
 
 // UpdateRunEvent updates the event for a run.
 // Used for tests and directly accesses the storage layer.

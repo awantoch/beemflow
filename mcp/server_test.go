@@ -9,6 +9,22 @@ import (
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
 )
 
+// Test argument types - kept local to avoid import cycles
+type EmptyArgs struct{}
+
+type GetFlowArgs struct {
+	Name string `json:"name"`
+}
+
+type ValidateFlowArgs struct {
+	Name string `json:"name"`
+}
+
+type StartRunArgs struct {
+	FlowName string         `json:"flowName"`
+	Event    map[string]any `json:"event"`
+}
+
 // TestServe_Basic tests that Serve can be called without panicking
 func TestServe_Basic(t *testing.T) {
 	// Create a simple server setup
