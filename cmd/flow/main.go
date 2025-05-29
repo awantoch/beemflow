@@ -240,87 +240,161 @@ func outputEchoResults(outputs map[string]any) {
 			continue
 		}
 
-		// Handle different output formats cleanly
-		if outMap, ok := stepOutput.(map[string]any); ok {
-			// 1. core.echo outputs - just show the text
-			if text, ok := outMap["text"]; ok {
-				utils.User("%s", text)
-				displayed[stepID] = true
-				continue
-			}
-
-			// 2. OpenAI chat completions - extract the message content
-			if choices, ok := outMap["choices"].([]interface{}); ok && len(choices) > 0 {
-				if choice, ok := choices[0].(map[string]any); ok {
-					if message, ok := choice["message"].(map[string]any); ok {
-						if content, ok := message["content"].(string); ok {
-							utils.User("🤖 %s: %s", stepID, content)
-							displayed[stepID] = true
-							continue
-						}
-					}
-				}
-			}
-
-			// 3. MCP responses with content array - extract text
-			if content, ok := outMap["content"].([]interface{}); ok && len(content) > 0 {
-				if contentItem, ok := content[0].(map[string]any); ok {
-					if text, ok := contentItem["text"].(string); ok {
-						utils.User("📡 %s: %s", stepID, text)
-						displayed[stepID] = true
-						continue
-					}
-				}
-			}
-
-			// 4. HTTP fetch responses - show just the body preview
-			if body, ok := outMap["body"].(string); ok {
-				preview := body
-				if len(preview) > 200 {
-					preview = preview[:200] + "..."
-				}
-				utils.User("🌐 %s: %s", stepID, preview)
-				displayed[stepID] = true
-				continue
-			}
-
-			// 5. Parallel step outputs - extract individual step results
-			foundParallelOutputs := false
-			for subStepID, subOutput := range outMap {
-				if displayed[subStepID] {
-					continue
-				}
-				if subOutputMap, ok := subOutput.(map[string]any); ok {
-					// Check if this looks like an OpenAI response
-					if choices, ok := subOutputMap["choices"].([]interface{}); ok && len(choices) > 0 {
-						if choice, ok := choices[0].(map[string]any); ok {
-							if message, ok := choice["message"].(map[string]any); ok {
-								if content, ok := message["content"].(string); ok {
-									utils.User("🤖 %s: %s", subStepID, content)
-									displayed[subStepID] = true
-									foundParallelOutputs = true
-									continue
-								}
-							}
-						}
-					}
-				}
-			}
-			if foundParallelOutputs {
-				displayed[stepID] = true
-				continue
-			}
+		// Try different output format handlers in order
+		if outputHandled := tryOutputSpecificFormats(stepID, stepOutput, displayed); outputHandled {
+			continue
 		}
 
-		// 6. Fallback: show compact JSON for anything else (skip if too verbose)
-		outJSONBytes, err := json.MarshalIndent(stepOutput, "", "  ")
-		if err == nil && len(outJSONBytes) < 1000 {
-			utils.User("📋 %s: %s", stepID, string(outJSONBytes))
-		} else {
-			utils.User("📋 %s: [output too large to display]", stepID)
-		}
-		displayed[stepID] = true
+		// Fallback: show compact JSON for anything else
+		outputFallbackJSON(stepID, stepOutput, displayed)
 	}
+}
+
+// tryOutputSpecificFormats attempts to handle known output formats
+func tryOutputSpecificFormats(stepID string, stepOutput any, displayed map[string]bool) bool {
+	outMap, ok := stepOutput.(map[string]any)
+	if !ok {
+		return false
+	}
+
+	// Try each specific format handler
+	if tryOutputEchoText(stepID, outMap, displayed) {
+		return true
+	}
+	if tryOutputOpenAIResponse(stepID, outMap, displayed) {
+		return true
+	}
+	if tryOutputMCPResponse(stepID, outMap, displayed) {
+		return true
+	}
+	if tryOutputHTTPResponse(stepID, outMap, displayed) {
+		return true
+	}
+	if tryOutputParallelResults(stepID, outMap, displayed) {
+		return true
+	}
+
+	return false
+}
+
+// tryOutputEchoText handles core.echo outputs - just show the text
+func tryOutputEchoText(stepID string, outMap map[string]any, displayed map[string]bool) bool {
+	if text, ok := outMap[constants.OutputKeyText]; ok {
+		utils.User("%s", text)
+		displayed[stepID] = true
+		return true
+	}
+	return false
+}
+
+// tryOutputOpenAIResponse handles OpenAI chat completions - extract the message content
+func tryOutputOpenAIResponse(stepID string, outMap map[string]any, displayed map[string]bool) bool {
+	choices, ok := outMap[constants.OutputKeyChoices].([]interface{})
+	if !ok || len(choices) == 0 {
+		return false
+	}
+
+	choice, ok := choices[0].(map[string]any)
+	if !ok {
+		return false
+	}
+
+	message, ok := choice[constants.OutputKeyMessage].(map[string]any)
+	if !ok {
+		return false
+	}
+
+	content, ok := message[constants.OutputKeyContent].(string)
+	if !ok {
+		return false
+	}
+
+	utils.User(constants.OutputPrefixAI+"%s: %s", stepID, content)
+	displayed[stepID] = true
+	return true
+}
+
+// tryOutputMCPResponse handles MCP responses with content array - extract text
+func tryOutputMCPResponse(stepID string, outMap map[string]any, displayed map[string]bool) bool {
+	content, ok := outMap[constants.OutputKeyContent].([]interface{})
+	if !ok || len(content) == 0 {
+		return false
+	}
+
+	contentItem, ok := content[0].(map[string]any)
+	if !ok {
+		return false
+	}
+
+	text, ok := contentItem[constants.OutputKeyText].(string)
+	if !ok {
+		return false
+	}
+
+	utils.User(constants.OutputPrefixMCP+"%s: %s", stepID, text)
+	displayed[stepID] = true
+	return true
+}
+
+// tryOutputHTTPResponse handles HTTP fetch responses - show just the body preview
+func tryOutputHTTPResponse(stepID string, outMap map[string]any, displayed map[string]bool) bool {
+	body, ok := outMap[constants.OutputKeyBody].(string)
+	if !ok {
+		return false
+	}
+
+	preview := body
+	if len(preview) > constants.OutputPreviewLimit {
+		preview = preview[:constants.OutputPreviewLimit] + constants.OutputTruncationSuffix
+	}
+
+	utils.User(constants.OutputPrefixHTTP+"%s: %s", stepID, preview)
+	displayed[stepID] = true
+	return true
+}
+
+// tryOutputParallelResults handles parallel step outputs - extract individual step results
+func tryOutputParallelResults(stepID string, outMap map[string]any, displayed map[string]bool) bool {
+	foundParallelOutputs := false
+
+	for subStepID, subOutput := range outMap {
+		if displayed[subStepID] {
+			continue
+		}
+
+		if handleParallelSubstep(subStepID, subOutput, displayed) {
+			foundParallelOutputs = true
+		}
+	}
+
+	if foundParallelOutputs {
+		displayed[stepID] = true
+		return true
+	}
+
+	return false
+}
+
+// handleParallelSubstep processes individual parallel substeps
+func handleParallelSubstep(subStepID string, subOutput any, displayed map[string]bool) bool {
+	subOutputMap, ok := subOutput.(map[string]any)
+	if !ok {
+		return false
+	}
+
+	// Check if this looks like an OpenAI response
+	return tryOutputOpenAIResponse(subStepID, subOutputMap, displayed)
+}
+
+// outputFallbackJSON handles fallback JSON output for unrecognized formats
+func outputFallbackJSON(stepID string, stepOutput any, displayed map[string]bool) {
+	outJSONBytes, err := json.MarshalIndent(stepOutput, "", "  ")
+	if err == nil && len(outJSONBytes) < constants.OutputJSONSizeLimit {
+		utils.User(constants.OutputPrefixJSON+"%s: %s", stepID, string(outJSONBytes))
+	} else {
+		utils.User(constants.OutputPrefixJSON+"%s: %s", stepID, constants.OutputTooLargeMessage)
+	}
+	displayed[stepID] = true
 }
 
 // loadEvent loads event data from a file or an inline JSON string.

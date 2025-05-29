@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
@@ -76,8 +77,8 @@ func ListFlows(ctx context.Context) ([]string, error) {
 			continue
 		}
 		name := entry.Name()
-		if strings.HasSuffix(name, ".flow.yaml") {
-			base := strings.TrimSuffix(name, ".flow.yaml")
+		if strings.HasSuffix(name, constants.FlowFileExtension) {
+			base := strings.TrimSuffix(name, constants.FlowFileExtension)
 			flows = append(flows, base)
 		}
 	}
@@ -86,7 +87,7 @@ func ListFlows(ctx context.Context) ([]string, error) {
 
 // GetFlow returns the parsed flow definition for the given name.
 func GetFlow(ctx context.Context, name string) (model.Flow, error) {
-	path := filepath.Join(flowsDir, name+".flow.yaml")
+	path := buildFlowPath(name)
 	flow, err := dsl.Parse(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -99,7 +100,7 @@ func GetFlow(ctx context.Context, name string) (model.Flow, error) {
 
 // ValidateFlow validates the given flow by name.
 func ValidateFlow(ctx context.Context, name string) error {
-	path := filepath.Join(flowsDir, name+".flow.yaml")
+	path := buildFlowPath(name)
 	flow, err := dsl.Parse(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -112,7 +113,7 @@ func ValidateFlow(ctx context.Context, name string) error {
 
 // GraphFlow returns the Mermaid diagram for the given flow.
 func GraphFlow(ctx context.Context, name string) (string, error) {
-	path := filepath.Join(flowsDir, name+".flow.yaml")
+	path := buildFlowPath(name)
 	flow, err := dsl.Parse(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -123,98 +124,126 @@ func GraphFlow(ctx context.Context, name string) (string, error) {
 	return graph.ExportMermaid(flow)
 }
 
-// StartRun starts a new run for the given flow and event.
-func StartRun(ctx context.Context, flowName string, eventData map[string]any) (uuid.UUID, error) {
-	// Load config
+// createEngineFromConfig creates a new engine instance with storage from config
+func createEngineFromConfig(ctx context.Context) (*engine.Engine, error) {
 	cfg, err := config.LoadConfig(config.DefaultConfigPath)
 	if err != nil && !os.IsNotExist(err) {
-		return uuid.Nil, err
+		return nil, err
 	}
-	// Initialize storage
+
 	store, err := GetStoreFromConfig(cfg)
 	if err != nil {
-		return uuid.Nil, err
+		return nil, err
 	}
-	eng := engine.NewEngine(
+
+	return engine.NewEngine(
 		engine.NewDefaultAdapterRegistry(ctx),
 		dsl.NewTemplater(),
 		event.NewInProcEventBus(),
 		nil, // blob store not needed here
 		store,
-	)
-	flow, err := dsl.Parse(filepath.Join(flowsDir, flowName+".flow.yaml"))
+	), nil
+}
+
+// buildFlowPath constructs the full path to a flow file
+func buildFlowPath(flowName string) string {
+	return filepath.Join(flowsDir, flowName+constants.FlowFileExtension)
+}
+
+// parseFlowByName loads and parses a flow file by name
+func parseFlowByName(flowName string) (*model.Flow, error) {
+	path := buildFlowPath(flowName)
+	flow, err := dsl.Parse(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return uuid.Nil, nil
+			return nil, nil
 		}
-		return uuid.Nil, err
+		return nil, err
 	}
-	_, execErr := eng.Execute(ctx, flow, eventData)
-	// Find the latest run for this flow
-	runs, err := store.ListRuns(ctx)
-	if err != nil || len(runs) == 0 {
-		// Try to find a paused run if available
-		if execErr != nil && strings.Contains(execErr.Error(), "await_event pause") {
-			if paused, err := store.LoadPausedRuns(); err == nil {
-				for _, v := range paused {
-					if m, ok := v.(map[string]any); ok {
-						if runID, ok := m["run_id"].(string); ok {
-							id, _ := uuid.Parse(runID)
-							return id, nil
-						}
-					}
-				}
-			}
-		}
-		return uuid.Nil, execErr
-	}
+	return flow, nil
+}
+
+// findLatestRunForFlow finds the most recent run for a specific flow
+func findLatestRunForFlow(runs []*model.Run, flowName string) *model.Run {
 	var latest *model.Run
 	for _, r := range runs {
 		if r.FlowName == flowName && (latest == nil || r.StartedAt.After(latest.StartedAt)) {
 			latest = r
 		}
 	}
-	if latest == nil {
-		// Try to find a paused run if available
-		if execErr != nil && strings.Contains(execErr.Error(), "await_event pause") {
-			if paused, err := store.LoadPausedRuns(); err == nil {
-				for _, v := range paused {
-					if m, ok := v.(map[string]any); ok {
-						if runID, ok := m["run_id"].(string); ok {
-							id, _ := uuid.Parse(runID)
-							return id, nil
-						}
-					}
+	return latest
+}
+
+// tryFindPausedRun attempts to find a paused run when await_event is involved
+func tryFindPausedRun(store storage.Storage, execErr error) (uuid.UUID, error) {
+	if execErr == nil || !strings.Contains(execErr.Error(), constants.ErrorAwaitEventPause) {
+		return uuid.Nil, execErr
+	}
+
+	paused, err := store.LoadPausedRuns()
+	if err != nil {
+		return uuid.Nil, execErr
+	}
+
+	for _, v := range paused {
+		if m, ok := v.(map[string]any); ok {
+			if runID, ok := m[constants.RunIDKey].(string); ok {
+				if id, err := uuid.Parse(runID); err == nil {
+					return id, nil
 				}
 			}
 		}
-		return uuid.Nil, execErr
 	}
+
+	return uuid.Nil, execErr
+}
+
+// handleExecutionResult processes the result of flow execution, handling paused runs
+func handleExecutionResult(store storage.Storage, flowName string, execErr error) (uuid.UUID, error) {
+	runs, err := store.ListRuns(context.Background())
+	if err != nil || len(runs) == 0 {
+		return tryFindPausedRun(store, execErr)
+	}
+
+	latest := findLatestRunForFlow(runs, flowName)
+	if latest == nil {
+		return tryFindPausedRun(store, execErr)
+	}
+
 	// If the only error is await_event pause, treat as success
-	if execErr != nil && strings.Contains(execErr.Error(), "await_event pause") {
+	if execErr != nil && strings.Contains(execErr.Error(), constants.ErrorAwaitEventPause) {
 		return latest.ID, nil
 	}
+
 	return latest.ID, execErr
+}
+
+// StartRun starts a new run for the given flow and event.
+func StartRun(ctx context.Context, flowName string, eventData map[string]any) (uuid.UUID, error) {
+	eng, err := createEngineFromConfig(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	flow, err := parseFlowByName(flowName)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if flow == nil {
+		return uuid.Nil, nil
+	}
+
+	_, execErr := eng.Execute(ctx, flow, eventData)
+	return handleExecutionResult(eng.Storage, flowName, execErr)
 }
 
 // GetRun returns the run by ID.
 func GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
-	cfg, err := config.LoadConfig(config.DefaultConfigPath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	// Initialize storage
-	store, err := GetStoreFromConfig(cfg)
+	eng, err := createEngineFromConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.NewEngine(
-		engine.NewDefaultAdapterRegistry(ctx),
-		dsl.NewTemplater(),
-		event.NewInProcEventBus(),
-		nil, // blob store not needed here
-		store,
-	)
+
 	run, err := eng.GetRunByID(ctx, runID)
 	if err != nil {
 		return nil, nil
@@ -224,22 +253,11 @@ func GetRun(ctx context.Context, runID uuid.UUID) (*model.Run, error) {
 
 // ListRuns returns all runs.
 func ListRuns(ctx context.Context) ([]*model.Run, error) {
-	cfg, err := config.LoadConfig(config.DefaultConfigPath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	// Initialize storage
-	store, err := GetStoreFromConfig(cfg)
+	eng, err := createEngineFromConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.NewEngine(
-		engine.NewDefaultAdapterRegistry(ctx),
-		dsl.NewTemplater(),
-		event.NewInProcEventBus(),
-		nil, // blob store not needed here
-		store,
-	)
+
 	return eng.ListRuns(ctx)
 }
 
@@ -258,22 +276,11 @@ func PublishEvent(ctx context.Context, topic string, payload map[string]any) err
 
 // ResumeRun resumes a paused run with the given token and event, returning outputs if available.
 func ResumeRun(ctx context.Context, token string, eventData map[string]any) (map[string]any, error) {
-	cfg, err := config.LoadConfig(config.DefaultConfigPath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	// Initialize storage
-	store, err := GetStoreFromConfig(cfg)
+	eng, err := createEngineFromConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.NewEngine(
-		engine.NewDefaultAdapterRegistry(ctx),
-		dsl.NewTemplater(),
-		event.NewInProcEventBus(),
-		nil, // blob store not needed here
-		store,
-	)
+
 	eng.Resume(ctx, token, eventData)
 	outputs := eng.GetCompletedOutputs(token)
 	return outputs, nil
@@ -286,40 +293,27 @@ func ParseFlowFromString(yamlStr string) (*model.Flow, error) {
 
 // RunSpec validates and runs a flow spec inline, returning run ID and outputs.
 func RunSpec(ctx context.Context, flow *model.Flow, eventData map[string]any) (uuid.UUID, map[string]any, error) {
-	cfg, err := config.LoadConfig(config.DefaultConfigPath)
-	if err != nil && !os.IsNotExist(err) {
-		return uuid.Nil, nil, err
-	}
-	// Initialize storage
-	store, err := GetStoreFromConfig(cfg)
+	eng, err := createEngineFromConfig(ctx)
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
-	eng := engine.NewEngine(
-		engine.NewDefaultAdapterRegistry(ctx),
-		dsl.NewTemplater(),
-		event.NewInProcEventBus(),
-		nil, // blob store not needed here
-		store,
-	)
+
 	outputs, err := eng.Execute(ctx, flow, eventData)
 	if err != nil {
 		return uuid.Nil, outputs, err
 	}
+
 	// Retrieve the latest run for this flow
-	runs, err := store.ListRuns(ctx)
+	runs, err := eng.Storage.ListRuns(ctx)
 	if err != nil || len(runs) == 0 {
 		return uuid.Nil, outputs, err
 	}
-	var latest *model.Run
-	for _, r := range runs {
-		if r.FlowName == flow.Name && (latest == nil || r.StartedAt.After(latest.StartedAt)) {
-			latest = r
-		}
-	}
+
+	latest := findLatestRunForFlow(runs, flow.Name)
 	if latest == nil {
 		return uuid.Nil, outputs, err
 	}
+
 	return latest.ID, outputs, nil
 }
 
@@ -332,13 +326,13 @@ func ListTools(ctx context.Context) ([]map[string]any, error) {
 		m := a.Manifest()
 		if m != nil {
 			// Only include if not an MCP server
-			if m.Kind != "mcp_server" {
+			if m.Kind != constants.MCPServerKind {
 				tools = append(tools, map[string]any{
 					"name":        m.Name,
 					"description": m.Description,
 					"kind":        m.Kind,
 					"endpoint":    m.Endpoint,
-					"type":        "tool",
+					"type":        constants.ToolType,
 				})
 			}
 		}
@@ -350,9 +344,9 @@ func ListTools(ctx context.Context) ([]map[string]any, error) {
 			tools = append(tools, map[string]any{
 				"name":        mcp.Name,
 				"description": "MCP server",
-				"kind":        "mcp_server",
+				"kind":        constants.MCPServerKind,
 				"endpoint":    mcp.Config.Endpoint,
-				"type":        "mcp_server",
+				"type":        constants.MCPServerKind,
 			})
 		}
 	}

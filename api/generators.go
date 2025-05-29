@@ -31,13 +31,16 @@ func EnableCLIExitCodes() {
 	enableCLIExitCodes = true
 }
 
-// GenerateHTTPHandlers creates HTTP handlers for all operations and registers them
+// GenerateHTTPHandlers creates HTTP handlers for all operations
 func GenerateHTTPHandlers(mux *http.ServeMux, svc FlowService) {
-	// Group operations by path to handle multiple methods on same path
+	// Group operations by HTTP path to handle multiple methods on same path
 	pathOperations := make(map[string][]*OperationDefinition)
-
 	for _, op := range GetAllOperations() {
 		if op.SkipHTTP {
+			continue
+		}
+		// Skip operations with empty HTTPPath to prevent invalid patterns
+		if op.HTTPPath == "" {
 			continue
 		}
 		pathOperations[op.HTTPPath] = append(pathOperations[op.HTTPPath], op)

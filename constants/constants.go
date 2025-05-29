@@ -290,7 +290,53 @@ const (
 	StatusPaused    = "paused"
 )
 
+// ============================================================================
+// OUTPUT FORMATTING
+// ============================================================================
+
+// Output format keys
+const (
+	OutputKeyText    = "text"
+	OutputKeyChoices = "choices"
+	OutputKeyMessage = "message"
+	OutputKeyContent = "content"
+	OutputKeyBody    = "body"
+)
+
+// Output prefixes
+const (
+	OutputPrefixAI   = "🤖 "
+	OutputPrefixMCP  = "📡 "
+	OutputPrefixHTTP = "🌐 "
+	OutputPrefixJSON = "📋 "
+)
+
+// Output limits
+const (
+	OutputPreviewLimit     = 200
+	OutputJSONSizeLimit    = 1000
+	OutputTruncationSuffix = "..."
+	OutputTooLargeMessage  = "[output too large to display]"
+)
+
 // Logging Messages
 const (
 	LogFailedWriteHealthCheck = "Failed to write health check response"
+)
+
+// ============================================================================
+// API & EXECUTION
+// ============================================================================
+
+// Error patterns and identifiers
+const (
+	ErrorAwaitEventPause = "await_event pause"
+	RunIDKey             = "run_id"
+	MCPServerKind        = "mcp_server"
+	ToolType             = "tool"
+)
+
+// Flow file extensions
+const (
+	FlowFileExtension = ".flow.yaml"
 )
