@@ -3,9 +3,17 @@ package blob
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/utils"
 )
+
+func TestMain(m *testing.M) {
+	os.Exit(utils.WithCleanDirs(m, ".beemflow", config.DefaultConfigDir))
+}
 
 func newTestFilesystemBlobStore(t *testing.T) *FilesystemBlobStore {
 	dir := filepath.Join(t.TempDir(), t.Name()+"-blobstore")
@@ -163,7 +171,7 @@ func TestNewDefaultBlobStore(t *testing.T) {
 		t.Error("Expected non-nil store")
 	}
 
-	// Test with filesystem driver
+	// Test with filesystem driver using temp directory
 	cfg = &BlobConfig{
 		Driver:    "filesystem",
 		Directory: filepath.Join(t.TempDir(), "test-blobs"),
