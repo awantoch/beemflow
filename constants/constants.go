@@ -41,6 +41,27 @@ const (
 	AdapterHTTP = "http"
 )
 
+// Adapter IDs
+const (
+	HTTPAdapterID = "http"
+)
+
+// Registry Types
+const (
+	LocalRegistryType = "local"
+)
+
+// Adapter Prefixes
+const (
+	AdapterPrefixMCP  = "mcp://"
+	AdapterPrefixCore = "core."
+)
+
+// Special Parameters
+const (
+	ParamSpecialUse = "__use"
+)
+
 // Core Tools
 const (
 	CoreEcho           = "core.echo"
@@ -187,6 +208,15 @@ const (
 	DefaultToolPageSize = 100
 	DefaultRetryCount   = 3
 	DefaultTimeoutSec   = 30
+)
+
+// Template Field Names
+const (
+	TemplateFieldEvent   = "event"
+	TemplateFieldVars    = "vars"
+	TemplateFieldOutputs = "outputs"
+	TemplateFieldSecrets = "secrets"
+	TemplateFieldSteps   = "steps"
 )
 
 // Engine error messages

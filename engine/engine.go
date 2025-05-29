@@ -93,7 +93,7 @@ func NewDefaultAdapterRegistry(ctx context.Context) *adapter.Registry {
 	// Register core adapters
 	reg.Register(&adapter.CoreAdapter{})
 	reg.Register(adapter.NewMCPAdapter())
-	reg.Register(&adapter.HTTPAdapter{AdapterID: "http"}) // Unified HTTP adapter
+	reg.Register(&adapter.HTTPAdapter{AdapterID: constants.HTTPAdapterID}) // Unified HTTP adapter
 
 	// Load and merge registry tools
 	loadRegistryTools(ctx, reg)
@@ -108,7 +108,7 @@ func loadRegistryTools(ctx context.Context, reg *adapter.Registry) {
 	// Load config if available to get custom registry path
 	if cfg, err := config.LoadConfig(config.DefaultConfigPath); err == nil {
 		for _, regCfg := range cfg.Registries {
-			if regCfg.Type == "local" && regCfg.Path != "" {
+			if regCfg.Type == constants.LocalRegistryType && regCfg.Path != "" {
 				localRegistryPath = regCfg.Path
 				break
 			}
@@ -852,21 +852,18 @@ func (e *Engine) resolveAdapter(toolName string, stepCtx *StepContext, stepID st
 	adapterInst, ok := e.Adapters.Get(toolName)
 	if !ok {
 		switch {
-		case strings.HasPrefix(toolName, "mcp://"):
+		case strings.HasPrefix(toolName, constants.AdapterPrefixMCP):
 			adapterInst, ok = e.Adapters.Get("mcp")
 			if !ok {
-				stepCtx.SetOutput(stepID, make(map[string]any))
-				return nil, utils.Errorf("MCPAdapter not registered")
+				return nil, setEmptyOutputAndError(stepCtx, stepID, "MCPAdapter not registered")
 			}
-		case strings.HasPrefix(toolName, "core."):
+		case strings.HasPrefix(toolName, constants.AdapterPrefixCore):
 			adapterInst, ok = e.Adapters.Get("core")
 			if !ok {
-				stepCtx.SetOutput(stepID, make(map[string]any))
-				return nil, utils.Errorf("CoreAdapter not registered")
+				return nil, setEmptyOutputAndError(stepCtx, stepID, "CoreAdapter not registered")
 			}
 		default:
-			stepCtx.SetOutput(stepID, make(map[string]any))
-			return nil, utils.Errorf("adapter not found: %s", toolName)
+			return nil, setEmptyOutputAndError(stepCtx, stepID, "adapter not found: %s", toolName)
 		}
 	}
 	return adapterInst, nil
@@ -892,19 +889,15 @@ func (e *Engine) executeToolWithInputs(ctx context.Context, step *model.Step, st
 
 // addSpecialUseParameter adds the __use parameter for MCP and core tools
 func (e *Engine) addSpecialUseParameter(toolName string, inputs map[string]any) {
-	if strings.HasPrefix(toolName, "mcp://") || strings.HasPrefix(toolName, "core.") {
-		inputs["__use"] = toolName
+	if strings.HasPrefix(toolName, constants.AdapterPrefixMCP) || strings.HasPrefix(toolName, constants.AdapterPrefixCore) {
+		inputs[constants.ParamSpecialUse] = toolName
 	}
 }
 
 // handleToolExecution executes the tool and processes outputs
 func (e *Engine) handleToolExecution(ctx context.Context, toolName, stepID string, stepCtx *StepContext, adapterInst adapter.Adapter, inputs map[string]any) error {
-	// Log payload for debugging
-	if payload, err := json.Marshal(inputs); err == nil {
-		utils.Debug("tool %s payload: %s", toolName, payload)
-	} else {
-		utils.ErrorCtx(ctx, "Failed to marshal tool inputs: %v", "error", err)
-	}
+	// Log payload for debugging using our helper
+	logToolPayload(ctx, toolName, inputs)
 
 	// Execute the tool
 	outputs, err := adapterInst.Execute(ctx, inputs)
@@ -913,10 +906,9 @@ func (e *Engine) handleToolExecution(ctx context.Context, toolName, stepID strin
 		return utils.Errorf("step %s failed: %w", stepID, err)
 	}
 
-	// Store outputs and log success
-	utils.Debug("Writing outputs for step %s: %+v", stepID, outputs)
+	// Store outputs and log success using our helper
 	stepCtx.SetOutput(stepID, outputs)
-	utils.Debug("Outputs map after step %s: %+v", stepID, stepCtx.Snapshot().Outputs)
+	logToolOutputs(stepID, outputs)
 	return nil
 }
 
@@ -930,26 +922,7 @@ func (e *Engine) prepareTemplateData(stepCtx *StepContext) TemplateData {
 // prepareTemplateDataAsMap creates template data as map for templating system
 func (e *Engine) prepareTemplateDataAsMap(stepCtx *StepContext) map[string]any {
 	templateData := e.prepareTemplateData(stepCtx)
-
-	data := make(map[string]any)
-	data["event"] = templateData.Event
-	data["vars"] = templateData.Vars
-	data["outputs"] = templateData.Outputs
-	data["secrets"] = templateData.Secrets
-	data["steps"] = templateData.Outputs // Add steps namespace for step output access
-
-	// Flatten vars and event into context for template rendering, but be careful with outputs
-	maps.Copy(data, templateData.Vars)
-	maps.Copy(data, templateData.Event) // For foreach expressions like {{list}}
-
-	// Only flatten outputs that have valid identifier names (no template syntax)
-	for k, v := range templateData.Outputs {
-		if isValidIdentifier(k) {
-			data[k] = v
-		}
-	}
-
-	return data
+	return flattenTemplateDataToMap(templateData)
 }
 
 // isValidIdentifier checks if a string is a valid template identifier
@@ -1003,14 +976,9 @@ func (e *Engine) prepareToolInputs(step *model.Step, stepCtx *StepContext, stepI
 	inputs := make(map[string]any)
 
 	for k, v := range step.With {
-		// DEBUG: Log context keys and important values
-		varsKeys := []string{}
-		if vars, ok := data["vars"].(map[string]any); ok {
-			for key := range vars {
-				varsKeys = append(varsKeys, key)
-			}
-		}
-		utils.Debug("Template context keys: %v, vars keys: %v, vars: %+v", keys(data), varsKeys, data["vars"])
+		// DEBUG: Log context keys and important values using our helper
+		varsKeys := extractVarsKeysForDebug(data)
+		utils.Debug("Template context keys: %v, vars keys: %v, vars: %+v", mapKeys(data), varsKeys, data[constants.TemplateFieldVars])
 		utils.Debug("About to render template for step %s: data = %#v", stepID, data)
 
 		rendered, err := e.renderValue(v, data)
@@ -1223,7 +1191,7 @@ func (e *Engine) loadRegistryTools(ctx context.Context) ([]registry.RegistryEntr
 func (e *Engine) convertToMCPServers(tools []registry.RegistryEntry) []*MCPServerWithName {
 	var mcps []*MCPServerWithName
 	for _, entry := range tools {
-		if strings.HasPrefix(entry.Name, "mcp://") {
+		if strings.HasPrefix(entry.Name, constants.AdapterPrefixMCP) {
 			mcps = append(mcps, e.createMCPServerConfig(entry))
 		}
 	}
@@ -1294,15 +1262,6 @@ func NewDefaultEngine(ctx context.Context) *Engine {
 	)
 }
 
-// Helper to get map keys for debug logging.
-func keys(m map[string]any) []string {
-	var out []string
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
-}
-
 // copyMap creates a shallow copy of a map[string]any.
 func copyMap(in map[string]any) map[string]any {
 	out := make(map[string]any, len(in))
@@ -1324,4 +1283,76 @@ func safeMapAssert(v any) (map[string]any, bool) {
 func safeSliceAssert(v any) ([]any, bool) {
 	s, ok := v.([]any)
 	return s, ok
+}
+
+// =============================================================================
+// BEAUTIFICATION HELPERS
+// =============================================================================
+
+// setEmptyOutputAndError sets an empty output for a step and returns an error
+// This helper eliminates repetitive error handling patterns throughout the engine
+func setEmptyOutputAndError(stepCtx *StepContext, stepID, errMsg string, args ...any) error {
+	stepCtx.SetOutput(stepID, make(map[string]any))
+	return utils.Errorf(errMsg, args...)
+}
+
+// logToolPayload logs the tool payload for debugging, handling marshal errors gracefully
+func logToolPayload(ctx context.Context, toolName string, inputs map[string]any) {
+	if payload, err := json.Marshal(inputs); err == nil {
+		utils.Debug("tool %s payload: %s", toolName, payload)
+	} else {
+		utils.ErrorCtx(ctx, "Failed to marshal tool inputs: %v", "error", err)
+	}
+}
+
+// logToolOutputs logs tool execution outputs for debugging
+func logToolOutputs(stepID string, outputs map[string]any) {
+	utils.Debug("Writing outputs for step %s: %+v", stepID, outputs)
+	utils.Debug("Outputs map after step %s: %+v", stepID, outputs)
+}
+
+// flattenTemplateDataToMap creates a flattened map for template rendering
+// This encapsulates complex template data preparation logic
+func flattenTemplateDataToMap(templateData TemplateData) map[string]any {
+	data := make(map[string]any)
+
+	// Set structured template fields
+	data[constants.TemplateFieldEvent] = templateData.Event
+	data[constants.TemplateFieldVars] = templateData.Vars
+	data[constants.TemplateFieldOutputs] = templateData.Outputs
+	data[constants.TemplateFieldSecrets] = templateData.Secrets
+	data[constants.TemplateFieldSteps] = templateData.Outputs // Add steps namespace for step output access
+
+	// Flatten vars and event into context for template rendering
+	maps.Copy(data, templateData.Vars)
+	maps.Copy(data, templateData.Event) // For foreach expressions like {{list}}
+
+	// Only flatten outputs that have valid identifier names (no template syntax)
+	for k, v := range templateData.Outputs {
+		if isValidIdentifier(k) {
+			data[k] = v
+		}
+	}
+
+	return data
+}
+
+// extractVarsKeysForDebug extracts variable keys for debug logging
+func extractVarsKeysForDebug(data map[string]any) []string {
+	varsKeys := []string{}
+	if vars, ok := data[constants.TemplateFieldVars].(map[string]any); ok {
+		for key := range vars {
+			varsKeys = append(varsKeys, key)
+		}
+	}
+	return varsKeys
+}
+
+// mapKeys returns all keys from a map for debug logging
+func mapKeys(m map[string]any) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
