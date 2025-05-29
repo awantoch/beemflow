@@ -12,6 +12,7 @@ import (
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/model"
@@ -136,7 +137,7 @@ func mergeRegistryTools(ctx context.Context, localRegistryPath string) map[strin
 	toolMap := make(map[string]registry.RegistryEntry)
 
 	// Load curated registry
-	if curatedTools := loadRegistryFromPath(ctx, "registry/index.json"); curatedTools != nil {
+	if curatedTools := loadRegistryFromPath(ctx, constants.RegistryIndexFile); curatedTools != nil {
 		for _, entry := range curatedTools {
 			toolMap[entry.Name] = entry
 		}
@@ -249,7 +250,7 @@ func (e *Engine) finalizeExecution(ctx context.Context, flow *model.Flow, event 
 	// Determine final status
 	status := model.RunSucceeded
 	if err != nil {
-		if strings.Contains(err.Error(), "await_event pause") {
+		if strings.Contains(err.Error(), constants.ErrAwaitEventPause) {
 			status = model.RunWaiting
 		} else {
 			status = model.RunFailed
@@ -267,7 +268,7 @@ func (e *Engine) finalizeExecution(ctx context.Context, flow *model.Flow, event 
 		EndedAt:   ptrTime(time.Now()),
 	}
 	if saveErr := e.Storage.SaveRun(ctx, run); saveErr != nil {
-		utils.ErrorCtx(ctx, "SaveRun failed: %v", "error", saveErr)
+		utils.ErrorCtx(ctx, constants.ErrSaveRunFailed, "error", saveErr)
 	}
 
 	// Handle catch blocks if there was an error
@@ -350,7 +351,7 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 
 		// Persist the step after execution
 		if persistErr := e.persistStepResult(ctx, step, stepCtx, err, runID); persistErr != nil {
-			utils.Error("Failed to persist step result: %v", persistErr)
+			utils.Error(constants.ErrFailedToPersistStep, persistErr)
 		}
 
 		if err != nil {
@@ -365,9 +366,9 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 func (e *Engine) handleAwaitEventStep(ctx context.Context, step *model.Step, flow *model.Flow, stepCtx *StepContext, stepIdx int, runID uuid.UUID) (map[string]any, error) {
 	// Render token from match (support template)
 	match := step.AwaitEvent.Match
-	tokenRaw, ok := safeStringAssert(match["token"])
+	tokenRaw, ok := safeStringAssert(match[constants.MatchKeyToken])
 	if !ok || tokenRaw == "" {
-		return nil, utils.Errorf("await_event step missing or invalid token in match")
+		return nil, utils.Errorf(constants.ErrAwaitEventMissingToken)
 	}
 
 	// Prepare template data and render token
@@ -376,7 +377,7 @@ func (e *Engine) handleAwaitEventStep(ctx context.Context, step *model.Step, flo
 
 	renderedToken, err := e.Templater.Render(tokenRaw, data)
 	if err != nil {
-		return nil, utils.Errorf("failed to render token template: %w", err)
+		return nil, utils.Errorf(constants.ErrFailedToRenderToken, err)
 	}
 	token := renderedToken
 
@@ -387,7 +388,7 @@ func (e *Engine) handleAwaitEventStep(ctx context.Context, step *model.Step, flo
 	e.registerPausedRun(ctx, token, flow, stepCtx, stepIdx, runID)
 
 	// Subscribe to resume events
-	e.EventBus.Subscribe(ctx, "resume:"+token, func(payload any) {
+	e.EventBus.Subscribe(ctx, constants.EventTopicResumePrefix+token, func(payload any) {
 		resumeEvent, ok := payload.(map[string]any)
 		if !ok {
 			return
@@ -395,7 +396,7 @@ func (e *Engine) handleAwaitEventStep(ctx context.Context, step *model.Step, flo
 		e.Resume(ctx, token, resumeEvent)
 	})
 
-	return nil, utils.Errorf("step %s is waiting for event (await_event pause)", step.ID)
+	return nil, utils.Errorf(constants.ErrStepWaitingForEvent, step.ID)
 }
 
 // handleExistingPausedRun manages cleanup of existing paused runs with the same token
@@ -413,7 +414,7 @@ func (e *Engine) handleExistingPausedRun(ctx context.Context, token string) {
 				}
 			}
 			if err := e.Storage.DeletePausedRun(token); err != nil {
-				utils.ErrorCtx(ctx, "Failed to delete existing paused run: %v", "error", err)
+				utils.ErrorCtx(ctx, constants.ErrFailedToDeletePausedRun, "error", err)
 			}
 		}
 		delete(e.waiting, token)
@@ -507,7 +508,7 @@ func (e *Engine) retrieveAndRemovePausedRun(ctx context.Context, token string) *
 	delete(e.waiting, token)
 	if e.Storage != nil {
 		if err := e.Storage.DeletePausedRun(token); err != nil {
-			utils.ErrorCtx(ctx, "Failed to delete paused run during resume: %v", "error", err)
+			utils.ErrorCtx(ctx, constants.ErrFailedToDeletePausedRun, "error", err)
 		}
 	}
 
@@ -710,48 +711,82 @@ func (e *Engine) executeForeachParallel(ctx context.Context, step *model.Step, s
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(list))
 
+	// Process each item in parallel
 	for _, item := range list {
 		wg.Add(1)
-		go func(item any) {
-			defer wg.Done()
-
-			// Create a copy of the step context for this iteration
-			iterStepCtx := e.createIterationContext(stepCtx, step.As, item)
-
-			for _, inner := range step.Do {
-				// Create a copy of inner to avoid race conditions
-				innerCopy := inner
-
-				// Render the step ID as a template
-				iterData := e.prepareTemplateDataAsMap(iterStepCtx)
-				renderedStepID, err := e.Templater.Render(inner.ID, iterData)
-				if err != nil {
-					errChan <- utils.Errorf("template error in step ID %s: %w", inner.ID, err)
-					return
-				}
-
-				// Use the iteration-specific context
-				if err := e.executeStep(ctx, &innerCopy, iterStepCtx, renderedStepID); err != nil {
-					errChan <- err
-					return
-				}
-
-				// Copy outputs back to main context
-				if output, ok := iterStepCtx.GetOutput(renderedStepID); ok {
-					stepCtx.SetOutput(renderedStepID, output)
-				}
-			}
-		}(item)
+		go e.processParallelForeachItem(ctx, step, stepCtx, item, &wg, errChan)
 	}
+
+	// Wait for all goroutines and collect errors
+	return e.collectParallelErrors(&wg, errChan, stepCtx, stepID)
+}
+
+// processParallelForeachItem processes a single item in a parallel foreach loop
+func (e *Engine) processParallelForeachItem(ctx context.Context, step *model.Step, stepCtx *StepContext, item any, wg *sync.WaitGroup, errChan chan<- error) {
+	defer wg.Done()
+
+	// Create iteration context for this item
+	iterStepCtx := e.createIterationContext(stepCtx, step.As, item)
+
+	// Execute all steps for this iteration
+	if err := e.executeIterationSteps(ctx, step.Do, iterStepCtx, stepCtx); err != nil {
+		errChan <- err
+	}
+}
+
+// executeIterationSteps executes all steps for a single foreach iteration
+func (e *Engine) executeIterationSteps(ctx context.Context, steps []model.Step, iterStepCtx, mainStepCtx *StepContext) error {
+	for _, inner := range steps {
+		// Create a copy to avoid race conditions
+		innerCopy := inner
+
+		// Render the step ID as a template
+		renderedStepID, err := e.renderStepID(inner.ID, iterStepCtx)
+		if err != nil {
+			return err
+		}
+
+		// Execute the step with iteration context
+		if err := e.executeStep(ctx, &innerCopy, iterStepCtx, renderedStepID); err != nil {
+			return err
+		}
+
+		// Copy outputs back to main context
+		e.copyIterationOutput(iterStepCtx, mainStepCtx, renderedStepID)
+	}
+	return nil
+}
+
+// renderStepID renders a step ID as a template
+func (e *Engine) renderStepID(stepID string, stepCtx *StepContext) (string, error) {
+	iterData := e.prepareTemplateDataAsMap(stepCtx)
+	renderedStepID, err := e.Templater.Render(stepID, iterData)
+	if err != nil {
+		return "", utils.Errorf("template error in step ID %s: %w", stepID, err)
+	}
+	return renderedStepID, nil
+}
+
+// copyIterationOutput safely copies output from iteration context to main context
+func (e *Engine) copyIterationOutput(iterStepCtx, mainStepCtx *StepContext, renderedStepID string) {
+	if output, ok := iterStepCtx.GetOutput(renderedStepID); ok {
+		mainStepCtx.SetOutput(renderedStepID, output)
+	}
+}
+
+// collectParallelErrors waits for parallel operations and collects any errors
+func (e *Engine) collectParallelErrors(wg *sync.WaitGroup, errChan chan error, stepCtx *StepContext, stepID string) error {
 	wg.Wait()
 	close(errChan)
+
+	// Check for any errors
 	for err := range errChan {
 		if err != nil {
 			return err
 		}
 	}
 
-	// Only set output if stepID is non-empty
+	// Set output if stepID is non-empty
 	if stepID != "" {
 		stepCtx.SetOutput(stepID, make(map[string]any))
 	}
@@ -761,27 +796,37 @@ func (e *Engine) executeForeachParallel(ctx context.Context, step *model.Step, s
 // executeForeachSequential handles sequential foreach execution
 func (e *Engine) executeForeachSequential(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string, list []any) error {
 	for _, item := range list {
-		// Set the loop variable (step.As) to the current item
+		// Set the loop variable for this iteration
 		if step.As != "" {
 			stepCtx.SetVar(step.As, item)
 		}
 
-		for _, inner := range step.Do {
-			// Render the step ID as a template
-			data := e.prepareTemplateDataAsMap(stepCtx)
-			renderedStepID, err := e.Templater.Render(inner.ID, data)
-			if err != nil {
-				return utils.Errorf("template error in step ID %s: %w", inner.ID, err)
-			}
-
-			if err := e.executeStep(ctx, &inner, stepCtx, renderedStepID); err != nil {
-				return err
-			}
+		// Execute all steps for this iteration
+		if err := e.executeSequentialIterationSteps(ctx, step.Do, stepCtx); err != nil {
+			return err
 		}
 	}
-	// Only set output if stepID is non-empty
+
+	// Set output if stepID is non-empty
 	if stepID != "" {
 		stepCtx.SetOutput(stepID, make(map[string]any))
+	}
+	return nil
+}
+
+// executeSequentialIterationSteps executes all steps for a single sequential foreach iteration
+func (e *Engine) executeSequentialIterationSteps(ctx context.Context, steps []model.Step, stepCtx *StepContext) error {
+	for _, inner := range steps {
+		// Render the step ID as a template
+		renderedStepID, err := e.renderStepID(inner.ID, stepCtx)
+		if err != nil {
+			return err
+		}
+
+		// Execute the step
+		if err := e.executeStep(ctx, &inner, stepCtx, renderedStepID); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -792,28 +837,43 @@ func (e *Engine) executeToolCall(ctx context.Context, step *model.Step, stepCtx 
 		return nil
 	}
 
-	adapterInst, ok := e.Adapters.Get(step.Use)
+	// Resolve the appropriate adapter for this tool
+	adapterInst, err := e.resolveAdapter(step.Use, stepCtx, stepID)
+	if err != nil {
+		return err
+	}
+
+	// Prepare inputs and execute the tool
+	return e.executeToolWithInputs(ctx, step, stepCtx, stepID, adapterInst)
+}
+
+// resolveAdapter finds and returns the appropriate adapter for a tool
+func (e *Engine) resolveAdapter(toolName string, stepCtx *StepContext, stepID string) (adapter.Adapter, error) {
+	adapterInst, ok := e.Adapters.Get(toolName)
 	if !ok {
 		switch {
-		case strings.HasPrefix(step.Use, "mcp://"):
+		case strings.HasPrefix(toolName, "mcp://"):
 			adapterInst, ok = e.Adapters.Get("mcp")
 			if !ok {
 				stepCtx.SetOutput(stepID, make(map[string]any))
-				return utils.Errorf("MCPAdapter not registered")
+				return nil, utils.Errorf("MCPAdapter not registered")
 			}
-		case strings.HasPrefix(step.Use, "core."):
-			// Handle core tools by routing to the core adapter
+		case strings.HasPrefix(toolName, "core."):
 			adapterInst, ok = e.Adapters.Get("core")
 			if !ok {
 				stepCtx.SetOutput(stepID, make(map[string]any))
-				return utils.Errorf("CoreAdapter not registered")
+				return nil, utils.Errorf("CoreAdapter not registered")
 			}
 		default:
 			stepCtx.SetOutput(stepID, make(map[string]any))
-			return utils.Errorf("adapter not found: %s", step.Use)
+			return nil, utils.Errorf("adapter not found: %s", toolName)
 		}
 	}
+	return adapterInst, nil
+}
 
+// executeToolWithInputs prepares inputs and executes the tool
+func (e *Engine) executeToolWithInputs(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string, adapterInst adapter.Adapter) error {
 	// Prepare inputs for the tool
 	inputs, err := e.prepareToolInputs(step, stepCtx, stepID)
 	if err != nil {
@@ -823,26 +883,37 @@ func (e *Engine) executeToolCall(ctx context.Context, step *model.Step, stepCtx 
 	// Auto-fill missing required parameters from manifest defaults
 	e.autoFillRequiredParams(adapterInst, inputs, stepCtx)
 
-	// Execute the tool
-	payload, err := json.Marshal(inputs)
-	if err != nil {
+	// Add special use parameter for specific tool types
+	e.addSpecialUseParameter(step.Use, inputs)
+
+	// Execute the tool and handle results
+	return e.handleToolExecution(ctx, step.Use, stepID, stepCtx, adapterInst, inputs)
+}
+
+// addSpecialUseParameter adds the __use parameter for MCP and core tools
+func (e *Engine) addSpecialUseParameter(toolName string, inputs map[string]any) {
+	if strings.HasPrefix(toolName, "mcp://") || strings.HasPrefix(toolName, "core.") {
+		inputs["__use"] = toolName
+	}
+}
+
+// handleToolExecution executes the tool and processes outputs
+func (e *Engine) handleToolExecution(ctx context.Context, toolName, stepID string, stepCtx *StepContext, adapterInst adapter.Adapter, inputs map[string]any) error {
+	// Log payload for debugging
+	if payload, err := json.Marshal(inputs); err == nil {
+		utils.Debug("tool %s payload: %s", toolName, payload)
+	} else {
 		utils.ErrorCtx(ctx, "Failed to marshal tool inputs: %v", "error", err)
-		payload = []byte("{}")
-	}
-	utils.Debug("tool %s payload: %s", step.Use, payload)
-
-	if strings.HasPrefix(step.Use, "mcp://") {
-		inputs["__use"] = step.Use
-	} else if strings.HasPrefix(step.Use, "core.") {
-		inputs["__use"] = step.Use
 	}
 
+	// Execute the tool
 	outputs, err := adapterInst.Execute(ctx, inputs)
 	if err != nil {
 		stepCtx.SetOutput(stepID, outputs)
 		return utils.Errorf("step %s failed: %w", stepID, err)
 	}
 
+	// Store outputs and log success
 	utils.Debug("Writing outputs for step %s: %+v", stepID, outputs)
 	stepCtx.SetOutput(stepID, outputs)
 	utils.Debug("Outputs map after step %s: %+v", stepID, stepCtx.Snapshot().Outputs)
@@ -1131,29 +1202,47 @@ type MCPServerWithName struct {
 }
 
 func (e *Engine) ListMCPServers(ctx context.Context) ([]*MCPServerWithName, error) {
-	localReg := registry.NewLocalRegistry("registry/index.json")
-	regMgr := registry.NewRegistryManager(localReg)
-	tools, err := regMgr.ListAllServers(ctx, registry.ListOptions{})
+	// Load tools from registry
+	tools, err := e.loadRegistryTools(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Filter and convert MCP tools to server configs
+	return e.convertToMCPServers(tools), nil
+}
+
+// loadRegistryTools loads all tools from the registry
+func (e *Engine) loadRegistryTools(ctx context.Context) ([]registry.RegistryEntry, error) {
+	localReg := registry.NewLocalRegistry(constants.RegistryIndexFile)
+	regMgr := registry.NewRegistryManager(localReg)
+	return regMgr.ListAllServers(ctx, registry.ListOptions{})
+}
+
+// convertToMCPServers filters and converts registry entries to MCP server configs
+func (e *Engine) convertToMCPServers(tools []registry.RegistryEntry) []*MCPServerWithName {
 	var mcps []*MCPServerWithName
 	for _, entry := range tools {
 		if strings.HasPrefix(entry.Name, "mcp://") {
-			mcps = append(mcps, &MCPServerWithName{
-				Name: entry.Name,
-				Config: &config.MCPServerConfig{
-					Command:   entry.Command,
-					Args:      entry.Args,
-					Env:       entry.Env,
-					Port:      entry.Port,
-					Transport: entry.Transport,
-					Endpoint:  entry.Endpoint,
-				},
-			})
+			mcps = append(mcps, e.createMCPServerConfig(entry))
 		}
 	}
-	return mcps, nil
+	return mcps
+}
+
+// createMCPServerConfig creates an MCP server configuration from a registry entry
+func (e *Engine) createMCPServerConfig(entry registry.RegistryEntry) *MCPServerWithName {
+	return &MCPServerWithName{
+		Name: entry.Name,
+		Config: &config.MCPServerConfig{
+			Command:   entry.Command,
+			Args:      entry.Args,
+			Env:       entry.Env,
+			Port:      entry.Port,
+			Transport: entry.Transport,
+			Endpoint:  entry.Endpoint,
+		},
+	}
 }
 
 // renderValue recursively renders template strings in nested values.
