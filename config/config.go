@@ -168,7 +168,11 @@ func LoadConfig(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			utils.Warn("Failed to close config file: %v", closeErr)
+		}
+	}()
 	var raw []byte
 	raw, err = io.ReadAll(f)
 	if err != nil {
@@ -344,7 +348,11 @@ func (m *MCPServerConfig) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return err
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					utils.Warn("Failed to close HTTP response body: %v", closeErr)
+				}
+			}()
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				return err

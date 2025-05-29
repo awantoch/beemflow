@@ -31,3 +31,26 @@ func WithCleanDirs(m *testing.M, dirs ...string) int {
 func CleanupDir(dir string) {
 	os.RemoveAll(dir)
 }
+
+func CleanupTempDir(dir string) {
+	if err := os.RemoveAll(dir); err != nil {
+		// Non-critical cleanup error, log but don't fail
+		Error("Failed to cleanup temp directory %s: %v", dir, err)
+	}
+}
+
+func CleanupTempDirT(t *testing.T, dir string) {
+	if err := os.RemoveAll(dir); err != nil {
+		t.Logf("Warning: failed to cleanup temp directory %s: %v", dir, err)
+	}
+}
+
+func WithCleanup[T any](t *testing.T, setup func() (T, string), test func(T)) {
+	resource, dir := setup()
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Logf("Warning: failed to cleanup temp directory %s: %v", dir, err)
+		}
+	}()
+	test(resource)
+}

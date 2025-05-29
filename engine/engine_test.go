@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +15,6 @@ import (
 	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/model"
-	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
@@ -1187,23 +1185,5 @@ func TestAutoFillRequiredParams(t *testing.T) {
 	// The function modifies inputs in place, so just verify it doesn't crash
 	if inputs["existing"] != "value" {
 		t.Error("Expected existing value to be preserved")
-	}
-}
-
-// Mock adapter for testing error cases
-type mockErrorAdapter struct{}
-
-func (m *mockErrorAdapter) ID() string {
-	return "mock_error"
-}
-
-func (m *mockErrorAdapter) Execute(ctx context.Context, inputs map[string]any) (map[string]any, error) {
-	return nil, errors.New("mock error from Execute")
-}
-
-func (m *mockErrorAdapter) Manifest() *registry.ToolManifest {
-	return &registry.ToolManifest{
-		Name:        "mock_error",
-		Description: "Mock adapter for testing errors",
 	}
 }

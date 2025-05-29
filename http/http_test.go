@@ -49,6 +49,8 @@ func createTempConfigFile(t *testing.T, cfg *config.Config) {
 }
 
 // Helper function to test middleware with different scenarios
+// Commented out - unused function
+/*
 func testMiddlewareScenarios(t *testing.T, middleware func(http.Handler) http.Handler, scenarios []testScenario) {
 	for _, scenario := range scenarios {
 		req := httptest.NewRequest(scenario.method, scenario.path, nil)
@@ -63,13 +65,7 @@ func testMiddlewareScenarios(t *testing.T, middleware func(http.Handler) http.Ha
 		}
 	}
 }
-
-type testScenario struct {
-	method         string
-	path           string
-	handler        http.Handler
-	expectedStatus int
-}
+*/
 
 func TestRequestIDMiddleware(t *testing.T) {
 	// Test handler that checks for request ID
@@ -137,6 +133,14 @@ func TestRequestIDMiddleware(t *testing.T) {
 }
 
 func TestMetricsMiddleware(t *testing.T) {
+	// Test scenario type for this test
+	type testScenario struct {
+		method         string
+		path           string
+		handler        http.Handler
+		expectedStatus int
+	}
+
 	// Create test scenarios
 	scenarios := []testScenario{
 		{"GET", "/ok", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

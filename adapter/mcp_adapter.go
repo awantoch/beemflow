@@ -121,7 +121,11 @@ func (a *MCPAdapter) Execute(ctx context.Context, inputs map[string]any) (map[st
 			if err != nil {
 				return nil, fmt.Errorf("MCP CallTool failed: %w", err)
 			}
-			defer resp2.Body.Close()
+			defer func() {
+				if closeErr := resp2.Body.Close(); closeErr != nil {
+					utils.Warn("Failed to close MCP HTTP response body: %v", closeErr)
+				}
+			}()
 			var callResp struct{ Result map[string]any }
 			if err := json.NewDecoder(resp2.Body).Decode(&callResp); err != nil {
 				return nil, fmt.Errorf("failed to decode call response: %w", err)

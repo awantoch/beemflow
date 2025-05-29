@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/utils"
 )
 
 type SmitheryRegistry struct {
@@ -51,9 +52,14 @@ func (s *SmitheryRegistry) ListServers(ctx context.Context, opts ListOptions) ([
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list servers: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			utils.Warn("Failed to close Smithery response body: %v", closeErr)
+		}
+	}()
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("smithery registry returned status %s", resp.Status)
 	}
@@ -98,9 +104,13 @@ func (s *SmitheryRegistry) GetServer(ctx context.Context, name string) (*Registr
 	req.Header.Set("Authorization", "Bearer "+s.APIKey)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get server %s: %w", name, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			utils.Warn("Failed to close Smithery server response body: %v", closeErr)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("smithery registry returned status %s", resp.Status)
 	}

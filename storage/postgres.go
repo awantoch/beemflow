@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/awantoch/beemflow/model"
@@ -10,7 +9,7 @@ import (
 )
 
 type PostgresStorage struct {
-	db *sql.DB
+	// Stub implementation - no fields needed until implementation
 }
 
 var _ Storage = (*PostgresStorage)(nil)

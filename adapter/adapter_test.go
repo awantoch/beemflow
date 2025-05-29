@@ -577,14 +577,6 @@ func TestRegistry_MergeAndLocalWrite(t *testing.T) {
 	}
 }
 
-func mustJSON(v any) []byte {
-	data, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return data
-}
-
 // TestAppendToLocalRegistry_VerificationFailure tests verification failure after write
 func TestAppendToLocalRegistry_VerificationFailure(t *testing.T) {
 	dir, err := os.MkdirTemp("", "manifests")
