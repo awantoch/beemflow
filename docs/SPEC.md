@@ -765,12 +765,11 @@ BeemFlow exposes a consistent interface for all operations:
 | Run flow          | `flow run <name> [--event]`  | `POST /runs`                 | `startRun`         |
 | Get run status    | `flow status <run_id>`       | `GET /runs/{id}`             | `getRun`           |
 | Resume run        | `flow resume <token>`        | `POST /resume/{token}`       | (not exposed)      |
-| Test flow         | `flow test <file>`           | `POST /test`                 | (not exposed)      |
+| Test flow         | `flow test`                  | `POST /test`                 | (not exposed)      |
 | Graph flow        | `flow graph <file>`          | `GET /graph`                 | `graphFlow`        |
 | List tools        | `flow tools`                 | `GET /tools`                 | (not exposed)      |
 | Get tool manifest | (n/a)                        | `GET /tools/{name}`          | (not exposed)      |
 | Inline run        | (n/a)                        | `POST /runs/inline`          | `flow.execute`     |
-| Metadata          | (n/a)                        | `GET /metadata`              | `describe`         |
 
 All endpoints accept/return JSON.
 

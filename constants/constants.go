@@ -107,7 +107,6 @@ const (
 // HTTP Paths
 const (
 	HTTPPathRoot          = "/"
-	HTTPPathMetadata      = "/metadata"
 	HTTPPathSpec          = "/spec"
 	HTTPPathHealth        = "/health"
 	HTTPPathFlows         = "/flows"
@@ -227,7 +226,6 @@ const (
 	InterfaceDescHTTP            = "HTTP API for BeemFlow operations"
 	InterfaceDescMCP             = "MCP tools for flow operations"
 	InterfaceDescCLI             = "Command-line interface"
-	InterfaceDescMetadata        = "BeemFlow runtime metadata"
 	InterfaceDescSpec            = "Generate OpenAPI specification"
 	InterfaceDescHealthCheck     = "Health check endpoint"
 	InterfaceDescStaticAssets    = "Static asset serving"
@@ -259,7 +257,6 @@ const (
 	InterfaceIDListTools       = "listTools"
 	InterfaceIDGetToolManifest = "getToolManifest"
 	InterfaceIDListRuns        = "listRuns"
-	InterfaceIDMetadata        = "metadata"
 	InterfaceIDPublishEvent    = "publishEvent"
 	InterfaceIDListFlows       = "listFlows"
 	InterfaceIDGetFlow         = "getFlow"

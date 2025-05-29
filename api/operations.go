@@ -335,12 +335,12 @@ func init() {
 			flow, err := dsl.Parse(file)
 			if err != nil {
 				utils.Error("YAML parse error: %v\n", err)
-				return fmt.Errorf("YAML parse error: %v", err)
+				return fmt.Errorf("YAML parse error: %w", err)
 			}
 			err = dsl.Validate(flow)
 			if err != nil {
 				utils.Error("Schema validation error: %v\n", err)
-				return fmt.Errorf("schema validation error: %v", err)
+				return fmt.Errorf("schema validation error: %w", err)
 			}
 			utils.User("Lint OK: flow is valid!")
 			return nil
@@ -368,12 +368,12 @@ func init() {
 			flow, err := dsl.Parse(file)
 			if err != nil {
 				utils.Error("YAML parse error: %v\n", err)
-				return fmt.Errorf("YAML parse error: %v", err)
+				return fmt.Errorf("YAML parse error: %w", err)
 			}
 			err = dsl.Validate(flow)
 			if err != nil {
 				utils.Error("Schema validation error: %v\n", err)
-				return fmt.Errorf("schema validation error: %v", err)
+				return fmt.Errorf("schema validation error: %w", err)
 			}
 			utils.User("Validation OK: flow is valid!")
 			return nil
@@ -405,17 +405,17 @@ func init() {
 			flow, err := dsl.Parse(file)
 			if err != nil {
 				utils.Error("YAML parse error: %v\n", err)
-				return fmt.Errorf("YAML parse error: %v", err)
+				return fmt.Errorf("YAML parse error: %w", err)
 			}
 			diagram, err := graph.ExportMermaid(flow)
 			if err != nil {
 				utils.Error("Graph export error: %v\n", err)
-				return fmt.Errorf("graph export error: %v", err)
+				return fmt.Errorf("graph export error: %w", err)
 			}
 			if outPath != "" {
 				if err := os.WriteFile(outPath, []byte(diagram), 0644); err != nil {
 					utils.Error("Failed to write graph to %s: %v\n", outPath, err)
-					return fmt.Errorf("failed to write graph to %s: %v", outPath, err)
+					return fmt.Errorf("failed to write graph to %s: %w", outPath, err)
 				}
 			} else {
 				utils.Info("%s", diagram)

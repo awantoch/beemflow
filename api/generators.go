@@ -13,7 +13,6 @@ import (
 
 	"github.com/awantoch/beemflow/constants"
 	mcpserver "github.com/awantoch/beemflow/mcp"
-	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/utils"
 	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/spf13/cobra"
@@ -33,57 +32,9 @@ func GenerateHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 
 	// Register handlers for each unique path
 	for path, ops := range pathOperations {
-		// Register metadata for each operation
-		for _, op := range ops {
-			registry.RegisterInterface(registry.InterfaceMeta{
-				ID:          op.ID,
-				Type:        registry.HTTP,
-				Use:         op.HTTPMethod,
-				Path:        op.HTTPPath,
-				Description: op.Description,
-			})
-		}
-
 		// Create combined handler for all methods on this path
 		handler := generateCombinedHTTPHandler(ops, svc)
 		mux.HandleFunc(path, handler)
-	}
-}
-
-// generateHTTPHandler creates an HTTP handler for the given operation
-func generateHTTPHandler(op *OperationDefinition, svc FlowService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Use custom handler if provided
-		if op.HTTPHandler != nil {
-			op.HTTPHandler(w, r, svc)
-			return
-		}
-
-		// Method guard
-		if r.Method != op.HTTPMethod {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// Parse arguments
-		args, err := parseHTTPArgs(r, op)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Invalid arguments: %v", err), http.StatusBadRequest)
-			return
-		}
-
-		// Execute operation
-		result, err := op.Handler(r.Context(), svc, args)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// Return response
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(result); err != nil {
-			utils.Error("Failed to encode response: %v", err)
-		}
 	}
 }
 
@@ -97,7 +48,7 @@ func parseHTTPArgs(r *http.Request, op *OperationDefinition) (any, error) {
 	case http.MethodGet:
 		return parseGetArgs(r, args, op)
 	case http.MethodPost, http.MethodPut, http.MethodPatch:
-		return parsePostArgs(r, args, op)
+		return parsePostArgs(r, args)
 	default:
 		return args, nil
 	}
@@ -139,7 +90,7 @@ func parseGetArgs(r *http.Request, args any, op *OperationDefinition) (any, erro
 }
 
 // parsePostArgs parses POST request arguments from JSON body
-func parsePostArgs(r *http.Request, args any, op *OperationDefinition) (any, error) {
+func parsePostArgs(r *http.Request, args any) (any, error) {
 	if r.Header.Get("Content-Type") == "application/json" {
 		if err := json.NewDecoder(r.Body).Decode(args); err != nil {
 			return nil, err
@@ -205,14 +156,6 @@ func GenerateMCPTools(svc FlowService) []mcpserver.ToolRegistration {
 		if op.SkipMCP {
 			continue
 		}
-
-		// Register metadata
-		registry.RegisterInterface(registry.InterfaceMeta{
-			ID:          op.ID,
-			Type:        registry.MCP,
-			Use:         op.MCPName,
-			Description: op.Description,
-		})
 
 		// Create tool registration
 		handler := generateMCPHandler(op, svc)
@@ -304,14 +247,6 @@ func GenerateCLICommands(svc FlowService) []*cobra.Command {
 			continue
 		}
 
-		// Register metadata
-		registry.RegisterInterface(registry.InterfaceMeta{
-			ID:          op.ID,
-			Type:        registry.CLI,
-			Use:         op.CLIUse,
-			Description: op.CLIShort,
-		})
-
 		// Create command
 		cmd := generateCLICommand(op, svc)
 		commands = append(commands, cmd)
@@ -338,13 +273,14 @@ func generateCLICommand(op *OperationDefinition, svc FlowService) *cobra.Command
 			if err != nil {
 				// Handle specific error types for exit codes
 				errStr := err.Error()
-				if strings.Contains(errStr, "YAML parse error") {
+				switch {
+				case strings.Contains(errStr, "YAML parse error"):
 					os.Exit(1)
-				} else if strings.Contains(errStr, "schema validation error") {
+				case strings.Contains(errStr, "schema validation error"):
 					os.Exit(2)
-				} else if strings.Contains(errStr, "graph export error") {
+				case strings.Contains(errStr, "graph export error"):
 					os.Exit(2)
-				} else if strings.Contains(errStr, "failed to write graph") {
+				case strings.Contains(errStr, "failed to write graph"):
 					os.Exit(3)
 				}
 				return err
@@ -449,22 +385,31 @@ func parseCLIArgs(cmd *cobra.Command, args []string, argsType reflect.Type) (any
 		case reflect.String:
 			if value, err := cmd.Flags().GetString(flagTag); err == nil && value != "" {
 				field.SetString(value)
+			} else if err != nil {
+				return nil, fmt.Errorf("failed to get string flag %s: %w", flagTag, err)
 			}
 		case reflect.Bool:
 			if value, err := cmd.Flags().GetBool(flagTag); err == nil {
 				field.SetBool(value)
+			} else {
+				return nil, fmt.Errorf("failed to get bool flag %s: %w", flagTag, err)
 			}
 		case reflect.Int, reflect.Int64:
 			if value, err := cmd.Flags().GetInt(flagTag); err == nil && value != 0 {
 				field.SetInt(int64(value))
+			} else if err != nil {
+				return nil, fmt.Errorf("failed to get int flag %s: %w", flagTag, err)
 			}
 		case reflect.Interface:
 			// For map[string]any fields, parse JSON
 			if value, err := cmd.Flags().GetString(flagTag); err == nil && value != "" {
 				var data any
-				if err := json.Unmarshal([]byte(value), &data); err == nil {
-					field.Set(reflect.ValueOf(data))
+				if err := json.Unmarshal([]byte(value), &data); err != nil {
+					return nil, fmt.Errorf("failed to parse JSON for flag %s: %w", flagTag, err)
 				}
+				field.Set(reflect.ValueOf(data))
+			} else if err != nil {
+				return nil, fmt.Errorf("failed to get string flag %s: %w", flagTag, err)
 			}
 		}
 	}
@@ -568,7 +513,7 @@ func generateCombinedHTTPHandler(ops []*OperationDefinition, svc FlowService) ht
 // UnifiedAttachHTTPHandlers is the new unified way to attach HTTP handlers
 // This replaces the old AttachHTTPHandlers function
 func UnifiedAttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
-	// Register system endpoints (health, metadata, spec) that don't follow the operation pattern
+	// Register system endpoints (health, spec) that don't follow the operation pattern
 	registerUnifiedSystemEndpoints(mux)
 
 	// Generate and register all operation handlers
@@ -578,12 +523,7 @@ func UnifiedAttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 // registerUnifiedSystemEndpoints registers system endpoints that are not operations
 func registerUnifiedSystemEndpoints(mux *http.ServeMux) {
 	// Health check endpoint
-	registry.RegisterRoute(mux, constants.HTTPMethodGET, "/metadata", constants.InterfaceDescMetadata, func(w http.ResponseWriter, r *http.Request) {
-		interfaces := registry.AllInterfaces()
-		writeJSONResponse(w, interfaces)
-	})
-
-	registry.RegisterRoute(mux, constants.HTTPMethodGET, "/healthz", constants.InterfaceDescHealthCheck, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		if _, err := w.Write([]byte(constants.HealthCheckResponse)); err != nil {
 			utils.Error(constants.LogFailedWriteHealthCheck, err)
@@ -606,14 +546,5 @@ func UnifiedAttachCLICommands(root *cobra.Command, svc FlowService) {
 	commands := GenerateCLICommands(svc)
 	for _, cmd := range commands {
 		root.AddCommand(cmd)
-	}
-}
-
-// writeJSONResponse is a helper for writing JSON responses
-func writeJSONResponse(w http.ResponseWriter, data any) {
-	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		utils.Error("Failed to write JSON response: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }

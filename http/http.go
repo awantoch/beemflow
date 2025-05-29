@@ -12,8 +12,6 @@ import (
 
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/constants"
-	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -60,7 +58,7 @@ func StartServer(cfg *config.Config) error {
 	mux := http.NewServeMux()
 
 	// Register static file serving
-	registry.RegisterRoute(mux, constants.HTTPMethodGET, "/", constants.InterfaceDescStaticAssets, http.FileServer(http.Dir(".")).ServeHTTP)
+	mux.HandleFunc("/", http.FileServer(http.Dir(".")).ServeHTTP)
 
 	// Create service and attach all API handlers using the unified system
 	svc := api.NewFlowService()
