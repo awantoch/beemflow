@@ -209,3 +209,229 @@ func TestNewDefaultBlobStore(t *testing.T) {
 		t.Error("Expected nil store for unsupported driver")
 	}
 }
+
+func TestNewFilesystemBlobStore_ErrorCases(t *testing.T) {
+	// Test with invalid directory paths
+	testCases := []struct {
+		name string
+		dir  string
+	}{
+		{"empty directory", ""},
+		{"root directory", "/"},
+		{"directory with null byte", "/tmp/test\x00"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			store, err := NewFilesystemBlobStore(tc.dir)
+			if tc.dir == "" {
+				// Empty directory should fail
+				if err == nil {
+					t.Error("Expected error for empty directory")
+				}
+				if store != nil {
+					t.Error("Expected nil store for empty directory")
+				}
+			} else {
+				// Other cases may or may not fail depending on OS permissions
+				// but shouldn't panic
+				t.Logf("NewFilesystemBlobStore with %s: err=%v, store=%v", tc.name, err, store != nil)
+			}
+		})
+	}
+}
+
+func TestFilesystemBlobStore_AdvancedErrorCases(t *testing.T) {
+	store := newTestFilesystemBlobStore(t)
+
+	ctx := context.Background()
+
+	// Test Get with various invalid URLs
+	invalidURLs := []string{
+		"",                        // Empty URL
+		"http://example.com/file", // Wrong scheme
+		"file://",                 // Missing path
+		"file:///\x00invalid",     // Invalid characters
+		"not-a-url",               // No scheme
+	}
+
+	for _, url := range invalidURLs {
+		t.Run("invalid_url_"+url, func(t *testing.T) {
+			_, err := store.Get(ctx, url)
+			if err == nil {
+				t.Errorf("Expected error for invalid URL %s", url)
+			}
+		})
+	}
+
+	// Test Put with edge case filenames
+	edgeCaseFilenames := []string{
+		"file with spaces.txt",
+		"file-with-dashes.txt",
+		"file_with_underscores.txt",
+		"file.with.dots.txt",
+		"UPPERCASE.TXT",
+		"123numeric.txt",
+		"very-long-filename-that-might-cause-issues-in-some-filesystems-but-should-still-work.txt",
+	}
+
+	for _, filename := range edgeCaseFilenames {
+		t.Run("edge_filename_"+filename, func(t *testing.T) {
+			data := []byte("test data for " + filename)
+			url, err := store.Put(ctx, data, "text/plain", filename)
+			if err != nil {
+				t.Errorf("Put failed for filename %s: %v", filename, err)
+				return
+			}
+
+			retrieved, err := store.Get(ctx, url)
+			if err != nil {
+				t.Errorf("Get failed for filename %s: %v", filename, err)
+				return
+			}
+
+			if !bytes.Equal(data, retrieved) {
+				t.Errorf("Data mismatch for filename %s", filename)
+			}
+		})
+	}
+}
+
+func TestFilesystemBlobStore_LargeData(t *testing.T) {
+	store := newTestFilesystemBlobStore(t)
+	ctx := context.Background()
+
+	// Test with large data (1MB)
+	largeData := make([]byte, 1024*1024)
+	for i := range largeData {
+		largeData[i] = byte(i % 256)
+	}
+
+	url, err := store.Put(ctx, largeData, "application/octet-stream", "large_file.bin")
+	if err != nil {
+		t.Fatalf("Put failed for large data: %v", err)
+	}
+
+	retrieved, err := store.Get(ctx, url)
+	if err != nil {
+		t.Fatalf("Get failed for large data: %v", err)
+	}
+
+	if len(retrieved) != len(largeData) {
+		t.Errorf("Size mismatch: expected %d bytes, got %d bytes", len(largeData), len(retrieved))
+	}
+
+	if !bytes.Equal(largeData, retrieved) {
+		t.Error("Large data content mismatch")
+	}
+}
+
+func TestFilesystemBlobStore_MimeTypes(t *testing.T) {
+	store := newTestFilesystemBlobStore(t)
+	ctx := context.Background()
+
+	// Test various MIME types
+	mimeTypes := []string{
+		"text/plain",
+		"application/json",
+		"image/jpeg",
+		"video/mp4",
+		"application/pdf",
+		"text/html; charset=utf-8",
+		"", // Empty MIME type
+	}
+
+	for _, mime := range mimeTypes {
+		t.Run("mime_"+mime, func(t *testing.T) {
+			data := []byte("test data for " + mime)
+			filename := "test_" + filepath.Base(mime) + ".file"
+
+			url, err := store.Put(ctx, data, mime, filename)
+			if err != nil {
+				t.Errorf("Put failed for MIME type %s: %v", mime, err)
+				return
+			}
+
+			retrieved, err := store.Get(ctx, url)
+			if err != nil {
+				t.Errorf("Get failed for MIME type %s: %v", mime, err)
+				return
+			}
+
+			if !bytes.Equal(data, retrieved) {
+				t.Errorf("Data mismatch for MIME type %s", mime)
+			}
+		})
+	}
+}
+
+func TestFilesystemBlobStore_DirectoryStructure(t *testing.T) {
+	// Test that the blob store properly creates directory structure
+	tempDir := t.TempDir()
+	blobDir := filepath.Join(tempDir, "nested", "blob", "directory")
+
+	store, err := NewFilesystemBlobStore(blobDir)
+	if err != nil {
+		t.Fatalf("NewFilesystemBlobStore failed: %v", err)
+	}
+
+	ctx := context.Background()
+	data := []byte("test data")
+
+	url, err := store.Put(ctx, data, "text/plain", "test.txt")
+	if err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	// Verify the directory was created
+	if _, err := os.Stat(blobDir); os.IsNotExist(err) {
+		t.Error("Blob directory was not created")
+	}
+
+	// Verify we can retrieve the data
+	retrieved, err := store.Get(ctx, url)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	if !bytes.Equal(data, retrieved) {
+		t.Error("Data mismatch")
+	}
+}
+
+func TestBlobConfig_AllFieldsCovered(t *testing.T) {
+	// Test that all BlobConfig fields are properly used
+	ctx := context.Background()
+
+	// Test with all fields set for filesystem
+	cfg := &BlobConfig{
+		Driver:    "filesystem",
+		Directory: t.TempDir(),
+		Bucket:    "ignored-for-filesystem",
+		Region:    "ignored-for-filesystem",
+	}
+
+	store, err := NewDefaultBlobStore(ctx, cfg)
+	if err != nil {
+		t.Errorf("NewDefaultBlobStore with complete filesystem config failed: %v", err)
+	}
+	if store == nil {
+		t.Error("Expected non-nil store")
+	}
+
+	// Test filesystem store functionality
+	data := []byte("test data")
+	url, err := store.Put(ctx, data, "text/plain", "test.txt")
+	if err != nil {
+		t.Errorf("Put failed: %v", err)
+	}
+
+	retrieved, err := store.Get(ctx, url)
+	if err != nil {
+		t.Errorf("Get failed: %v", err)
+	}
+
+	if !bytes.Equal(data, retrieved) {
+		t.Error("Data mismatch")
+	}
+}

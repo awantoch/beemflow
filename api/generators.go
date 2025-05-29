@@ -18,6 +18,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Global variable to control exit behavior (disabled during tests)
+var enableCLIExitCodes = true
+
+// DisableCLIExitCodes disables os.Exit calls for testing
+func DisableCLIExitCodes() {
+	enableCLIExitCodes = false
+}
+
+// EnableCLIExitCodes enables os.Exit calls for production
+func EnableCLIExitCodes() {
+	enableCLIExitCodes = true
+}
+
 // GenerateHTTPHandlers creates HTTP handlers for all operations and registers them
 func GenerateHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 	// Group operations by path to handle multiple methods on same path
@@ -270,8 +283,8 @@ func generateCLICommand(op *OperationDefinition, svc FlowService) *cobra.Command
 	if op.CLIHandler != nil {
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {
 			err := op.CLIHandler(cmd, args, svc)
-			if err != nil {
-				// Handle specific error types for exit codes
+			if err != nil && enableCLIExitCodes {
+				// Handle specific error types for exit codes (only when not testing)
 				errStr := err.Error()
 				switch {
 				case strings.Contains(errStr, "YAML parse error"):
@@ -283,9 +296,8 @@ func generateCLICommand(op *OperationDefinition, svc FlowService) *cobra.Command
 				case strings.Contains(errStr, "failed to write graph"):
 					os.Exit(3)
 				}
-				return err
 			}
-			return nil
+			return err
 		}
 	} else {
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {

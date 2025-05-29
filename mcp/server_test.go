@@ -2,8 +2,12 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	mcp "github.com/metoro-io/mcp-golang"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
@@ -42,6 +46,139 @@ func TestServe_Basic(t *testing.T) {
 		t.Log("Serve completed without error (unexpected but not a failure)")
 	} else {
 		t.Logf("Serve completed with expected error: %v", err)
+	}
+}
+
+func TestServe_ConfigLoading(t *testing.T) {
+	// Test with non-existent config file (should not fail)
+	tools := []ToolRegistration{
+		{
+			Name:        "test_tool",
+			Description: "A test tool",
+			Handler: func(ctx context.Context, args EmptyArgs) (*mcp.ToolResponse, error) {
+				return mcp.NewToolResponse(mcp.NewTextContent("test")), nil
+			},
+		},
+	}
+
+	// Create a channel to signal when to stop the server
+	done := make(chan bool, 1)
+
+	go func() {
+		// Test with non-existent config
+		err := Serve("/non/existent/config.json", false, true, "", tools)
+		if err != nil {
+			t.Logf("Expected error with non-existent config: %v", err)
+		}
+		done <- true
+	}()
+
+	// Give the server a moment to start, then signal completion
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-done:
+		// Server completed
+	case <-time.After(2 * time.Second):
+		t.Log("Server test timed out (expected for stdio mode)")
+	}
+}
+
+func TestServe_InvalidConfig(t *testing.T) {
+	// Create a temporary invalid config file
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "invalid_config.json")
+
+	// Write invalid JSON
+	err := os.WriteFile(configPath, []byte("invalid json content"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test config file: %v", err)
+	}
+
+	tools := []ToolRegistration{
+		{
+			Name:        "test_tool",
+			Description: "A test tool",
+			Handler: func(ctx context.Context, args EmptyArgs) (*mcp.ToolResponse, error) {
+				return mcp.NewToolResponse(mcp.NewTextContent("test")), nil
+			},
+		},
+	}
+
+	// Test should handle invalid config gracefully
+	done := make(chan error, 1)
+	go func() {
+		err := Serve(configPath, false, true, "", tools)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Logf("Expected error with invalid config: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Log("Server test timed out (expected for stdio mode)")
+	}
+}
+
+func TestServe_HTTPMode(t *testing.T) {
+	tools := []ToolRegistration{
+		{
+			Name:        "test_tool",
+			Description: "A test tool",
+			Handler: func(ctx context.Context, args EmptyArgs) (*mcp.ToolResponse, error) {
+				return mcp.NewToolResponse(mcp.NewTextContent("test")), nil
+			},
+		},
+	}
+
+	// Test HTTP mode with a random port
+	done := make(chan error, 1)
+	go func() {
+		err := Serve("", false, false, "localhost:0", tools)
+		done <- err
+	}()
+
+	// Give the server a moment to start
+	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Logf("HTTP server completed with error: %v", err)
+		}
+	case <-time.After(1 * time.Second):
+		t.Log("HTTP server test timed out (expected)")
+	}
+}
+
+func TestServe_DebugMode(t *testing.T) {
+	tools := []ToolRegistration{
+		{
+			Name:        "debug_tool",
+			Description: "A debug tool",
+			Handler: func(ctx context.Context, args EmptyArgs) (*mcp.ToolResponse, error) {
+				return mcp.NewToolResponse(mcp.NewTextContent("debug")), nil
+			},
+		},
+	}
+
+	// Test stdio mode with debug enabled
+	done := make(chan error, 1)
+	go func() {
+		err := Serve("", true, true, "", tools)
+		done <- err
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Logf("Debug server completed with error: %v", err)
+		}
+	case <-time.After(1 * time.Second):
+		t.Log("Debug server test timed out (expected)")
 	}
 }
 
@@ -167,4 +304,71 @@ func TestRegisterAllTools_EdgeCases(t *testing.T) {
 	RegisterAllTools(server, edgeCaseRegs)
 
 	t.Log("Successfully registered tools with edge case configurations")
+}
+
+func TestRegisterAllTools_ErrorHandling(t *testing.T) {
+	serverReader, _ := io.Pipe()
+	_, serverWriter := io.Pipe()
+	server := mcp.NewServer(mcpstdio.NewStdioServerTransportWithIO(serverReader, serverWriter))
+
+	// Test with tools that have edge case names and descriptions but valid handlers
+	edgeCaseRegs := []ToolRegistration{
+		{
+			Name:        "", // Empty name might cause error
+			Description: "Tool with empty name",
+			Handler: func(ctx context.Context, args EmptyArgs) (*mcp.ToolResponse, error) {
+				return mcp.NewToolResponse(mcp.NewTextContent("empty_name")), nil
+			},
+		},
+		{
+			Name:        "duplicate_tool",
+			Description: "First instance",
+			Handler: func(ctx context.Context, args EmptyArgs) (*mcp.ToolResponse, error) {
+				return mcp.NewToolResponse(mcp.NewTextContent("first")), nil
+			},
+		},
+		{
+			Name:        "duplicate_tool", // Duplicate name
+			Description: "Second instance",
+			Handler: func(ctx context.Context, args EmptyArgs) (*mcp.ToolResponse, error) {
+				return mcp.NewToolResponse(mcp.NewTextContent("second")), nil
+			},
+		},
+		{
+			Name:        "very_long_tool_name_that_might_cause_issues_with_some_systems_or_registries_123456789",
+			Description: "Tool with extremely long name to test name length limits",
+			Handler: func(ctx context.Context, args EmptyArgs) (*mcp.ToolResponse, error) {
+				return mcp.NewToolResponse(mcp.NewTextContent("long_name_tool")), nil
+			},
+		},
+	}
+
+	// This should handle edge cases gracefully without panicking
+	RegisterAllTools(server, edgeCaseRegs)
+
+	t.Log("Successfully handled edge case tool registrations")
+}
+
+func TestRegisterAllTools_LargeToolSet(t *testing.T) {
+	serverReader, _ := io.Pipe()
+	_, serverWriter := io.Pipe()
+	server := mcp.NewServer(mcpstdio.NewStdioServerTransportWithIO(serverReader, serverWriter))
+
+	// Test with a large number of tools
+	var largeToolSet []ToolRegistration
+	for i := 0; i < 100; i++ {
+		tool := ToolRegistration{
+			Name:        fmt.Sprintf("tool_%d", i),
+			Description: fmt.Sprintf("Tool number %d", i),
+			Handler: func(ctx context.Context, args EmptyArgs) (*mcp.ToolResponse, error) {
+				return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("tool_%d_response", i))), nil
+			},
+		}
+		largeToolSet = append(largeToolSet, tool)
+	}
+
+	// This should register all tools without issues
+	RegisterAllTools(server, largeToolSet)
+
+	t.Log("Successfully registered large tool set")
 }

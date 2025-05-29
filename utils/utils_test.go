@@ -162,7 +162,7 @@ func TestLoggerContext(t *testing.T) {
 func TestLoggerInitialization(t *testing.T) {
 	// Test that loggers are initialized
 	// This mainly tests that init() and initLoggers() don't panic
-	initLoggers()
+	initLoggers("debug")
 
 	// Test that we can log after initialization
 	Info("test after init")
@@ -333,5 +333,207 @@ func TestTestUtilityFunctions(t *testing.T) {
 	}
 	if _, err := os.Stat(tempDir2); !os.IsNotExist(err) {
 		t.Errorf("Directory 2 was not cleaned up")
+	}
+}
+
+func TestSetMode(t *testing.T) {
+	// Save original mode
+	originalMode := getMode()
+	defer func() {
+		// Restore original mode
+		SetMode(originalMode)
+	}()
+
+	// Test setting various modes
+	testModes := []string{"debug", "info", "warn", "production"}
+
+	for _, mode := range testModes {
+		SetMode(mode)
+		currentMode := getMode()
+		if currentMode != mode {
+			t.Errorf("Expected mode %s, got %s", mode, currentMode)
+		}
+	}
+
+	// Test that setting mode re-initializes loggers (no panic)
+	SetMode("debug")
+	Debug("test debug message after setting debug mode")
+
+	SetMode("production")
+	Info("test info message after setting production mode")
+}
+
+func TestWithCleanDir(t *testing.T) {
+	// Test that WithCleanDir function exists and can be referenced
+	// These functions are designed to be used in TestMain, so we just
+	// verify they exist and test their core functionality through CleanupDir
+
+	_ = WithCleanDir // Verify function exists
+
+	// Test the core cleanup functionality that WithCleanDir uses
+	tempDir, err := os.MkdirTemp("", "test-with-clean-dir-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	// Create a test file in the directory
+	testFile := filepath.Join(tempDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Verify directory exists
+	if _, err := os.Stat(tempDir); os.IsNotExist(err) {
+		t.Fatalf("Temp directory should exist before cleanup")
+	}
+
+	// Test the cleanup functionality directly
+	CleanupDir(tempDir)
+
+	// Verify directory is cleaned up
+	if _, err := os.Stat(tempDir); !os.IsNotExist(err) {
+		t.Errorf("Directory should be cleaned up after CleanupDir")
+	}
+}
+
+func TestWithCleanDirs(t *testing.T) {
+	// Test that WithCleanDirs function exists and can be referenced
+	_ = WithCleanDirs // Verify function exists
+
+	// Test the core cleanup functionality for multiple directories
+	tempDir1, err := os.MkdirTemp("", "test-with-clean-dirs-1-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir 1: %v", err)
+	}
+
+	tempDir2, err := os.MkdirTemp("", "test-with-clean-dirs-2-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir 2: %v", err)
+	}
+
+	// Create test files in both directories
+	if err := os.WriteFile(filepath.Join(tempDir1, "test1.txt"), []byte("content1"), 0644); err != nil {
+		t.Fatalf("Failed to create test file 1: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir2, "test2.txt"), []byte("content2"), 0644); err != nil {
+		t.Fatalf("Failed to create test file 2: %v", err)
+	}
+
+	// Test cleanup of multiple directories
+	CleanupDir(tempDir1)
+	CleanupDir(tempDir2)
+
+	// Verify both directories are cleaned up
+	if _, err := os.Stat(tempDir1); !os.IsNotExist(err) {
+		t.Errorf("Directory 1 should be cleaned up")
+	}
+	if _, err := os.Stat(tempDir2); !os.IsNotExist(err) {
+		t.Errorf("Directory 2 should be cleaned up")
+	}
+}
+
+func TestCleanupTempDir(t *testing.T) {
+	// Test successful cleanup
+	tempDir, err := os.MkdirTemp("", "test-cleanup-temp-dir-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	// Create a test file
+	testFile := filepath.Join(tempDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Test CleanupTempDir
+	CleanupTempDir(tempDir)
+
+	// Verify directory is removed
+	if _, err := os.Stat(tempDir); !os.IsNotExist(err) {
+		t.Errorf("Directory should be removed after CleanupTempDir")
+	}
+
+	// Test with non-existent directory (should not panic)
+	CleanupTempDir("/path/that/does/not/exist")
+}
+
+func TestCleanupTempDirT(t *testing.T) {
+	// Test successful cleanup
+	tempDir, err := os.MkdirTemp("", "test-cleanup-temp-dir-t-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	// Create a test file
+	testFile := filepath.Join(tempDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Test CleanupTempDirT
+	CleanupTempDirT(t, tempDir)
+
+	// Verify directory is removed
+	if _, err := os.Stat(tempDir); !os.IsNotExist(err) {
+		t.Errorf("Directory should be removed after CleanupTempDirT")
+	}
+
+	// Test with non-existent directory (should not fail test)
+	CleanupTempDirT(t, "/path/that/does/not/exist")
+}
+
+func TestWithCleanup(t *testing.T) {
+	// Test the generic WithCleanup function
+	var setupCalled, testCalled bool
+	var tempDir string
+
+	setup := func() (string, string) {
+		setupCalled = true
+		var err error
+		tempDir, err = os.MkdirTemp("", "test-with-cleanup-*")
+		if err != nil {
+			t.Fatalf("Failed to create temp dir in setup: %v", err)
+		}
+
+		// Create a test file
+		testFile := filepath.Join(tempDir, "resource.txt")
+		if err := os.WriteFile(testFile, []byte("resource content"), 0644); err != nil {
+			t.Fatalf("Failed to create resource file: %v", err)
+		}
+
+		return "test-resource", tempDir
+	}
+
+	test := func(resource string) {
+		testCalled = true
+		if resource != "test-resource" {
+			t.Errorf("Expected resource 'test-resource', got %s", resource)
+		}
+
+		// Verify the directory and file exist during the test
+		if _, err := os.Stat(tempDir); os.IsNotExist(err) {
+			t.Errorf("Temp directory should exist during test")
+		}
+
+		resourceFile := filepath.Join(tempDir, "resource.txt")
+		if _, err := os.Stat(resourceFile); os.IsNotExist(err) {
+			t.Errorf("Resource file should exist during test")
+		}
+	}
+
+	// Run WithCleanup
+	WithCleanup(t, setup, test)
+
+	// Verify both functions were called
+	if !setupCalled {
+		t.Error("Setup function should have been called")
+	}
+	if !testCalled {
+		t.Error("Test function should have been called")
+	}
+
+	// Verify cleanup happened
+	if _, err := os.Stat(tempDir); !os.IsNotExist(err) {
+		t.Errorf("Directory should be cleaned up after WithCleanup")
 	}
 }

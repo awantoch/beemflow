@@ -244,7 +244,7 @@ func outputEchoResults(outputs map[string]any) {
 		if outMap, ok := stepOutput.(map[string]any); ok {
 			// 1. core.echo outputs - just show the text
 			if text, ok := outMap["text"]; ok {
-				utils.Info("%s", text)
+				utils.User("%s", text)
 				displayed[stepID] = true
 				continue
 			}

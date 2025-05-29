@@ -27,16 +27,16 @@ var requestIDKey = requestIDKeyType{}
 
 func init() {
 	userLogger = log.New(userWriter, "", 0)
-	initLoggers()
+	initLoggers("production") // Default mode
 }
 
-func initLoggers() {
+func initLoggers(mode string) {
 	// Internal logger: to stderr, with levels and debug support
 	internalCfg := zap.NewProductionConfig()
 	internalCfg.OutputPaths = []string{"stderr"}
 	internalCfg.Encoding = "console"
 	internalCfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	if os.Getenv("BEEMFLOW_DEBUG") != "" || getMode() == "debug" {
+	if os.Getenv("BEEMFLOW_DEBUG") != "" || mode == "debug" {
 		internalCfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
 	} else {
 		internalCfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
@@ -108,7 +108,7 @@ func SetMode(mode string) {
 	loggerModeMutex.Lock()
 	defer loggerModeMutex.Unlock()
 	loggerMode = mode
-	initLoggers() // re-init to update debug level
+	initLoggers(mode) // Pass mode directly to avoid deadlock
 }
 
 func getMode() string {
