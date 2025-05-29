@@ -57,7 +57,6 @@ func NewRootCmd() *cobra.Command {
 		NewTestCmd:     newTestCmd,
 		NewToolCmd:     newToolCmd,
 		NewMCPCmd:      newMCPCmd,
-		NewMetadataCmd: newMetadataCmd,
 		NewSpecCmd:     newSpecCmd,
 	}
 

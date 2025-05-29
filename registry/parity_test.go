@@ -1,23 +1,27 @@
 package registry
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/awantoch/beemflow/constants"
+)
 
 // TestHTTPMetadataComplete ensures all HTTP interfaces are registered.
 func TestHTTPMetadataComplete(t *testing.T) {
 	httpIDs := []string{
-		InterfaceIDListRuns,
-		InterfaceIDStartRun,
-		InterfaceIDGetRun,
-		InterfaceIDResumeRun,
-		InterfaceIDGraphFlow,
-		InterfaceIDValidateFlow,
-		InterfaceIDTestFlow,
-		InterfaceIDInlineRun,
-		InterfaceIDListTools,
-		InterfaceIDGetToolManifest,
-		InterfaceIDPublishEvent,
-		InterfaceIDMetadata,
-		InterfaceIDSpec,
+		constants.InterfaceIDListRuns,
+		constants.InterfaceIDStartRun,
+		constants.InterfaceIDGetRun,
+		constants.InterfaceIDResumeRun,
+		constants.InterfaceIDGraphFlow,
+		constants.InterfaceIDValidateFlow,
+		constants.InterfaceIDTestFlow,
+		constants.InterfaceIDInlineRun,
+		constants.InterfaceIDListTools,
+		constants.InterfaceIDGetToolManifest,
+		constants.InterfaceIDPublishEvent,
+		constants.InterfaceIDMetadata,
+		constants.InterfaceIDSpec,
 	}
 	found := make(map[string]bool)
 	for _, m := range AllInterfaces() {
@@ -35,15 +39,15 @@ func TestHTTPMetadataComplete(t *testing.T) {
 // TestMCPMetadataComplete ensures all MCP interfaces are registered.
 func TestMCPMetadataComplete(t *testing.T) {
 	mcpIDs := []string{
-		InterfaceIDListFlows,
-		InterfaceIDGetFlow,
-		InterfaceIDValidateFlow,
-		InterfaceIDGraphFlow,
-		InterfaceIDStartRun,
-		InterfaceIDGetRun,
-		InterfaceIDPublishEvent,
-		InterfaceIDResumeRun,
-		InterfaceIDSpec,
+		constants.InterfaceIDListFlows,
+		constants.InterfaceIDGetFlow,
+		constants.InterfaceIDValidateFlow,
+		constants.InterfaceIDGraphFlow,
+		constants.InterfaceIDStartRun,
+		constants.InterfaceIDGetRun,
+		constants.InterfaceIDPublishEvent,
+		constants.InterfaceIDResumeRun,
+		constants.InterfaceIDSpec,
 	}
 	found := make(map[string]bool)
 	for _, m := range AllInterfaces() {
@@ -66,17 +70,17 @@ func TestCoreOperationsParity(t *testing.T) {
 		httpID string
 		mcpID  string
 	}{
-		{"startRun", InterfaceIDStartRun, InterfaceIDStartRun},
-		{"getRun", InterfaceIDGetRun, InterfaceIDGetRun},
-		{"resumeRun", InterfaceIDResumeRun, InterfaceIDResumeRun},
-		{"graphFlow", InterfaceIDGraphFlow, InterfaceIDGraphFlow},
-		{"validateFlow", InterfaceIDValidateFlow, InterfaceIDValidateFlow},
-		{"testFlow", InterfaceIDTestFlow, InterfaceIDTestFlow},
-		{"inlineRun", InterfaceIDInlineRun, InterfaceIDInlineRun},
-		{"listTools", InterfaceIDListTools, InterfaceIDListTools},
-		{"getToolManifest", InterfaceIDGetToolManifest, InterfaceIDGetToolManifest},
-		{"publishEvent", InterfaceIDPublishEvent, InterfaceIDPublishEvent},
-		{"spec", InterfaceIDSpec, InterfaceIDSpec},
+		{"startRun", constants.InterfaceIDStartRun, constants.InterfaceIDStartRun},
+		{"getRun", constants.InterfaceIDGetRun, constants.InterfaceIDGetRun},
+		{"resumeRun", constants.InterfaceIDResumeRun, constants.InterfaceIDResumeRun},
+		{"graphFlow", constants.InterfaceIDGraphFlow, constants.InterfaceIDGraphFlow},
+		{"validateFlow", constants.InterfaceIDValidateFlow, constants.InterfaceIDValidateFlow},
+		{"testFlow", constants.InterfaceIDTestFlow, constants.InterfaceIDTestFlow},
+		{"inlineRun", constants.InterfaceIDInlineRun, constants.InterfaceIDInlineRun},
+		{"listTools", constants.InterfaceIDListTools, constants.InterfaceIDListTools},
+		{"getToolManifest", constants.InterfaceIDGetToolManifest, constants.InterfaceIDGetToolManifest},
+		{"publishEvent", constants.InterfaceIDPublishEvent, constants.InterfaceIDPublishEvent},
+		{"spec", constants.InterfaceIDSpec, constants.InterfaceIDSpec},
 	}
 	httpSet := make(map[string]bool)
 	mcpSet := make(map[string]bool)

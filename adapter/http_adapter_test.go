@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/registry"
 )
 
@@ -202,8 +203,8 @@ func TestHTTPAdapter_ManifestRequest(t *testing.T) {
 		}
 
 		// Check headers
-		if r.Header.Get("Content-Type") != "application/json" {
-			t.Errorf("expected Content-Type application/json, got %s", r.Header.Get("Content-Type"))
+		if r.Header.Get(constants.HeaderContentType) != constants.ContentTypeJSON {
+			t.Errorf("expected Content-Type %s, got %s", constants.ContentTypeJSON, r.Header.Get(constants.HeaderContentType))
 		}
 		if r.Header.Get("X-Custom") != "test-value" {
 			t.Errorf("expected X-Custom header test-value, got %s", r.Header.Get("X-Custom"))
@@ -218,8 +219,8 @@ func TestHTTPAdapter_ManifestRequest(t *testing.T) {
 		Name:     "test-manifest",
 		Endpoint: server.URL,
 		Headers: map[string]string{
-			"Content-Type": "application/json",
-			"X-Custom":     "test-value",
+			constants.HeaderContentType: constants.ContentTypeJSON,
+			"X-Custom":                  "test-value",
 		},
 	}
 
@@ -242,8 +243,8 @@ func TestHTTPAdapter_HeaderExtraction(t *testing.T) {
 	// Test with valid headers map
 	inputs := map[string]any{
 		"headers": map[string]any{
-			"Authorization": "Bearer token",
-			"Content-Type":  "application/json",
+			"Authorization":             "Bearer token",
+			constants.HeaderContentType: constants.ContentTypeJSON,
 		},
 	}
 	headers := adapter.extractHeaders(inputs)
@@ -375,9 +376,9 @@ func TestHTTPAdapter_ManifestHeaders(t *testing.T) {
 
 	manifest := &registry.ToolManifest{
 		Headers: map[string]string{
-			"Authorization": "Bearer $env:TEST_TOKEN",
-			"Content-Type":  "application/json",
-			"X-Static":      "static-value",
+			"Authorization":             "Bearer $env:TEST_TOKEN",
+			constants.HeaderContentType: constants.ContentTypeJSON,
+			"X-Static":                  "static-value",
 		},
 	}
 
@@ -387,8 +388,8 @@ func TestHTTPAdapter_ManifestHeaders(t *testing.T) {
 	if headers["Authorization"] != "Bearer secret-token" {
 		t.Errorf("expected Authorization=Bearer secret-token, got %s", headers["Authorization"])
 	}
-	if headers["Content-Type"] != "application/json" {
-		t.Errorf("expected Content-Type=application/json, got %s", headers["Content-Type"])
+	if headers[constants.HeaderContentType] != constants.ContentTypeJSON {
+		t.Errorf("expected Content-Type=%s, got %s", constants.ContentTypeJSON, headers[constants.HeaderContentType])
 	}
 	if headers["X-Static"] != "static-value" {
 		t.Errorf("expected X-Static=static-value, got %s", headers["X-Static"])
@@ -399,7 +400,7 @@ func TestHTTPAdapter_ManifestHeaders(t *testing.T) {
 func TestHTTPAdapter_ResponseProcessing(t *testing.T) {
 	// Test JSON response
 	jsonServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.Write([]byte(`{"key": "value"}`))
 	}))
 	defer jsonServer.Close()
@@ -417,7 +418,7 @@ func TestHTTPAdapter_ResponseProcessing(t *testing.T) {
 
 	// Test non-JSON response
 	textServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeText)
 		w.Write([]byte("plain text"))
 	}))
 	defer textServer.Close()
@@ -434,7 +435,7 @@ func TestHTTPAdapter_ResponseProcessing(t *testing.T) {
 
 	// Test invalid JSON response
 	invalidJSONServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.Write([]byte(`invalid json{`))
 	}))
 	defer invalidJSONServer.Close()
@@ -521,8 +522,8 @@ func TestHTTPAdapter_ComplexManifestScenario(t *testing.T) {
 		Name:     "complex-test",
 		Endpoint: server.URL,
 		Headers: map[string]string{
-			"Authorization": "Bearer test-token",
-			"Content-Type":  "application/json",
+			"Authorization":             "Bearer test-token",
+			constants.HeaderContentType: constants.ContentTypeJSON,
 		},
 		Parameters: map[string]any{
 			"type": "object",
@@ -557,8 +558,8 @@ func TestHTTPAdapter_ComplexManifestScenario(t *testing.T) {
 func TestHTTPAdapter_PrepareManifestHeaders_ErrorPaths(t *testing.T) {
 	manifest := &registry.ToolManifest{
 		Headers: map[string]string{
-			"Authorization": "Bearer token",
-			"Content-Type":  "application/json",
+			"Authorization":             "Bearer token",
+			constants.HeaderContentType: constants.ContentTypeJSON,
 		},
 	}
 
@@ -664,7 +665,7 @@ func TestHTTPAdapter_ProcessHTTPResponse_EdgeCases(t *testing.T) {
 
 	// Test with JSON array response
 	arrayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.Write([]byte(`[1, 2, 3]`))
 	}))
 	defer arrayServer.Close()
@@ -686,7 +687,7 @@ func TestHTTPAdapter_ProcessHTTPResponse_EdgeCases(t *testing.T) {
 
 	// Test with JSON primitive response
 	primitiveServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.Write([]byte(`"hello world"`))
 	}))
 	defer primitiveServer.Close()

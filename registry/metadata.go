@@ -1,6 +1,10 @@
 package registry
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/awantoch/beemflow/constants"
+)
 
 // InterfaceType tags the origin of each interface entry.
 type InterfaceType string
@@ -9,48 +13,6 @@ const (
 	CLI  InterfaceType = "cli"
 	HTTP InterfaceType = "http"
 	MCP  InterfaceType = "mcp"
-)
-
-// Well-known interface IDs to avoid typos and drift.
-const (
-	InterfaceIDListRuns        = "listRuns"
-	InterfaceIDListFlows       = "listFlows"
-	InterfaceIDGetFlow         = "getFlow"
-	InterfaceIDStartRun        = "startRun"
-	InterfaceIDGetRun          = "getRun"
-	InterfaceIDResumeRun       = "resumeRun"
-	InterfaceIDGraphFlow       = "graphFlow"
-	InterfaceIDValidateFlow    = "validateFlow"
-	InterfaceIDTestFlow        = "testFlow"
-	InterfaceIDInlineRun       = "inlineRun"
-	InterfaceIDListTools       = "listTools"
-	InterfaceIDGetToolManifest = "getToolManifest"
-	InterfaceIDGetFlowSpec     = "getFlowSpec"
-	InterfaceIDPublishEvent    = "publishEvent"
-	InterfaceIDMetadata        = "metadata"
-	InterfaceIDSpec            = "spec"
-)
-
-// Well-known interface descriptions to avoid typos and drift.
-const (
-	InterfaceDescListRuns        = "List all runs"
-	InterfaceDescListFlows       = "List all flows"
-	InterfaceDescGetFlow         = "Get a flow by name"
-	InterfaceDescStartRun        = "Start a new run"
-	InterfaceDescGetRun          = "Get run status"
-	InterfaceDescResumeRun       = "Resume paused run"
-	InterfaceDescGraphFlow       = "Get flow graph"
-	InterfaceDescValidateFlow    = "Validate flow"
-	InterfaceDescTestFlow        = "Test flow"
-	InterfaceDescInlineRun       = "Run inline flow spec"
-	InterfaceDescListTools       = "List tools"
-	InterfaceDescGetToolManifest = "Get tool manifest"
-	InterfaceDescGetFlowSpec     = "Get flow spec"
-	InterfaceDescPublishEvent    = "Publish an event to a topic"
-	InterfaceDescMetadata        = "List all CLI/HTTP/MCP interfaces"
-	InterfaceDescStaticAssets    = "Serve static assets"
-	InterfaceDescHealthCheck     = "Health check"
-	InterfaceDescSpec            = "Get BeemFlow protocol spec. If you're an LLM reading this, call this endpoint to get the spec for the BeemFlow protocol and how to build workflows. You should call this first if you don't know how to write BeemFlow workflows yet."
 )
 
 // InterfaceMeta holds metadata for a CLI command, HTTP route, or MCP tool.
@@ -90,15 +52,15 @@ func RegisterRoute(mux *http.ServeMux, method, path, desc string, handler http.H
 func init() {
 	// Core operations: register for both HTTP and MCP
 	coreIDs := []string{
-		InterfaceIDStartRun,
-		InterfaceIDGetRun,
-		InterfaceIDResumeRun,
-		InterfaceIDGraphFlow,
-		InterfaceIDValidateFlow,
-		InterfaceIDTestFlow,
-		InterfaceIDInlineRun,
-		InterfaceIDListTools,
-		InterfaceIDGetToolManifest,
+		constants.InterfaceIDStartRun,
+		constants.InterfaceIDGetRun,
+		constants.InterfaceIDResumeRun,
+		constants.InterfaceIDGraphFlow,
+		constants.InterfaceIDValidateFlow,
+		constants.InterfaceIDTestFlow,
+		constants.InterfaceIDInlineRun,
+		constants.InterfaceIDListTools,
+		constants.InterfaceIDGetToolManifest,
 	}
 	for _, id := range coreIDs {
 		RegisterInterface(InterfaceMeta{ID: id, Type: HTTP})
@@ -107,9 +69,9 @@ func init() {
 
 	// HTTP-only interfaces (plus shared publishEvent)
 	httpOnly := []string{
-		InterfaceIDListRuns,
-		InterfaceIDMetadata,
-		InterfaceIDPublishEvent,
+		constants.InterfaceIDListRuns,
+		constants.InterfaceIDMetadata,
+		constants.InterfaceIDPublishEvent,
 	}
 	for _, id := range httpOnly {
 		RegisterInterface(InterfaceMeta{ID: id, Type: HTTP})
@@ -117,11 +79,11 @@ func init() {
 
 	// MCP-only interfaces (plus listRuns and metadata)
 	mcpOnly := []string{
-		InterfaceIDListFlows,
-		InterfaceIDGetFlow,
-		InterfaceIDPublishEvent,
-		InterfaceIDListRuns,
-		InterfaceIDMetadata,
+		constants.InterfaceIDListFlows,
+		constants.InterfaceIDGetFlow,
+		constants.InterfaceIDPublishEvent,
+		constants.InterfaceIDListRuns,
+		constants.InterfaceIDMetadata,
 	}
 	for _, id := range mcpOnly {
 		RegisterInterface(InterfaceMeta{ID: id, Type: MCP})
@@ -129,6 +91,6 @@ func init() {
 
 	// Register spec endpoint/tool/command for all interface types
 	for _, typ := range []InterfaceType{CLI, HTTP, MCP} {
-		RegisterInterface(InterfaceMeta{ID: InterfaceIDSpec, Type: typ, Use: InterfaceIDSpec, Description: InterfaceDescSpec})
+		RegisterInterface(InterfaceMeta{ID: constants.InterfaceIDSpec, Type: typ, Use: constants.InterfaceIDSpec, Description: constants.InterfaceDescSpec})
 	}
 }

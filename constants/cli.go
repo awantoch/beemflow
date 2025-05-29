@@ -74,8 +74,8 @@ const (
 
 // CLI Configuration Keys
 const (
-	JSONIndent        = "  "
-	OutputFormatThree = "%s\t%s\t%s"
-	OutputFormatFour  = "%s\t%s\t%s\t%s"
-	OutputFormatFive  = "%s\t%s\t%s\t%s\t%s"
+	JSONIndent         = "  "
+	FormatThreeColumns = "%s\t%s\t%s"         // For name, description, endpoint
+	FormatFourColumns  = "%s\t%s\t%s\t%s"     // For name, kind, description, endpoint
+	FormatFiveColumns  = "%s\t%s\t%s\t%s\t%s" // For registry, name, description, kind, endpoint
 )

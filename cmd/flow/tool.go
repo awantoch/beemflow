@@ -159,7 +159,7 @@ func runToolList(cmd *cobra.Command, args []string) error {
 		kind, _ := t["kind"].(string)
 		desc, _ := t["description"].(string)
 		endpoint, _ := t["endpoint"].(string)
-		utils.User(constants.OutputFormatFour, name, kind, desc, endpoint)
+		utils.User(constants.FormatFourColumns, name, kind, desc, endpoint)
 	}
 	return nil
 }

@@ -67,7 +67,7 @@ func runMCPSearch(cmd *cobra.Command, args []string) error {
 
 	utils.User(constants.HeaderServers)
 	for _, s := range entries {
-		utils.User(constants.OutputFormatThree, s.Name, s.Description, s.Endpoint)
+		utils.User(constants.FormatThreeColumns, s.Name, s.Description, s.Endpoint)
 	}
 	return nil
 }
@@ -190,7 +190,7 @@ func runMCPList(configFile string) error {
 	// List servers from config
 	if cfg != nil && cfg.MCPServers != nil {
 		for name, spec := range cfg.MCPServers {
-			utils.User(constants.OutputFormatFive, "config", name, "", spec.Transport, spec.Endpoint)
+			utils.User(constants.FormatFiveColumns, "config", name, "", spec.Transport, spec.Endpoint)
 		}
 	}
 
@@ -201,7 +201,7 @@ func runMCPList(configFile string) error {
 	})
 	if err == nil {
 		for _, s := range servers {
-			utils.User(constants.OutputFormatFive, s.Registry, s.Name, s.Description, s.Kind, s.Endpoint)
+			utils.User(constants.FormatFiveColumns, s.Registry, s.Name, s.Description, s.Kind, s.Endpoint)
 		}
 	}
 	return nil

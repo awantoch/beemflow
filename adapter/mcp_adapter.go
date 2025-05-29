@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/constants"
 	mcpmanager "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/utils"
@@ -93,7 +94,7 @@ func (a *MCPAdapter) validateHTTPTool(endpoint, tool string) error {
 		return fmt.Errorf("failed to marshal tools/list request: %w", err)
 	}
 
-	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(bodyBytes))
+	resp, err := http.Post(endpoint, constants.ContentTypeJSON, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed to list tools: %w", err)
 	}
@@ -125,7 +126,7 @@ func (a *MCPAdapter) callHTTPTool(endpoint, tool string, inputs map[string]any) 
 		return nil, fmt.Errorf("failed to marshal tools/call request: %w", err)
 	}
 
-	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(callBytes))
+	resp, err := http.Post(endpoint, constants.ContentTypeJSON, bytes.NewReader(callBytes))
 	if err != nil {
 		return nil, fmt.Errorf("MCP CallTool failed: %w", err)
 	}

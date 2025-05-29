@@ -14,6 +14,7 @@ import (
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/dsl"
 	beemengine "github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
@@ -148,7 +149,7 @@ func StartServer(cfg *config.Config) error {
 	mux := http.NewServeMux()
 
 	// Serve static files
-	registry.RegisterRoute(mux, "GET", "/", registry.InterfaceDescStaticAssets, http.FileServer(http.Dir(".")).ServeHTTP)
+	registry.RegisterRoute(mux, "GET", "/", constants.InterfaceDescStaticAssets, http.FileServer(http.Dir(".")).ServeHTTP)
 
 	// Create the service
 	svc := api.NewFlowService()

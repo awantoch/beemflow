@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/utils"
 )
 
@@ -576,19 +577,19 @@ func TestCoreAdapter_ConvertOpenAPI_HelperFunctions(t *testing.T) {
 
 	// Test determineContentType
 	getOp := map[string]any{}
-	if ct := a.determineContentType(getOp, "GET"); ct != "application/json" {
-		t.Errorf("expected 'application/json' for GET, got %q", ct)
+	if ct := a.determineContentType(getOp, "GET"); ct != constants.ContentTypeJSON {
+		t.Errorf("expected '%s' for GET, got %q", constants.ContentTypeJSON, ct)
 	}
 
 	formOp := map[string]any{
 		"requestBody": map[string]any{
 			"content": map[string]any{
-				"application/x-www-form-urlencoded": map[string]any{},
+				constants.ContentTypeForm: map[string]any{},
 			},
 		},
 	}
-	if ct := a.determineContentType(formOp, "POST"); ct != "application/x-www-form-urlencoded" {
-		t.Errorf("expected 'application/x-www-form-urlencoded', got %q", ct)
+	if ct := a.determineContentType(formOp, "POST"); ct != constants.ContentTypeForm {
+		t.Errorf("expected '%s', got %q", constants.ContentTypeForm, ct)
 	}
 }
 
@@ -600,7 +601,7 @@ func TestCoreAdapter_ExtractParameters_Comprehensive(t *testing.T) {
 	postOpJSON := map[string]any{
 		"requestBody": map[string]any{
 			"content": map[string]any{
-				"application/json": map[string]any{
+				constants.ContentTypeJSON: map[string]any{
 					"schema": map[string]any{
 						"type": "object",
 						"properties": map[string]any{

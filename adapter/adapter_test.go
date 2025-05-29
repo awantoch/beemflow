@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/registry"
 )
 
@@ -86,7 +87,7 @@ func TestRegistryRegisterGet(t *testing.T) {
 func TestHTTPAdapter(t *testing.T) {
 	// Start a mock HTTP server to simulate the endpoint
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		if _, err := w.Write([]byte(`{"echoed": true}`)); err != nil {
 			t.Fatalf("w.Write failed: %v", err)
 		}

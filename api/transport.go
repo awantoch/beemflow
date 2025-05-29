@@ -37,45 +37,71 @@ type CommandConstructors struct {
 // and registers them with the registry for metadata discovery.
 func AttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 	// Register HTTP interfaces for metadata discovery
+	registerHTTPMetadata()
+
+	// Register system endpoints (health, metadata, spec)
+	registerSystemEndpoints(mux)
+
+	// Register API endpoints
+	registerAPIEndpoints(mux, svc)
+}
+
+// registerHTTPMetadata registers all HTTP interface metadata for discovery
+func registerHTTPMetadata() {
 	httpMetas := []registry.InterfaceMeta{
-		{ID: registry.InterfaceIDListRuns, Type: registry.HTTP, Use: http.MethodGet, Path: "/runs", Description: registry.InterfaceDescListRuns},
-		{ID: registry.InterfaceIDStartRun, Type: registry.HTTP, Use: http.MethodPost, Path: "/runs", Description: registry.InterfaceDescStartRun},
-		{ID: registry.InterfaceIDGetRun, Type: registry.HTTP, Use: http.MethodGet, Path: "/runs/{id}", Description: registry.InterfaceDescGetRun},
-		{ID: registry.InterfaceIDResumeRun, Type: registry.HTTP, Use: http.MethodPost, Path: "/resume/{token}", Description: registry.InterfaceDescResumeRun},
-		{ID: registry.InterfaceIDGraphFlow, Type: registry.HTTP, Use: http.MethodGet, Path: "/graph", Description: registry.InterfaceDescGraphFlow},
-		{ID: registry.InterfaceIDValidateFlow, Type: registry.HTTP, Use: http.MethodPost, Path: "/validate", Description: registry.InterfaceDescValidateFlow},
-		{ID: registry.InterfaceIDTestFlow, Type: registry.HTTP, Use: http.MethodPost, Path: "/test", Description: registry.InterfaceDescTestFlow},
-		{ID: registry.InterfaceIDInlineRun, Type: registry.HTTP, Use: http.MethodPost, Path: "/runs/inline", Description: registry.InterfaceDescInlineRun},
-		{ID: registry.InterfaceIDListTools, Type: registry.HTTP, Use: http.MethodGet, Path: "/tools", Description: registry.InterfaceDescListTools},
-		{ID: registry.InterfaceIDGetToolManifest, Type: registry.HTTP, Use: http.MethodGet, Path: "/tools/{name}", Description: registry.InterfaceDescGetToolManifest},
-		{ID: registry.InterfaceIDListFlows, Type: registry.HTTP, Use: http.MethodGet, Path: "/flows", Description: registry.InterfaceDescListFlows},
-		{ID: registry.InterfaceIDGetFlowSpec, Type: registry.HTTP, Use: http.MethodGet, Path: "/flows/{name}", Description: registry.InterfaceDescGetFlowSpec},
-		{ID: registry.InterfaceIDPublishEvent, Type: registry.HTTP, Use: http.MethodPost, Path: "/events", Description: registry.InterfaceDescPublishEvent},
-		{ID: registry.InterfaceIDSpec, Type: registry.HTTP, Use: http.MethodGet, Path: "/spec", Description: "Get BeemFlow protocol spec"},
-		{ID: "convertOpenAPI", Type: registry.HTTP, Use: http.MethodPost, Path: "/tools/convert", Description: "Convert OpenAPI specs to BeemFlow tool manifests"},
+		{ID: constants.InterfaceIDListRuns, Type: registry.HTTP, Use: http.MethodGet, Path: "/runs", Description: constants.InterfaceDescListRuns},
+		{ID: constants.InterfaceIDStartRun, Type: registry.HTTP, Use: http.MethodPost, Path: "/runs", Description: constants.InterfaceDescStartRun},
+		{ID: constants.InterfaceIDGetRun, Type: registry.HTTP, Use: http.MethodGet, Path: "/runs/{id}", Description: constants.InterfaceDescGetRun},
+		{ID: constants.InterfaceIDResumeRun, Type: registry.HTTP, Use: http.MethodPost, Path: "/resume/{token}", Description: constants.InterfaceDescResumeRun},
+		{ID: constants.InterfaceIDGraphFlow, Type: registry.HTTP, Use: http.MethodGet, Path: "/graph", Description: constants.InterfaceDescGraphFlow},
+		{ID: constants.InterfaceIDValidateFlow, Type: registry.HTTP, Use: http.MethodPost, Path: "/validate", Description: constants.InterfaceDescValidateFlow},
+		{ID: constants.InterfaceIDTestFlow, Type: registry.HTTP, Use: http.MethodPost, Path: "/test", Description: constants.InterfaceDescTestFlow},
+		{ID: constants.InterfaceIDInlineRun, Type: registry.HTTP, Use: http.MethodPost, Path: "/runs/inline", Description: constants.InterfaceDescInlineRun},
+		{ID: constants.InterfaceIDListTools, Type: registry.HTTP, Use: http.MethodGet, Path: "/tools", Description: constants.InterfaceDescListTools},
+		{ID: constants.InterfaceIDGetToolManifest, Type: registry.HTTP, Use: http.MethodGet, Path: "/tools/{name}", Description: constants.InterfaceDescGetToolManifest},
+		{ID: constants.InterfaceIDListFlows, Type: registry.HTTP, Use: http.MethodGet, Path: "/flows", Description: constants.InterfaceDescListFlows},
+		{ID: constants.InterfaceIDGetFlowSpec, Type: registry.HTTP, Use: http.MethodGet, Path: "/flows/{name}", Description: constants.InterfaceDescGetFlowSpec},
+		{ID: constants.InterfaceIDPublishEvent, Type: registry.HTTP, Use: http.MethodPost, Path: "/events", Description: constants.InterfaceDescPublishEvent},
+		{ID: constants.InterfaceIDSpec, Type: registry.HTTP, Use: http.MethodGet, Path: "/spec", Description: constants.InterfaceDescSpec},
+		{ID: constants.InterfaceIDConvertOpenAPI, Type: registry.HTTP, Use: http.MethodPost, Path: "/tools/convert", Description: constants.InterfaceDescConvertOpenAPI},
 	}
 	for _, m := range httpMetas {
 		registry.RegisterInterface(m)
 	}
+}
 
-	// Metadata discovery endpoint
-	registry.RegisterRoute(mux, "GET", "/metadata", registry.InterfaceDescMetadata, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
-		if err := json.NewEncoder(w).Encode(registry.AllInterfaces()); err != nil {
-			utils.Error("Failed to encode metadata response: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-		}
-	})
-
+// registerSystemEndpoints registers health check, metadata, and spec endpoints
+func registerSystemEndpoints(mux *http.ServeMux) {
 	// Health check endpoint
-	registry.RegisterRoute(mux, "GET", "/healthz", registry.InterfaceDescHealthCheck, func(w http.ResponseWriter, r *http.Request) {
+	registry.RegisterRoute(mux, constants.HTTPMethodGET, "/metadata", constants.InterfaceDescMetadata, func(w http.ResponseWriter, r *http.Request) {
+		b, err := json.Marshal(registry.AllInterfaces())
+		if err != nil {
+			utils.Error(constants.LogFailedEncodeMetadata, err)
+			http.Error(w, constants.ResponseInvalidRequestBody, http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
-			utils.Error("Failed to write health check response: %v", err)
+		w.Write(b)
+	})
+
+	registry.RegisterRoute(mux, constants.HTTPMethodGET, "/healthz", constants.InterfaceDescHealthCheck, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
+		if _, err := w.Write([]byte(constants.HealthCheckResponse)); err != nil {
+			utils.Error(constants.LogFailedWriteHealthCheck, err)
 		}
 	})
 
+	// Spec endpoint
+	registry.RegisterRoute(mux, constants.HTTPMethodGET, "/spec", constants.InterfaceDescSpec, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeTextMarkdown)
+		if _, err := w.Write([]byte(docs.BeemflowSpec)); err != nil {
+			utils.Error(constants.LogFailedWriteSpec, err)
+		}
+	})
+}
+
+// registerAPIEndpoints registers all API endpoints with their handlers
+func registerAPIEndpoints(mux *http.ServeMux, svc FlowService) {
 	// Register handlers for each API endpoint
 	mux.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -120,18 +146,20 @@ func AttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		eventsHandler(w, r, svc)
 	})
-	mux.HandleFunc("/spec", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(constants.HeaderContentType, constants.ContentTypeTextMarkdown)
-		if _, err := w.Write([]byte(docs.BeemflowSpec)); err != nil {
-			utils.Error("Failed to write spec response: %v", err)
-		}
-	})
 }
 
 // AttachCLICommands registers all BeemFlow CLI commands to the provided root command
 // and registers them with the registry for metadata discovery.
 func AttachCLICommands(root *cobra.Command, svc FlowService, constructors CommandConstructors) {
 	// Add all subcommands
+	addSubcommands(root, constructors)
+
+	// Register CLI metadata for discovery
+	registerCLIMetadata(root)
+}
+
+// addSubcommands adds all available subcommands to the root command
+func addSubcommands(root *cobra.Command, constructors CommandConstructors) {
 	if constructors.NewServeCmd != nil {
 		root.AddCommand(constructors.NewServeCmd())
 	}
@@ -162,144 +190,166 @@ func AttachCLICommands(root *cobra.Command, svc FlowService, constructors Comman
 	if constructors.NewSpecCmd != nil {
 		root.AddCommand(constructors.NewSpecCmd())
 	}
+}
 
-	// Register all CLI commands for metadata discovery
+// registerCLIMetadata registers all CLI commands for metadata discovery
+func registerCLIMetadata(root *cobra.Command) {
 	cliMetas := collectCobra(root)
 	for _, m := range cliMetas {
 		registry.RegisterInterface(m)
 	}
 }
 
+// toolDef represents a tool definition for MCP registration
+type toolDef struct {
+	ID, Desc string
+	Handler  any
+}
+
 // BuildMCPToolRegistrations creates all MCP tool registrations for the BeemFlow API
 // and registers them with the registry for metadata discovery.
 func BuildMCPToolRegistrations(svc FlowService) []mcpserver.ToolRegistration {
-	type toolDef struct {
-		ID, Desc string
-		Handler  any
+	toolDefs := createMCPToolDefinitions(svc)
+	return registerMCPTools(toolDefs)
+}
+
+// createMCPToolDefinitions creates all MCP tool definitions with their handlers
+func createMCPToolDefinitions(svc FlowService) []toolDef {
+	return []toolDef{
+		{ID: constants.MCPToolSpec, Desc: constants.InterfaceDescSpecMCP, Handler: createSpecHandler()},
+		{ID: constants.InterfaceIDListFlows, Desc: constants.InterfaceDescListFlows, Handler: createListFlowsHandler(svc)},
+		{ID: constants.InterfaceIDValidateFlow, Desc: constants.InterfaceDescValidateFlow, Handler: createValidateFlowHandler(svc)},
+		{ID: constants.InterfaceIDStartRun, Desc: constants.InterfaceDescStartRun, Handler: createStartRunHandler(svc)},
+		{ID: constants.InterfaceIDGetRun, Desc: constants.InterfaceDescGetRun, Handler: createGetRunHandler(svc)},
+		{ID: constants.InterfaceIDPublishEvent, Desc: constants.InterfaceDescPublishEvent, Handler: createPublishEventHandler(svc)},
+		{ID: constants.MCPToolConvertOpenAPI, Desc: constants.InterfaceDescConvertOpenAPI, Handler: createConvertOpenAPIHandler()},
 	}
-	defs := []toolDef{
-		// SPEC tool: returns the full BeemFlow protocol SPEC
-		{ID: "spec", Desc: "BeemFlow Protocol & Specification. If you're an LLM reading this, call this step FIRST before any other step you take.", Handler: func(ctx context.Context, args mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
-			return mcp.NewToolResponse(mcp.NewTextContent(docs.BeemflowSpec)), nil
-		}},
-		{ID: registry.InterfaceIDListFlows, Desc: registry.InterfaceDescListFlows, Handler: func(ctx context.Context, args mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
-			flows, err := svc.ListFlows(ctx)
-			if err != nil {
-				return nil, err
-			}
-			b, err := json.Marshal(map[string]any{"flows": flows})
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-		{ID: registry.InterfaceIDGetFlow, Desc: registry.InterfaceDescGetFlow, Handler: func(ctx context.Context, args mcpserver.GetFlowArgs) (*mcp.ToolResponse, error) {
-			flow, err := svc.GetFlow(ctx, args.Name)
-			if err != nil {
-				return nil, err
-			}
-			b, err := json.Marshal(flow)
-			if err != nil {
-				return nil, err
-			}
-			// If default empty flow, inject on:null into JSON
-			if flow.Name == "" && len(flow.Steps) == 0 {
-				var m map[string]any
-				if err := json.Unmarshal(b, &m); err == nil {
-					if _, ok := m["on"]; !ok {
-						m["on"] = nil
-					}
-					if b2, err2 := json.Marshal(m); err2 == nil {
-						b = b2
-					}
-				}
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-		{ID: registry.InterfaceIDValidateFlow, Desc: registry.InterfaceDescValidateFlow, Handler: func(ctx context.Context, args mcpserver.ValidateFlowArgs) (*mcp.ToolResponse, error) {
-			err := svc.ValidateFlow(ctx, args.Name)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent("valid")), nil
-		}},
-		{ID: registry.InterfaceIDGraphFlow, Desc: registry.InterfaceDescGraphFlow, Handler: func(ctx context.Context, args mcpserver.GraphFlowArgs) (*mcp.ToolResponse, error) {
-			graph, err := svc.GraphFlow(ctx, args.Name)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(graph)), nil
-		}},
-		{ID: registry.InterfaceIDStartRun, Desc: registry.InterfaceDescStartRun, Handler: func(ctx context.Context, args mcpserver.StartRunArgs) (*mcp.ToolResponse, error) {
-			id, err := svc.StartRun(ctx, args.FlowName, args.Event)
-			if err != nil {
-				return nil, err
-			}
-			b, err := json.Marshal(map[string]any{"runID": id.String()})
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-		{ID: registry.InterfaceIDGetRun, Desc: registry.InterfaceDescGetRun, Handler: func(ctx context.Context, args mcpserver.GetRunArgs) (*mcp.ToolResponse, error) {
-			id, _ := uuid.Parse(args.RunID)
-			run, err := svc.GetRun(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-			b, err := json.Marshal(run)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-		{ID: registry.InterfaceIDPublishEvent, Desc: registry.InterfaceDescPublishEvent, Handler: func(ctx context.Context, args mcpserver.PublishEventArgs) (*mcp.ToolResponse, error) {
-			err := svc.PublishEvent(ctx, args.Topic, args.Payload)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent("published")), nil
-		}},
-		{ID: registry.InterfaceIDResumeRun, Desc: registry.InterfaceDescResumeRun, Handler: func(ctx context.Context, args mcpserver.ResumeRunArgs) (*mcp.ToolResponse, error) {
-			out, err := svc.ResumeRun(ctx, args.Token, args.Event)
-			if err != nil {
-				return nil, err
-			}
-			b, err := json.Marshal(out)
-			if err != nil {
-				return nil, err
-			}
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		}},
-		{
-			ID:   "beemflow_convert_openapi",
-			Desc: "Convert OpenAPI spec to BeemFlow tool manifests",
-			Handler: func(ctx context.Context, args map[string]any) (any, error) {
-				// Extract required parameters
-				openapi, ok := args["openapi"].(string)
-				if !ok {
-					return nil, fmt.Errorf("missing required parameter: openapi")
-				}
+}
 
-				// Extract optional parameters with defaults
-				apiName, _ := args["api_name"].(string)
-				if apiName == "" {
-					apiName = "api"
-				}
-
-				baseURL, _ := args["base_url"].(string)
-
-				// Use the DRY helper for conversion
-				return convertOpenAPISpec(ctx, openapi, apiName, baseURL)
-			},
-		},
-	}
+// registerMCPTools registers tool definitions and creates tool registrations
+func registerMCPTools(defs []toolDef) []mcpserver.ToolRegistration {
 	regs := make([]mcpserver.ToolRegistration, 0, len(defs))
 	for _, d := range defs {
 		regs = append(regs, mcpserver.ToolRegistration{Name: d.ID, Description: d.Desc, Handler: d.Handler})
 		registry.RegisterInterface(registry.InterfaceMeta{ID: d.ID, Type: registry.MCP, Use: d.ID, Description: d.Desc})
 	}
 	return regs
+}
+
+// MCP Tool Handler Creators - Beautiful, focused functions for each tool
+
+// createSpecHandler creates the spec tool handler
+func createSpecHandler() func(context.Context, mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
+	return func(ctx context.Context, args mcpserver.EmptyArgs) (*mcp.ToolResponse, error) {
+		return mcp.NewToolResponse(mcp.NewTextContent(docs.BeemflowSpec)), nil
+	}
+}
+
+// createListFlowsHandler creates the MCP handler for listing flows
+func createListFlowsHandler(svc FlowService) func(context.Context, map[string]any) (*mcp.ToolResponse, error) {
+	return func(ctx context.Context, args map[string]any) (*mcp.ToolResponse, error) {
+		flows, err := svc.ListFlows(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		b, err := json.Marshal(map[string]any{constants.FieldFlows: flows})
+		if err != nil {
+			return nil, err
+		}
+
+		return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
+	}
+}
+
+// createValidateFlowHandler creates the MCP handler for validating flows
+func createValidateFlowHandler(svc FlowService) func(context.Context, map[string]any) (*mcp.ToolResponse, error) {
+	return func(ctx context.Context, args map[string]any) (*mcp.ToolResponse, error) {
+		m, ok := args[constants.FieldFlow].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("invalid flow argument")
+		}
+
+		// Ensure 'on' field exists
+		if _, ok := m[constants.FieldOn]; !ok {
+			m[constants.FieldOn] = nil
+		}
+
+		b, err := json.Marshal(m)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := svc.ValidateFlow(ctx, string(b)); err != nil {
+			return nil, err
+		}
+
+		return mcp.NewToolResponse(mcp.NewTextContent(constants.StatusValid)), nil
+	}
+}
+
+// createStartRunHandler creates the start run tool handler
+func createStartRunHandler(svc FlowService) func(context.Context, mcpserver.StartRunArgs) (*mcp.ToolResponse, error) {
+	return func(ctx context.Context, args mcpserver.StartRunArgs) (*mcp.ToolResponse, error) {
+		id, err := svc.StartRun(ctx, args.FlowName, args.Event)
+		if err != nil {
+			return nil, err
+		}
+		b, err := json.Marshal(map[string]any{constants.FieldRunID: id.String()})
+		if err != nil {
+			return nil, err
+		}
+		return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
+	}
+}
+
+// createGetRunHandler creates the get run tool handler
+func createGetRunHandler(svc FlowService) func(context.Context, mcpserver.GetRunArgs) (*mcp.ToolResponse, error) {
+	return func(ctx context.Context, args mcpserver.GetRunArgs) (*mcp.ToolResponse, error) {
+		id, _ := uuid.Parse(args.RunID)
+		run, err := svc.GetRun(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		b, err := json.Marshal(run)
+		if err != nil {
+			return nil, err
+		}
+		return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
+	}
+}
+
+// createPublishEventHandler creates the publish event tool handler
+func createPublishEventHandler(svc FlowService) func(context.Context, mcpserver.PublishEventArgs) (*mcp.ToolResponse, error) {
+	return func(ctx context.Context, args mcpserver.PublishEventArgs) (*mcp.ToolResponse, error) {
+		err := svc.PublishEvent(ctx, args.Topic, args.Payload)
+		if err != nil {
+			return nil, err
+		}
+		return mcp.NewToolResponse(mcp.NewTextContent(constants.StatusPublished)), nil
+	}
+}
+
+// createConvertOpenAPIHandler creates the convert OpenAPI tool handler
+func createConvertOpenAPIHandler() func(context.Context, map[string]any) (any, error) {
+	return func(ctx context.Context, args map[string]any) (any, error) {
+		// Extract required parameters
+		openapi, ok := args[constants.MCPParamOpenAPI].(string)
+		if !ok {
+			return nil, fmt.Errorf(constants.MCPMissingParam, constants.MCPParamOpenAPI)
+		}
+
+		// Extract optional parameters with defaults
+		apiName, _ := args[constants.MCPParamAPIName].(string)
+		if apiName == "" {
+			apiName = constants.DefaultAPIName
+		}
+
+		baseURL, _ := args[constants.MCPParamBaseURL].(string)
+
+		// Use the DRY helper for conversion
+		return convertOpenAPISpec(ctx, openapi, apiName, baseURL)
+	}
 }
 
 // Helper functions for HTTP handlers
@@ -318,13 +368,13 @@ func writeResponse(w http.ResponseWriter, r *http.Request, resp httpResponse) {
 
 	var payload any
 	if resp.Error != "" {
-		payload = map[string]string{"error": resp.Error}
+		payload = map[string]string{constants.FieldError: resp.Error}
 	} else {
 		payload = resp.Data
 	}
 
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		utils.ErrorCtx(r.Context(), "Failed to encode JSON response", "error", err)
+		utils.ErrorCtx(r.Context(), constants.LogFailedEncodeJSON, constants.FieldError, err)
 	}
 }
 
@@ -332,7 +382,7 @@ func writeResponse(w http.ResponseWriter, r *http.Request, resp httpResponse) {
 func writeTextResponse(w http.ResponseWriter, r *http.Request, statusCode int, text string) {
 	w.WriteHeader(statusCode)
 	if _, err := w.Write([]byte(text)); err != nil {
-		utils.ErrorCtx(r.Context(), "Failed to write text response", "error", err)
+		utils.ErrorCtx(r.Context(), constants.LogFailedWriteText, constants.FieldError, err)
 	}
 }
 
@@ -397,7 +447,7 @@ func runsListHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 
 // POST /runs { flow: <filename>, event: <object> }.
 func runsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if !methodGuard(w, r, http.MethodPost) {
+	if !methodGuard(w, r, constants.HTTPMethodPOST) {
 		return
 	}
 
@@ -409,7 +459,7 @@ func runsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	if err := decodeJSONRequest(r, &req); err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusBadRequest,
-			Error:      "invalid request body",
+			Error:      constants.ResponseInvalidRequestBody,
 		})
 		return
 	}
@@ -426,40 +476,41 @@ func runsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	writeResponse(w, r, httpResponse{
 		StatusCode: http.StatusOK,
 		Data: map[string]any{
-			"run_id": id.String(),
-			"status": "STARTED",
+			constants.FieldRunID:  id.String(),
+			constants.FieldStatus: constants.StatusStarted,
 		},
 	})
 }
 
 // GET /runs/{id}.
 func runStatusHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	switch r.Method {
-	case http.MethodGet:
-		handleGetRun(w, r, svc)
-	case http.MethodDelete:
-		handleDeleteRun(w, r, svc)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	}
-}
-
-// handleGetRun handles GET /runs/{id}
-func handleGetRun(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	id, err := parseUUIDFromPath(r.URL.Path, "/runs/")
+	id, err := parseUUIDFromPath(r.URL.Path, constants.PathRuns)
 	if err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusBadRequest,
-			Error:      "invalid run ID",
+			Error:      constants.ResponseInvalidRunID,
 		})
 		return
 	}
 
+	if !methodGuard(w, r, constants.HTTPMethodGET, constants.HTTPMethodDELETE) {
+		return
+	}
+
+	if r.Method == constants.HTTPMethodGET {
+		handleGetRun(w, r, svc, id)
+	} else {
+		handleDeleteRun(w, r, svc, id)
+	}
+}
+
+// handleGetRun handles GET /runs/{id}
+func handleGetRun(w http.ResponseWriter, r *http.Request, svc FlowService, id uuid.UUID) {
 	run, err := svc.GetRun(r.Context(), id)
-	if err != nil || run == nil {
+	if err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusNotFound,
-			Error:      "run not found",
+			Error:      constants.ResponseRunNotFound,
 		})
 		return
 	}
@@ -471,16 +522,7 @@ func handleGetRun(w http.ResponseWriter, r *http.Request, svc FlowService) {
 }
 
 // handleDeleteRun handles DELETE /runs/{id}
-func handleDeleteRun(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	id, err := parseUUIDFromPath(r.URL.Path, "/runs/")
-	if err != nil {
-		writeResponse(w, r, httpResponse{
-			StatusCode: http.StatusBadRequest,
-			Error:      "invalid run ID",
-		})
-		return
-	}
-
+func handleDeleteRun(w http.ResponseWriter, r *http.Request, svc FlowService, id uuid.UUID) {
 	if err := svc.DeleteRun(r.Context(), id); err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusInternalServerError,
@@ -489,23 +531,23 @@ func handleDeleteRun(w http.ResponseWriter, r *http.Request, svc FlowService) {
 		return
 	}
 
-	writeTextResponse(w, r, http.StatusOK, "deleted")
+	writeTextResponse(w, r, http.StatusOK, constants.StatusDeleted)
 }
 
 // POST /resume/{token}.
 func resumeHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if !methodGuard(w, r, http.MethodPost) {
+	if !methodGuard(w, r, constants.HTTPMethodPOST) {
 		return
 	}
 
-	tokenOrID := r.URL.Path[len("/resume/"):]
+	tokenOrID := r.URL.Path[len(constants.PathResume):]
 
 	// Parse the JSON body for event data
 	var resumeEvent map[string]any
 	if err := decodeJSONRequest(r, &resumeEvent); err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusBadRequest,
-			Error:      "invalid request body",
+			Error:      constants.ResponseInvalidRequestBody,
 		})
 		return
 	}
@@ -528,7 +570,7 @@ func resumeHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 
 	writeResponse(w, r, httpResponse{
 		StatusCode: http.StatusOK,
-		Data:       map[string]any{"outputs": outputs},
+		Data:       map[string]any{constants.FieldOutputs: outputs},
 	})
 }
 
@@ -539,7 +581,7 @@ func handleDirectRunUpdate(w http.ResponseWriter, r *http.Request, id uuid.UUID,
 	if err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusInternalServerError,
-			Error:      "failed to load config",
+			Error:      constants.ResponseFailedToLoadConfig,
 		})
 		return
 	}
@@ -548,7 +590,7 @@ func handleDirectRunUpdate(w http.ResponseWriter, r *http.Request, id uuid.UUID,
 	if err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusInternalServerError,
-			Error:      "failed to get storage",
+			Error:      constants.ResponseFailedToGetStorage,
 		})
 		return
 	}
@@ -558,7 +600,7 @@ func handleDirectRunUpdate(w http.ResponseWriter, r *http.Request, id uuid.UUID,
 	if err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusNotFound,
-			Error:      "run not found",
+			Error:      constants.ResponseRunNotFound,
 		})
 		return
 	}
@@ -570,7 +612,7 @@ func handleDirectRunUpdate(w http.ResponseWriter, r *http.Request, id uuid.UUID,
 	if err := store.SaveRun(r.Context(), run); err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusInternalServerError,
-			Error:      "failed to save run",
+			Error:      constants.ResponseFailedToSaveRun,
 		})
 		return
 	}
@@ -579,23 +621,23 @@ func handleDirectRunUpdate(w http.ResponseWriter, r *http.Request, id uuid.UUID,
 	writeResponse(w, r, httpResponse{
 		StatusCode: http.StatusOK,
 		Data: map[string]any{
-			"status":  run.Status,
-			"outputs": run.Event["outputs"],
+			constants.FieldStatus:  run.Status,
+			constants.FieldOutputs: run.Event[constants.FieldOutputs],
 		},
 	})
 }
 
 // GET /graph?flow=<name>.
 func graphHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if !methodGuard(w, r, http.MethodGet) {
+	if !methodGuard(w, r, constants.HTTPMethodGET) {
 		return
 	}
 
-	flowName := r.URL.Query().Get("flow")
+	flowName := r.URL.Query().Get(constants.QueryParamFlow)
 	if flowName == "" {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusBadRequest,
-			Error:      "missing flow parameter",
+			Error:      constants.ResponseMissingFlowParameter,
 		})
 		return
 	}
@@ -626,7 +668,7 @@ func validateHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	if err := decodeJSONRequest(r, &req); err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusBadRequest,
-			Error:      "invalid request body",
+			Error:      constants.ResponseInvalidRequestBody,
 		})
 		return
 	}
@@ -634,14 +676,14 @@ func validateHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	if err := svc.ValidateFlow(r.Context(), req.Flow); err != nil {
 		writeResponse(w, r, httpResponse{
 			StatusCode: http.StatusBadRequest,
-			Error:      fmt.Sprintf("validation failed: %v", err),
+			Error:      fmt.Sprintf(constants.ValidationFailed, err),
 		})
 		return
 	}
 
 	writeResponse(w, r, httpResponse{
 		StatusCode: http.StatusOK,
-		Data:       map[string]string{"status": "valid"},
+		Data:       map[string]string{constants.FieldStatus: constants.StatusValid},
 	})
 }
 
@@ -651,7 +693,7 @@ func testHandler(w http.ResponseWriter, _ *http.Request, _ FlowService) {
 }
 
 func runsInlineHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if r.Method != http.MethodPost {
+	if r.Method != constants.HTTPMethodPOST {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
@@ -662,8 +704,8 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request, svc FlowService) 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("invalid request body")); err != nil {
-			utils.Error("w.Write failed: %v", err)
+		if _, err := w.Write([]byte(constants.ResponseInvalidRequestBody)); err != nil {
+			utils.Error(constants.LogWriteFailed, err)
 		}
 		return
 	}
@@ -672,8 +714,8 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request, svc FlowService) 
 	if err != nil {
 		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("invalid flow spec: " + err.Error())); err != nil {
-			utils.Error("w.Write failed: %v", err)
+		if _, err := w.Write([]byte(constants.ResponseInvalidFlowSpec + ": " + err.Error())); err != nil {
+			utils.Error(constants.LogWriteFailed, err)
 		}
 		return
 	}
@@ -681,60 +723,60 @@ func runsInlineHandler(w http.ResponseWriter, r *http.Request, svc FlowService) 
 	id, outputs, err := svc.RunSpec(r.Context(), flow, req.Event)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		if _, err := w.Write([]byte("run error: " + err.Error())); err != nil {
-			utils.Error("w.Write failed: %v", err)
+		if _, err := w.Write([]byte(constants.ResponseRunError + ": " + err.Error())); err != nil {
+			utils.Error(constants.LogWriteFailed, err)
 		}
 		return
 	}
 	resp := map[string]any{
-		"run_id":  id.String(),
-		"outputs": outputs,
+		constants.FieldRunID:   id.String(),
+		constants.FieldOutputs: outputs,
 	}
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		utils.Error("json.Encode failed: %v", err)
+		utils.Error(constants.LogJSONEncodeFailed, err)
 	}
 }
 
 // toolsIndexHandler returns a JSON list of all registered tool manifests from the registry index.json.
 func toolsIndexHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if r.Method != http.MethodGet {
+	if r.Method != constants.HTTPMethodGET {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	tools, err := svc.ListTools(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		if _, err := w.Write([]byte("failed to list tools")); err != nil {
-			utils.Error("w.Write failed: %v", err)
+		if _, err := w.Write([]byte(constants.ResponseFailedToListTools)); err != nil {
+			utils.Error(constants.LogWriteFailed, err)
 		}
 		return
 	}
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(tools); err != nil {
-		utils.Error("json.Encode failed: %v", err)
+		utils.Error(constants.LogJSONEncodeFailed, err)
 	}
 }
 
 // toolsManifestHandler returns the manifest for a single tool by name from the registry index.json.
 func toolsManifestHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if r.Method != http.MethodGet {
+	if r.Method != constants.HTTPMethodGET {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	nameWithExt := strings.TrimPrefix(r.URL.Path, "/tools/")
+	nameWithExt := strings.TrimPrefix(r.URL.Path, constants.PathTools)
 	name := strings.TrimSuffix(nameWithExt, ".json")
 	manifest, err := svc.GetToolManifest(r.Context(), name)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		if _, err := w.Write([]byte("failed to get tool manifest")); err != nil {
-			utils.Error("w.Write failed: %v", err)
+		if _, err := w.Write([]byte(constants.ResponseFailedToGetToolManifest)); err != nil {
+			utils.Error(constants.LogWriteFailed, err)
 		}
 		return
 	}
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(manifest); err != nil {
-		utils.Error("json.Encode failed: %v", err)
+		utils.Error(constants.LogJSONEncodeFailed, err)
 	}
 }
 
@@ -886,7 +928,7 @@ func convertOpenAPIHandler(w http.ResponseWriter, r *http.Request, svc FlowServi
 	}
 
 	if req.APIName == "" {
-		req.APIName = "api" // Default name
+		req.APIName = constants.DefaultAPIName // Default name
 	}
 
 	// Use the DRY helper for conversion

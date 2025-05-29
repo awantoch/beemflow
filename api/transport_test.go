@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/google/uuid"
@@ -64,7 +65,7 @@ func TestConvertOpenAPIHandler(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/tools/convert", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	convertOpenAPIHandler(w, req, svc)
@@ -131,7 +132,7 @@ func TestConvertOpenAPIHandler_InvalidJSON(t *testing.T) {
 	svc := &MockFlowService{}
 
 	req := httptest.NewRequest("POST", "/tools/convert", bytes.NewReader([]byte("invalid json")))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	convertOpenAPIHandler(w, req, svc)
@@ -150,7 +151,7 @@ func TestConvertOpenAPIHandler_MissingOpenAPI(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/tools/convert", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	convertOpenAPIHandler(w, req, svc)
@@ -203,7 +204,7 @@ func TestRunsHandler_POST(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/runs", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	runsHandler(w, req, svc)
@@ -217,7 +218,7 @@ func TestRunsHandler_InvalidJSON(t *testing.T) {
 	svc := &MockFlowService{}
 
 	req := httptest.NewRequest("POST", "/runs", bytes.NewReader([]byte("invalid json")))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	runsHandler(w, req, svc)
@@ -275,7 +276,7 @@ func TestResumeHandler(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/resume/test-token", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	resumeHandler(w, req, svc)
@@ -289,7 +290,7 @@ func TestResumeHandler_InvalidJSON(t *testing.T) {
 	svc := &MockFlowService{}
 
 	req := httptest.NewRequest("POST", "/resume/test-token", bytes.NewReader([]byte("invalid json")))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	resumeHandler(w, req, svc)
@@ -334,7 +335,7 @@ func TestValidateHandler(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/validate", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	validateHandler(w, req, svc)
@@ -348,7 +349,7 @@ func TestValidateHandler_InvalidJSON(t *testing.T) {
 	svc := &MockFlowService{}
 
 	req := httptest.NewRequest("POST", "/validate", bytes.NewReader([]byte("invalid json")))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	validateHandler(w, req, svc)
@@ -384,7 +385,7 @@ func TestRunsInlineHandler(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/runs/inline", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	runsInlineHandler(w, req, svc)
@@ -398,7 +399,7 @@ func TestRunsInlineHandler_InvalidJSON(t *testing.T) {
 	svc := &MockFlowService{}
 
 	req := httptest.NewRequest("POST", "/runs/inline", bytes.NewReader([]byte("invalid json")))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	runsInlineHandler(w, req, svc)
@@ -470,7 +471,7 @@ func TestEventsHandler(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/events", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	eventsHandler(w, req, svc)
@@ -484,7 +485,7 @@ func TestEventsHandler_InvalidJSON(t *testing.T) {
 	svc := &MockFlowService{}
 
 	req := httptest.NewRequest("POST", "/events", bytes.NewReader([]byte("invalid json")))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	eventsHandler(w, req, svc)
@@ -545,8 +546,8 @@ func TestAttachHTTPHandlers_Spec(t *testing.T) {
 		t.Errorf("Expected spec endpoint to return 200, got %d", w.Code)
 	}
 
-	if w.Header().Get("Content-Type") != "text/markdown" {
-		t.Errorf("Expected Content-Type text/markdown, got %s", w.Header().Get("Content-Type"))
+	if w.Header().Get(constants.HeaderContentType) != constants.ContentTypeTextMarkdown {
+		t.Errorf("Expected Content-Type %s, got %s", constants.ContentTypeTextMarkdown, w.Header().Get(constants.HeaderContentType))
 	}
 }
 
@@ -562,7 +563,7 @@ func TestRunsHandler_MissingFlowName(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/runs", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	runsHandler(w, req, svc)
@@ -634,7 +635,7 @@ func TestValidateHandler_MissingFlow(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/validate", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	validateHandler(w, req, svc)
@@ -668,7 +669,7 @@ func TestRunsInlineHandler_MissingSpec(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/runs/inline", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	runsInlineHandler(w, req, svc)
@@ -690,7 +691,7 @@ func TestRunsInlineHandler_InvalidSpec(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/runs/inline", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	runsInlineHandler(w, req, svc)
@@ -814,7 +815,7 @@ func TestEventsHandler_MissingTopic(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/events", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	eventsHandler(w, req, svc)
@@ -835,7 +836,7 @@ func TestConvertOpenAPIHandler_ConversionError(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/tools/convert", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w := httptest.NewRecorder()
 
 	convertOpenAPIHandler(w, req, svc)
