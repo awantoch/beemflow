@@ -787,15 +787,6 @@ func TestParseCLIArgs(t *testing.T) {
 }
 
 func TestUnifiedAttachHTTPHandlers(t *testing.T) {
-	// Test that the function doesn't panic when called
-	// We'll test with a custom mock instead of the standard mux
-	// This should not panic
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("UnifiedAttachHTTPHandlers panicked: %v", r)
-		}
-	}()
-
 	// Call the function - since we can't easily test real HTTP registration
 	// due to invalid patterns, we'll just ensure it doesn't panic
 	t.Log("Testing UnifiedAttachHTTPHandlers function call")
@@ -803,23 +794,12 @@ func TestUnifiedAttachHTTPHandlers(t *testing.T) {
 	// Create a new ServeMux that won't be used for actual registration
 	// Just verify the function exists and is callable
 	svc := &mockFlowService{}
-	if svc == nil {
-		t.Error("Mock service creation failed")
-	}
+	mux := http.NewServeMux()
+
+	// Call the function to ensure it doesn't panic
+	UnifiedAttachHTTPHandlers(mux, svc)
 
 	t.Log("UnifiedAttachHTTPHandlers function is available and callable")
-}
-
-// mockMux is a simple mock for testing
-type mockMux struct {
-	handlers map[string]func(http.ResponseWriter, *http.Request)
-}
-
-func (m *mockMux) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
-	if m.handlers == nil {
-		m.handlers = make(map[string]func(http.ResponseWriter, *http.Request))
-	}
-	m.handlers[pattern] = handler
 }
 
 func TestRegisterUnifiedSystemEndpoints(t *testing.T) {
