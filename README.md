@@ -34,13 +34,13 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
     - [📬 Invoice Chaser – Recover Aged AR in \< 24 h](#-invoice-chaser--recover-aged-ar-in--24-h)
   - [Anatomy of a Flow](#anatomy-of-a-flow)
   - [HTTP \& API Integration: Three Powerful Patterns](#http--api-integration-three-powerful-patterns)
-    - [🟢 **Pattern 1: Registry Tools (Recommended for most cases)**](#-pattern-1-registry-tools-recommended-for-most-cases)
-    - [🔧 **Pattern 2: Generic HTTP Adapter (Maximum flexibility)**](#-pattern-2-generic-http-adapter-maximum-flexibility)
-    - [🚀 **Pattern 3: MCP Servers (For complex integrations)**](#-pattern-3-mcp-servers-for-complex-integrations)
-    - [**When to Use Which Pattern?**](#when-to-use-which-pattern)
-    - [**Testing All Patterns**](#testing-all-patterns)
-    - [**Creating Your Own Registry Tools**](#creating-your-own-registry-tools)
-    - [**When to Upgrade to an MCP Server**](#when-to-upgrade-to-an-mcp-server)
+    - [🟢 Pattern 1: Registry Tools (Recommended for most cases)](#-pattern-1-registry-tools-recommended-for-most-cases)
+    - [🔧 Pattern 2: Generic HTTP Adapter (Maximum flexibility)](#-pattern-2-generic-http-adapter-maximum-flexibility)
+    - [🚀 Pattern 3: MCP Servers (For complex integrations)](#-pattern-3-mcp-servers-for-complex-integrations)
+    - [When to Use Which Pattern?](#when-to-use-which-pattern)
+    - [Testing All Patterns](#testing-all-patterns)
+    - [Creating Your Own Registry Tools](#creating-your-own-registry-tools)
+    - [When to Upgrade to an MCP Server](#when-to-upgrade-to-an-mcp-server)
   - [Registry \& Tool Resolution](#registry--tool-resolution)
   - [Extending BeemFlow](#extending-beemflow)
   - [CLI • HTTP • MCP — One Brain](#cli--http--mcp--one-brain)
@@ -631,7 +631,7 @@ Full grammar ➜ [SPEC.md](./docs/SPEC.md).
 
 BeemFlow provides **three complementary ways** to integrate with HTTP APIs and external services, each optimized for different use cases:
 
-### 🟢 **Pattern 1: Registry Tools (Recommended for most cases)**
+### 🟢 Pattern 1: Registry Tools (Recommended for most cases)
 
 **Best for:** Simple APIs, getting started, common services
 
@@ -658,7 +658,7 @@ BeemFlow provides **three complementary ways** to integrate with HTTP APIs and e
 - **Curated & tested** - built-in tools work out of the box and have been battle-tested in production
 - **API-specific** - each tool knows its service's quirks and response format
 
-### 🔧 **Pattern 2: Generic HTTP Adapter (Maximum flexibility)**
+### 🔧 Pattern 2: Generic HTTP Adapter (Maximum flexibility)
 
 **Best for:** Complex APIs, custom authentication, non-standard requests
 
@@ -689,7 +689,7 @@ BeemFlow provides **three complementary ways** to integrate with HTTP APIs and e
 - **Perfect for** - REST APIs, webhooks, custom protocols
 - **Raw power** - handles any HTTP scenario
 
-### 🚀 **Pattern 3: MCP Servers (For complex integrations)**
+### 🚀 Pattern 3: MCP Servers (For complex integrations)
 
 **Best for:** Databases, file systems, stateful services, complex workflows
 
@@ -715,7 +715,7 @@ BeemFlow provides **three complementary ways** to integrate with HTTP APIs and e
 
 ---
 
-### **When to Use Which Pattern?**
+### When to Use Which Pattern?
 
 | **Use Case** | **Pattern** | **Example** |
 |--------------|-------------|-------------|
@@ -727,13 +727,13 @@ BeemFlow provides **three complementary ways** to integrate with HTTP APIs and e
 | File processing | MCP server | `mcp://filesystem/read` |
 | One-off webhook/custom request | Generic HTTP | `http` with custom headers |
 
-### **Testing All Patterns**
+### Testing All Patterns
 
 Want to see all patterns in action? Check out [http_patterns.flow.yml](./flows/integration/http_patterns.flow.yaml).
 
 This demonstrates registry tools, generic HTTP, manifest-based APIs, and POST requests all working together.
 
-### **Creating Your Own Registry Tools**
+### Creating Your Own Registry Tools
 
 **The smart way to handle custom APIs:** Define once as a JSON manifest, reuse everywhere.
 
@@ -808,7 +808,7 @@ Instead of repeating the same `http` configuration across multiple flows, create
 - **Shareability** - Team members can discover and use your APIs
 - **IDE support** - Autocomplete and validation in editors
 
-### **When to Upgrade to an MCP Server**
+### When to Upgrade to an MCP Server
 
 For more sophisticated custom API integrations, consider creating an MCP server instead:
 
@@ -875,14 +875,26 @@ Tools can be qualified (`smithery:airtable`) when ambiguous.
 
 ## CLI • HTTP • MCP — One Brain
 
-| Action        | CLI                 | HTTP            | MCP            |
-|---------------|---------------------|-----------------|----------------|
-| Validate flow | `flow lint file`    | `POST /validate`| `validateFlow` |
-| Run flow      | `flow run hello`    | `POST /runs`    | `startRun`     |
-| Status        | `flow status <id>`  | `GET /runs/{id}`| `getRun`       |
-| Graph         | `flow graph file`   | `GET /graph`    | `graphFlow`    |
+**Complete Interface Parity — Every operation available everywhere:**
 
----
+| Action            | CLI                      | HTTP                    | MCP                        |
+|-------------------|--------------------------|-------------------------|----------------------------|
+| List flows        | `flow list`              | `GET /flows`            | `beemflow_list_flows`      |
+| Get flow          | `flow get <name>`        | `GET /flows/{name}`     | `beemflow_get_flow`        |
+| Validate flow     | `flow validate <name_or_file>` | `POST /validate`        | `beemflow_validate_flow`   |
+| Lint flow file    | `flow lint <file>`       | `POST /flows/lint`      | `beemflow_lint_flow`       |
+| Graph flow        | `flow graph <name_or_file>`  | `POST /flows/graph`     | `beemflow_graph_flow`      |
+| Start run         | `flow start <flow-name>` | `POST /runs`            | `beemflow_start_run`       |
+| Get run           | `flow get-run <id>`      | `GET /runs/{id}`        | `beemflow_get_run`         |
+| List runs         | `flow list-runs`         | `GET /runs`             | `beemflow_list_runs`       |
+| Resume run        | `flow resume <token>`    | `POST /resume/{token}`  | `beemflow_resume_run`      |
+| Publish event     | `flow publish <topic>`   | `POST /events`          | `beemflow_publish_event`   |
+| List tools        | `flow list-tools`        | `GET /tools`            | `beemflow_list_tools`      |
+| Get tool          | `flow get-tool <name>`   | `GET /tools/{name}`     | `beemflow_get_tool_manifest` |
+| Convert OpenAPI   | `flow convert <file>`    | `POST /tools/convert`   | `beemflow_convert_openapi` |
+| Show spec         | `flow spec`              | `GET /spec`             | `beemflow_spec`            |
+
+**🎯 Key Achievement:** True universal protocol — same operations, same names, same descriptions across CLI, HTTP REST API, and MCP tools. No more interface-specific limitations!
 
 ## Thoughts from our AI co-creators: Why BeemFlow Changes Everything 🤖
 >

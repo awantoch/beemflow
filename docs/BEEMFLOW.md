@@ -258,17 +258,21 @@ BeemFlow exposes a consistent interface for all operations:
 
 | Operation         | CLI Command                  | HTTP Endpoint                | MCP Tool Name      |
 |-------------------|-----------------------------|------------------------------|--------------------|
-| List flows        | `flow list`                  | `GET /runs`                  | `listFlows`        |
-| Get flow          | `flow get <name>`            | (not exposed)                | `getFlow`          |
-| Validate flow     | `flow lint <file>`           | `POST /validate`             | `validateFlow`     |
-| Run flow          | `flow run <name> [--event]`  | `POST /runs`                 | `startRun`         |
-| Get run status    | `flow status <run_id>`       | `GET /runs/{id}`             | `getRun`           |
-| Resume run        | `flow resume <token>`        | `POST /resume/{token}`       | (not exposed)      |
-| Test flow         | `flow test <file>`           | `POST /test`                 | (not exposed)      |
-| Graph flow        | `flow graph <file>`          | `GET /graph`                 | `graphFlow`        |
-| List tools        | `flow tools`                 | `GET /tools`                 | (not exposed)      |
-| Get tool manifest | (n/a)                        | `GET /tools/{name}`          | (not exposed)      |
-| Inline run        | (n/a)                        | `POST /runs/inline`          | `flow.execute`     |
+| List flows        | `flow list`                  | `GET /flows`                 | `beemflow_list_flows`       |
+| Get flow          | `flow get <name>`            | `GET /flows/{name}`          | `beemflow_get_flow`         |
+| Validate flow     | `flow validate <name_or_file>` | `POST /validate`             | `beemflow_validate_flow`    |
+| Lint flow         | `flow lint <file>`           | `POST /flows/lint`           | `beemflow_lint_flow`        |
+| Graph flow        | `flow graph <name_or_file>`  | `POST /flows/graph`          | `beemflow_graph_flow`       |
+| Run flow          | `flow start <flow-name>`     | `POST /runs`                 | `beemflow_start_run`        |
+| Get run status    | `flow get-run <run_id>`      | `GET /runs/{id}`             | `beemflow_get_run`          |
+| List runs         | `flow list-runs`             | `GET /runs`                  | `beemflow_list_runs`        |
+| Resume run        | `flow resume <token>`        | `POST /resume/{token}`       | `beemflow_resume_run`       |
+| Publish event     | `flow publish <topic>`       | `POST /events`               | `beemflow_publish_event`    |
+| List tools        | `flow list-tools`            | `GET /tools`                 | `beemflow_list_tools`       |
+| Get tool manifest | `flow get-tool <name>`       | `GET /tools/{name}`          | `beemflow_get_tool_manifest` |
+| Convert OpenAPI   | `flow convert <openapi_file>`| `POST /tools/convert`        | `beemflow_convert_openapi`  |
+| Show spec         | `flow spec`                  | `GET /spec`                  | `beemflow_spec`             |
+| Test flow         | `flow test`                  | `POST /flows/test`           | `beemflow_test_flow`        |
 
 All endpoints accept/return JSON.
 

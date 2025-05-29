@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/constants"
@@ -48,11 +49,11 @@ type GetFlowArgs struct {
 }
 
 type ValidateFlowArgs struct {
-	Name string `json:"name" flag:"name" description:"Flow name to validate"`
+	Name string `json:"name" flag:"name" description:"Flow name or file path to validate"`
 }
 
 type GraphFlowArgs struct {
-	Name string `json:"name" flag:"name" description:"Flow name to graph"`
+	Name string `json:"name" flag:"name" description:"Flow name or file path to graph"`
 }
 
 type StartRunArgs struct {
@@ -118,6 +119,7 @@ func init() {
 		HTTPPath:    "/flows",
 		CLIUse:      "list",
 		CLIShort:    "List all available flows",
+		MCPName:     "beemflow_list_flows",
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			return svc.ListFlows(ctx)
@@ -133,6 +135,7 @@ func init() {
 		HTTPPath:    "/flows/{name}",
 		CLIUse:      "get <name>",
 		CLIShort:    "Get a flow by name",
+		MCPName:     "beemflow_get_flow",
 		ArgsType:    reflect.TypeOf(GetFlowArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			a := args.(*GetFlowArgs)
@@ -140,39 +143,153 @@ func init() {
 		},
 	})
 
-	// Validate Flow
+	// Validate Flow (Unified: handles both flow names and files)
 	RegisterOperation(&OperationDefinition{
 		ID:          constants.InterfaceIDValidateFlow,
 		Name:        "Validate Flow",
-		Description: constants.InterfaceDescValidateFlow,
+		Description: "Validate a flow (from name or file)",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/validate",
-		CLIUse:      "validate <name>",
-		CLIShort:    "Validate a flow",
+		CLIUse:      "validate <name_or_file>",
+		CLIShort:    "Validate a flow (from name or file)",
+		MCPName:     "beemflow_validate_flow",
 		ArgsType:    reflect.TypeOf(ValidateFlowArgs{}),
+		CLIHandler: func(cmd *cobra.Command, args []string, svc FlowService) error {
+			if len(args) != 1 {
+				return fmt.Errorf("exactly one argument required (flow name or file path)")
+			}
+			nameOrFile := args[0]
+
+			var err error
+
+			// Try as flow name first, then as file
+			if strings.Contains(nameOrFile, ".") || strings.Contains(nameOrFile, "/") {
+				// Looks like a file path - parse and validate it directly
+				flow, parseErr := dsl.Parse(nameOrFile)
+				if parseErr != nil {
+					utils.Error("YAML parse error: %v\n", parseErr)
+					return fmt.Errorf("YAML parse error: %w", parseErr)
+				}
+				err = dsl.Validate(flow)
+				if err != nil {
+					utils.Error("Schema validation error: %v\n", err)
+					return fmt.Errorf("schema validation error: %w", err)
+				}
+			} else {
+				// Looks like a flow name - use service
+				err = svc.ValidateFlow(cmd.Context(), nameOrFile)
+				if err != nil {
+					utils.Error("Validation error: %v\n", err)
+					return fmt.Errorf("validation error: %w", err)
+				}
+			}
+
+			utils.User("Validation OK: flow is valid!")
+			return nil
+		},
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			a := args.(*ValidateFlowArgs)
-			err := svc.ValidateFlow(ctx, a.Name)
-			if err != nil {
-				return nil, err
+
+			// Try as flow name first, then as file
+			if strings.Contains(a.Name, ".") || strings.Contains(a.Name, "/") {
+				// Looks like a file path - parse and validate it directly
+				flow, parseErr := dsl.Parse(a.Name)
+				if parseErr != nil {
+					return nil, fmt.Errorf("YAML parse error: %w", parseErr)
+				}
+				err := dsl.Validate(flow)
+				if err != nil {
+					return nil, fmt.Errorf("schema validation error: %w", err)
+				}
+			} else {
+				// Looks like a flow name - use service
+				err := svc.ValidateFlow(ctx, a.Name)
+				if err != nil {
+					return nil, err
+				}
 			}
-			return map[string]any{"status": "valid"}, nil
+
+			return map[string]any{"status": "valid", "message": "Validation OK: flow is valid!"}, nil
 		},
 	})
 
-	// Graph Flow
+	// Graph Flow (Unified: handles both flow names and files)
 	RegisterOperation(&OperationDefinition{
 		ID:          constants.InterfaceIDGraphFlow,
 		Name:        "Graph Flow",
-		Description: constants.InterfaceDescGraphFlow,
-		HTTPMethod:  http.MethodGet,
-		HTTPPath:    "/graph",
-		CLIUse:      "graph <name>",
-		CLIShort:    "Generate flow graph",
+		Description: "Generate a Mermaid diagram for a flow (from name or file)",
+		HTTPMethod:  http.MethodPost,
+		HTTPPath:    "/flows/graph",
+		CLIUse:      "graph <name_or_file>",
+		CLIShort:    "Generate a Mermaid diagram for a flow",
+		MCPName:     "beemflow_graph_flow",
 		ArgsType:    reflect.TypeOf(GraphFlowArgs{}),
+		CLIHandler: func(cmd *cobra.Command, args []string, svc FlowService) error {
+			if len(args) != 1 {
+				return fmt.Errorf("exactly one argument required (flow name or file path)")
+			}
+			nameOrFile := args[0]
+
+			// Get output flag
+			outPath, _ := cmd.Flags().GetString("output")
+
+			var diagram string
+			var err error
+
+			// Try as flow name first, then as file
+			if strings.Contains(nameOrFile, ".") || strings.Contains(nameOrFile, "/") {
+				// Looks like a file path - parse it directly
+				flow, parseErr := dsl.Parse(nameOrFile)
+				if parseErr != nil {
+					utils.Error("YAML parse error: %v\n", parseErr)
+					return fmt.Errorf("YAML parse error: %w", parseErr)
+				}
+				diagram, err = graph.ExportMermaid(flow)
+			} else {
+				// Looks like a flow name - use service
+				diagram, err = svc.GraphFlow(cmd.Context(), nameOrFile)
+			}
+
+			if err != nil {
+				utils.Error("Graph export error: %v\n", err)
+				return fmt.Errorf("graph export error: %w", err)
+			}
+
+			if outPath != "" {
+				if err := os.WriteFile(outPath, []byte(diagram), 0644); err != nil {
+					utils.Error("Failed to write graph to %s: %v\n", outPath, err)
+					return fmt.Errorf("failed to write graph to %s: %w", outPath, err)
+				}
+				utils.User("Graph written to %s", outPath)
+			} else {
+				utils.Info("%s", diagram)
+			}
+			return nil
+		},
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			a := args.(*GraphFlowArgs)
-			return svc.GraphFlow(ctx, a.Name)
+
+			var diagram string
+			var err error
+
+			// Try as flow name first, then as file
+			if strings.Contains(a.Name, ".") || strings.Contains(a.Name, "/") {
+				// Looks like a file path - parse it directly
+				flow, parseErr := dsl.Parse(a.Name)
+				if parseErr != nil {
+					return nil, fmt.Errorf("YAML parse error: %w", parseErr)
+				}
+				diagram, err = graph.ExportMermaid(flow)
+			} else {
+				// Looks like a flow name - use service
+				diagram, err = svc.GraphFlow(ctx, a.Name)
+			}
+
+			if err != nil {
+				return nil, fmt.Errorf("graph export error: %w", err)
+			}
+
+			return map[string]any{"diagram": diagram}, nil
 		},
 	})
 
@@ -185,6 +302,7 @@ func init() {
 		HTTPPath:    "/runs",
 		CLIUse:      "start <flow-name>",
 		CLIShort:    "Start a new flow run",
+		MCPName:     "beemflow_start_run",
 		ArgsType:    reflect.TypeOf(StartRunArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			a := args.(*StartRunArgs)
@@ -205,6 +323,7 @@ func init() {
 		HTTPPath:    "/runs/{id}",
 		CLIUse:      "get-run <run-id>",
 		CLIShort:    "Get run status and details",
+		MCPName:     "beemflow_get_run",
 		ArgsType:    reflect.TypeOf(GetRunArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			a := args.(*GetRunArgs)
@@ -225,6 +344,7 @@ func init() {
 		HTTPPath:    "/runs",
 		CLIUse:      "list-runs",
 		CLIShort:    "List all runs",
+		MCPName:     "beemflow_list_runs",
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			return svc.ListRuns(ctx)
@@ -240,6 +360,7 @@ func init() {
 		HTTPPath:    "/events",
 		CLIUse:      "publish <topic>",
 		CLIShort:    "Publish an event to a topic",
+		MCPName:     "beemflow_publish_event",
 		ArgsType:    reflect.TypeOf(PublishEventArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			a := args.(*PublishEventArgs)
@@ -260,6 +381,7 @@ func init() {
 		HTTPPath:    "/resume/{token}",
 		CLIUse:      "resume <token>",
 		CLIShort:    "Resume a paused run",
+		MCPName:     "beemflow_resume_run",
 		ArgsType:    reflect.TypeOf(ResumeRunArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			a := args.(*ResumeRunArgs)
@@ -276,6 +398,7 @@ func init() {
 		HTTPPath:    "/tools",
 		CLIUse:      "list-tools",
 		CLIShort:    "List all available tools",
+		MCPName:     "beemflow_list_tools",
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			return svc.ListTools(ctx)
@@ -291,6 +414,7 @@ func init() {
 		HTTPPath:    "/tools/{name}",
 		CLIUse:      "get-tool <name>",
 		CLIShort:    "Get tool manifest",
+		MCPName:     "beemflow_get_tool_manifest",
 		ArgsType:    reflect.TypeOf(GetFlowArgs{}), // Reuse same structure
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			a := args.(*GetFlowArgs)
@@ -325,8 +449,6 @@ func init() {
 		CLIShort:    "Lint a flow file (YAML parse + schema validate)",
 		MCPName:     "beemflow_lint_flow",
 		ArgsType:    reflect.TypeOf(FlowFileArgs{}),
-		SkipHTTP:    true, // CLI-only for now
-		SkipMCP:     true, // CLI-only for now
 		CLIHandler: func(cmd *cobra.Command, args []string, svc FlowService) error {
 			if len(args) != 1 {
 				return fmt.Errorf("exactly one file argument required")
@@ -345,82 +467,17 @@ func init() {
 			utils.User("Lint OK: flow is valid!")
 			return nil
 		},
-	})
-
-	// Validate Flow
-	RegisterOperation(&OperationDefinition{
-		ID:          "validateFlow",
-		Name:        "Validate Flow",
-		Description: "Validate a flow file (YAML parse + schema validate)",
-		HTTPMethod:  http.MethodPost,
-		HTTPPath:    "/flows/validate",
-		CLIUse:      "validate [file]",
-		CLIShort:    "Validate a flow file (YAML parse + schema validate)",
-		MCPName:     "beemflow_validate_flow",
-		ArgsType:    reflect.TypeOf(FlowFileArgs{}),
-		SkipHTTP:    true, // CLI-only for now
-		SkipMCP:     true, // CLI-only for now
-		CLIHandler: func(cmd *cobra.Command, args []string, svc FlowService) error {
-			if len(args) != 1 {
-				return fmt.Errorf("exactly one file argument required")
-			}
-			file := args[0]
-			flow, err := dsl.Parse(file)
+		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+			a := args.(*FlowFileArgs)
+			flow, err := dsl.Parse(a.File)
 			if err != nil {
-				utils.Error("YAML parse error: %v\n", err)
-				return fmt.Errorf("YAML parse error: %w", err)
+				return nil, fmt.Errorf("YAML parse error: %w", err)
 			}
 			err = dsl.Validate(flow)
 			if err != nil {
-				utils.Error("Schema validation error: %v\n", err)
-				return fmt.Errorf("schema validation error: %w", err)
+				return nil, fmt.Errorf("schema validation error: %w", err)
 			}
-			utils.User("Validation OK: flow is valid!")
-			return nil
-		},
-	})
-
-	// Graph Flow
-	RegisterOperation(&OperationDefinition{
-		ID:          "graphFlow",
-		Name:        "Graph Flow",
-		Description: "Visualize a flow as a DAG (Mermaid syntax)",
-		HTTPMethod:  http.MethodPost,
-		HTTPPath:    "/flows/graph",
-		CLIUse:      "graph [flow_file]",
-		CLIShort:    "Visualize a flow as a DAG (Mermaid syntax)",
-		MCPName:     "beemflow_graph_flow",
-		ArgsType:    reflect.TypeOf(GraphFlowArgs{}),
-		SkipHTTP:    true, // CLI-only for now
-		SkipMCP:     true, // CLI-only for now
-		CLIHandler: func(cmd *cobra.Command, args []string, svc FlowService) error {
-			if len(args) != 1 {
-				return fmt.Errorf("exactly one file argument required")
-			}
-			file := args[0]
-
-			// Get output flag
-			outPath, _ := cmd.Flags().GetString("output")
-
-			flow, err := dsl.Parse(file)
-			if err != nil {
-				utils.Error("YAML parse error: %v\n", err)
-				return fmt.Errorf("YAML parse error: %w", err)
-			}
-			diagram, err := graph.ExportMermaid(flow)
-			if err != nil {
-				utils.Error("Graph export error: %v\n", err)
-				return fmt.Errorf("graph export error: %w", err)
-			}
-			if outPath != "" {
-				if err := os.WriteFile(outPath, []byte(diagram), 0644); err != nil {
-					utils.Error("Failed to write graph to %s: %v\n", outPath, err)
-					return fmt.Errorf("failed to write graph to %s: %w", outPath, err)
-				}
-			} else {
-				utils.Info("%s", diagram)
-			}
-			return nil
+			return map[string]any{"status": "valid", "message": "Lint OK: flow is valid!"}, nil
 		},
 	})
 
@@ -449,7 +506,7 @@ func init() {
 		HTTPPath:    "/tools/convert",
 		CLIUse:      "convert [openapi_file]",
 		CLIShort:    "Convert OpenAPI spec to BeemFlow tool manifests",
-		MCPName:     constants.MCPToolConvertOpenAPI,
+		MCPName:     "beemflow_convert_openapi",
 		ArgsType:    reflect.TypeOf(ConvertOpenAPIExtendedArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			a := args.(*ConvertOpenAPIExtendedArgs)

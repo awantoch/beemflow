@@ -40,22 +40,41 @@ func NewGraph(flow *model.Flow) *Graph {
 	if flow == nil || len(flow.Steps) == 0 {
 		return g
 	}
-	for i, step := range flow.Steps {
+
+	g.processSteps(flow.Steps, "")
+	return g
+}
+
+// processSteps recursively processes steps and their nested parallel steps
+func (g *Graph) processSteps(steps []model.Step, parentID string) {
+	for i, step := range steps {
 		// Create node
 		g.Nodes = append(g.Nodes, &Node{ID: step.ID, Label: step.ID})
+
+		// Handle parallel steps by recursing into nested steps
+		if step.Parallel && len(step.Steps) > 0 {
+			g.processSteps(step.Steps, step.ID)
+			continue
+		}
+
 		// Determine dependencies
 		var deps []string
-		if len(step.DependsOn) > 0 {
+		switch {
+		case len(step.DependsOn) > 0:
 			deps = step.DependsOn
-		} else if i > 0 {
-			deps = []string{flow.Steps[i-1].ID}
+		case parentID != "":
+			// If we're in a parallel block, depend on the parent
+			deps = []string{parentID}
+		case i > 0:
+			// Sequential dependency on previous step
+			deps = []string{steps[i-1].ID}
 		}
+
 		// Create edges
 		for _, dep := range deps {
 			g.Edges = append(g.Edges, &Edge{From: dep, To: step.ID})
 		}
 	}
-	return g
 }
 
 // Render renders the graph using Mermaid syntax.

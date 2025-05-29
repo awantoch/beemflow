@@ -24,7 +24,7 @@
   "definitions": {
     "step": {
       "type": "object",
-      "required": ["id", "use"],
+      "required": ["id"],
       "properties": {
         "id": {"type": "string"},
         "use": {"type": "string"},
@@ -42,7 +42,25 @@
           "type": "array",
           "items": { "$ref": "#/definitions/step" }
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": ["use"]
+        },
+        {
+          "properties": {
+            "parallel": { "const": true },
+            "steps": { "minItems": 1 }
+          },
+          "required": ["parallel", "steps"]
+        },
+        {
+          "required": ["await_event"]
+        },
+        {
+          "required": ["wait"]
+        }
+      ]
     },
     "retry": {
       "type": "object",
