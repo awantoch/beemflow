@@ -1,3 +1,5 @@
+version: 2
+
 builds:
   - main: ./cmd/flow
     binary: flow
@@ -6,7 +8,8 @@ builds:
     goarch: [amd64, arm64]
 
 archives:
-  - format_overrides:
+  - format: tar.gz
+    format_overrides:
       - goos: windows
         format: zip
 
