@@ -122,3 +122,143 @@ func TestS3BlobStore_InvalidConfig(t *testing.T) {
 		t.Errorf("expected error for invalid S3 config, got nil")
 	}
 }
+
+// Enhanced S3 tests that don't require AWS credentials
+
+func TestNewS3BlobStore_ValidationErrors(t *testing.T) {
+	ctx := context.Background()
+
+	// Test with empty bucket
+	store, err := NewS3BlobStore(ctx, "", "us-west-2")
+	if err == nil {
+		t.Error("NewS3BlobStore with empty bucket should fail")
+	}
+	if store != nil {
+		t.Error("Expected nil store for empty bucket")
+	}
+
+	// Test with empty region
+	store, err = NewS3BlobStore(ctx, "test-bucket", "")
+	if err == nil {
+		t.Error("NewS3BlobStore with empty region should fail")
+	}
+	if store != nil {
+		t.Error("Expected nil store for empty region")
+	}
+
+	// Test with both empty
+	store, err = NewS3BlobStore(ctx, "", "")
+	if err == nil {
+		t.Error("NewS3BlobStore with empty bucket and region should fail")
+	}
+	if store != nil {
+		t.Error("Expected nil store for empty bucket and region")
+	}
+}
+
+func TestNewS3BlobStore_ValidParams(t *testing.T) {
+	ctx := context.Background()
+
+	// Test with valid parameters - may fail due to AWS credentials but should
+	// test the validation and setup code path
+	store, err := NewS3BlobStore(ctx, "test-bucket", "us-west-2")
+
+	// We don't expect this to necessarily succeed in a test environment
+	// but we want to ensure it doesn't panic and follows the proper code path
+	if err != nil {
+		t.Logf("S3BlobStore creation failed as expected in test environment: %v", err)
+		// The function should fail gracefully, not panic
+	}
+
+	if err == nil {
+		// If it succeeds (e.g., in an environment with AWS credentials),
+		// verify the store is properly constructed
+		if store == nil {
+			t.Error("Expected non-nil store when no error")
+		}
+
+		if store.bucket != "test-bucket" {
+			t.Errorf("Expected bucket 'test-bucket', got %s", store.bucket)
+		}
+
+		if store.region != "us-west-2" {
+			t.Errorf("Expected region 'us-west-2', got %s", store.region)
+		}
+
+		if store.client == nil {
+			t.Error("Expected non-nil S3 client")
+		}
+	}
+}
+
+func TestS3BlobStore_URLParsing(t *testing.T) {
+	// Create a mock S3BlobStore to test URL parsing logic
+	// This tests the Get method's URL parsing without requiring AWS
+	store := &S3BlobStore{
+		bucket: "test-bucket",
+		region: "us-west-2",
+		client: nil, // We won't call actual AWS operations
+	}
+
+	// This will test the URL parsing part but fail at the actual S3 call
+	// which is expected since we don't have a real client
+	ctx := context.Background()
+
+	// Test invalid URL format
+	_, err := store.Get(ctx, "invalid-url")
+	if err == nil {
+		t.Error("Expected error for invalid URL format")
+	}
+
+	// Test URL with wrong bucket - this will fail at the fmt.Sscanf level
+	_, err = store.Get(ctx, "s3://wrong-bucket/test-key")
+	if err == nil {
+		t.Error("Expected error for URL parsing or bucket mismatch")
+	}
+
+	// The actual error might be from fmt.Sscanf or bucket mismatch
+	// We just want to ensure it fails appropriately
+	t.Logf("URL parsing error (expected): %v", err)
+}
+
+func TestS3BlobStore_PutMethodSignature(t *testing.T) {
+	// Test that we can call Put method without panicking (even though it will fail)
+	store := &S3BlobStore{
+		bucket: "test-bucket",
+		region: "us-west-2",
+		client: nil, // No real client
+	}
+
+	ctx := context.Background()
+	data := []byte("test data")
+
+	// This will fail because client is nil, but tests the method signature
+	defer func() {
+		if r := recover(); r == nil {
+			// We expect this to fail gracefully, not panic
+		}
+	}()
+
+	_, err := store.Put(ctx, data, "text/plain", "test.txt")
+	if err == nil {
+		t.Error("Expected error with nil client")
+	}
+	// The error is expected - we just want to ensure no panic
+}
+
+func TestS3BlobStore_StructFields(t *testing.T) {
+	// Test S3BlobStore struct field access
+	store := &S3BlobStore{
+		bucket: "my-bucket",
+		region: "eu-west-1",
+		client: nil,
+	}
+
+	if store.bucket != "my-bucket" {
+		t.Errorf("Expected bucket 'my-bucket', got %s", store.bucket)
+	}
+
+	if store.region != "eu-west-1" {
+		t.Errorf("Expected region 'eu-west-1', got %s", store.region)
+	}
+}

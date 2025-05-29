@@ -113,3 +113,91 @@ func TestFilesystemBlobStore_InvalidURL(t *testing.T) {
 		t.Errorf("expected error for invalid file URL, got nil")
 	}
 }
+
+func TestFilesystemBlobStore_EmptyFilename(t *testing.T) {
+	store := newTestFilesystemBlobStore(t)
+
+	// Test with empty filename - should generate a unique filename
+	url, err := store.Put(context.Background(), []byte("test data"), "text/plain", "")
+	if err != nil {
+		t.Errorf("Put with empty filename failed: %v", err)
+	}
+
+	if url == "" {
+		t.Error("Expected non-empty URL for empty filename")
+	}
+
+	// Should be able to retrieve the data
+	got, err := store.Get(context.Background(), url)
+	if err != nil {
+		t.Errorf("Get failed for auto-generated filename: %v", err)
+	}
+
+	expected := []byte("test data")
+	if !bytes.Equal(got, expected) {
+		t.Errorf("Expected %q, got %q", expected, got)
+	}
+}
+
+// Tests for NewDefaultBlobStore function
+
+func TestNewDefaultBlobStore(t *testing.T) {
+	ctx := context.Background()
+
+	// Test with nil config (should default to filesystem)
+	store, err := NewDefaultBlobStore(ctx, nil)
+	if err != nil {
+		t.Errorf("NewDefaultBlobStore with nil config should not fail, got: %v", err)
+	}
+	if store == nil {
+		t.Error("Expected non-nil store")
+	}
+
+	// Test with empty config (should default to filesystem)
+	cfg := &BlobConfig{}
+	store, err = NewDefaultBlobStore(ctx, cfg)
+	if err != nil {
+		t.Errorf("NewDefaultBlobStore with empty config should not fail, got: %v", err)
+	}
+	if store == nil {
+		t.Error("Expected non-nil store")
+	}
+
+	// Test with filesystem driver
+	cfg = &BlobConfig{
+		Driver:    "filesystem",
+		Directory: filepath.Join(t.TempDir(), "test-blobs"),
+	}
+	store, err = NewDefaultBlobStore(ctx, cfg)
+	if err != nil {
+		t.Errorf("NewDefaultBlobStore with filesystem config should not fail, got: %v", err)
+	}
+	if store == nil {
+		t.Error("Expected non-nil store")
+	}
+
+	// Test with s3 driver but missing bucket
+	cfg = &BlobConfig{
+		Driver: "s3",
+		Region: "us-west-2",
+	}
+	store, err = NewDefaultBlobStore(ctx, cfg)
+	if err == nil {
+		t.Error("NewDefaultBlobStore with S3 config missing bucket should fail")
+	}
+	if store != nil {
+		t.Error("Expected nil store for invalid S3 config")
+	}
+
+	// Test with unsupported driver
+	cfg = &BlobConfig{
+		Driver: "unsupported",
+	}
+	store, err = NewDefaultBlobStore(ctx, cfg)
+	if err == nil {
+		t.Error("NewDefaultBlobStore with unsupported driver should fail")
+	}
+	if store != nil {
+		t.Error("Expected nil store for unsupported driver")
+	}
+}
