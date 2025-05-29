@@ -22,6 +22,7 @@ func TestMain(m *testing.M) {
 
 // Helper function to create a test config
 func createTestConfig(t *testing.T) *config.Config {
+	_ = t // Parameter not needed for this simple config creation
 	return &config.Config{
 		Storage: config.StorageConfig{
 			Driver: "sqlite",

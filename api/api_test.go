@@ -853,9 +853,9 @@ func TestStartRun_WithPausedRun(t *testing.T) {
 on: cli.manual
 steps:
   - id: wait_step
-    use: core.await_event
-    with:
-      event: "test_event"
+    await_event:
+      match:
+        token: "test_token"
 `
 	flowPath := filepath.Join(tempDir, "pause_flow.flow.yaml")
 	if err := os.WriteFile(flowPath, []byte(flowContent), 0644); err != nil {
@@ -864,6 +864,9 @@ steps:
 
 	ctx := context.Background()
 	runID, err := StartRun(ctx, "pause_flow", map[string]any{})
+	if err != nil {
+		t.Errorf("StartRun failed: %v", err)
+	}
 	// This should return a run ID even though it pauses
 	if runID == uuid.Nil {
 		t.Error("Expected non-nil run ID for paused flow")

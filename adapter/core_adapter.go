@@ -39,6 +39,7 @@ func (a *CoreAdapter) Execute(ctx context.Context, inputs map[string]any) (map[s
 
 // executeEcho prints the 'text' field to stdout and returns inputs unchanged.
 func (a *CoreAdapter) executeEcho(ctx context.Context, inputs map[string]any) (map[string]any, error) {
+	_ = ctx // Context not needed for this operation
 	if text, ok := inputs["text"].(string); ok {
 		if os.Getenv("BEEMFLOW_DEBUG") != "" {
 			utils.Info("%s", text)
@@ -58,6 +59,7 @@ func (a *CoreAdapter) executeEcho(ctx context.Context, inputs map[string]any) (m
 
 // executeConvertOpenAPI converts OpenAPI specs to BeemFlow tool manifests.
 func (a *CoreAdapter) executeConvertOpenAPI(ctx context.Context, inputs map[string]any) (map[string]any, error) {
+	_ = ctx // Context not needed for this operation
 	// Get required inputs - can be either a JSON string or an object
 	var spec map[string]any
 	if openapiStr, ok := inputs["openapi"].(string); ok {
@@ -200,7 +202,15 @@ func (a *CoreAdapter) generateToolName(apiName, path, method string) string {
 		cleanPath = strings.ReplaceAll(cleanPath, "__", "_")
 	}
 
-	return apiName + "." + cleanPath
+	// Add method suffix to distinguish between different HTTP methods on same path
+	methodSuffix := strings.ToLower(method)
+
+	// Handle empty path (root endpoint)
+	if cleanPath == "" {
+		return apiName + "." + methodSuffix
+	}
+
+	return apiName + "." + cleanPath + "_" + methodSuffix
 }
 
 func (a *CoreAdapter) extractDescription(operation map[string]any, path string) string {

@@ -351,23 +351,30 @@ func TestCoreAdapter_ConvertOpenAPI_ComplexSpec(t *testing.T) {
 	}
 
 	// Check tool name generation for path parameters
-	foundUsersByID := false
+	foundUsersByIDGet := false
+	foundUsersByIDPut := false
 	foundComplexPath := false
 	for _, manifest := range manifests {
 		name, _ := manifest["name"].(string)
-		if name == "complex.users_by_id" {
-			foundUsersByID = true
+		if name == "complex.users_by_id_get" {
+			foundUsersByIDGet = true
 		}
-		if name == "complex.complex_path_with_dashes" {
+		if name == "complex.users_by_id_put" {
+			foundUsersByIDPut = true
+		}
+		if name == "complex.complex_path_with_dashes_post" {
 			foundComplexPath = true
 		}
 	}
 
-	if !foundUsersByID {
-		t.Error("expected to find manifest with name 'complex.users_by_id'")
+	if !foundUsersByIDGet {
+		t.Error("expected to find manifest with name 'complex.users_by_id_get'")
+	}
+	if !foundUsersByIDPut {
+		t.Error("expected to find manifest with name 'complex.users_by_id_put'")
 	}
 	if !foundComplexPath {
-		t.Error("expected to find manifest with name 'complex.complex_path_with_dashes'")
+		t.Error("expected to find manifest with name 'complex.complex_path_with_dashes_post'")
 	}
 }
 
@@ -536,11 +543,11 @@ func TestCoreAdapter_ConvertOpenAPI_HelperFunctions(t *testing.T) {
 		method   string
 		expected string
 	}{
-		{"api", "/users", "get", "api.users"},
-		{"api", "/users/{id}", "get", "api.users_by_id"},
-		{"api", "/v1/orders/{orderId}/items", "post", "api.v1_orders_by_id_items"},
-		{"api", "/complex-path/with-dashes", "get", "api.complex_path_with_dashes"},
-		{"test", "/{id}/sub/{subId}", "get", "test.by_id_sub_by_id"},
+		{"api", "/users", "get", "api.users_get"},
+		{"api", "/users/{id}", "get", "api.users_by_id_get"},
+		{"api", "/v1/orders/{orderId}/items", "post", "api.v1_orders_by_id_items_post"},
+		{"api", "/complex-path/with-dashes", "get", "api.complex_path_with_dashes_get"},
+		{"test", "/{id}/sub/{subId}", "get", "test.by_id_sub_by_id_get"},
 	}
 
 	for _, test := range nameTests {

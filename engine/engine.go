@@ -691,20 +691,21 @@ func (e *Engine) executeToolCall(ctx context.Context, step *model.Step, stepCtx 
 
 	adapterInst, ok := e.Adapters.Get(step.Use)
 	if !ok {
-		if strings.HasPrefix(step.Use, "mcp://") {
+		switch {
+		case strings.HasPrefix(step.Use, "mcp://"):
 			adapterInst, ok = e.Adapters.Get("mcp")
 			if !ok {
 				stepCtx.SetOutput(stepID, make(map[string]any))
 				return utils.Errorf("MCPAdapter not registered")
 			}
-		} else if strings.HasPrefix(step.Use, "core.") {
+		case strings.HasPrefix(step.Use, "core."):
 			// Handle core tools by routing to the core adapter
 			adapterInst, ok = e.Adapters.Get("core")
 			if !ok {
 				stepCtx.SetOutput(stepID, make(map[string]any))
 				return utils.Errorf("CoreAdapter not registered")
 			}
-		} else {
+		default:
 			stepCtx.SetOutput(stepID, make(map[string]any))
 			return utils.Errorf("adapter not found: %s", step.Use)
 		}
@@ -749,12 +750,7 @@ func (e *Engine) executeToolCall(ctx context.Context, step *model.Step, stepCtx 
 func (e *Engine) prepareTemplateData(stepCtx *StepContext) TemplateData {
 	snapshot := stepCtx.Snapshot()
 
-	return TemplateData{
-		Event:   snapshot.Event,
-		Vars:    snapshot.Vars,
-		Outputs: snapshot.Outputs,
-		Secrets: snapshot.Secrets,
-	}
+	return TemplateData(snapshot)
 }
 
 // prepareTemplateDataAsMap creates template data as map for templating system
@@ -795,13 +791,13 @@ func isValidIdentifier(s string) bool {
 	}
 
 	// Check that it starts with a letter or underscore
-	if !((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= 'A' && s[0] <= 'Z') || s[0] == '_') {
+	if (s[0] < 'a' || s[0] > 'z') && (s[0] < 'A' || s[0] > 'Z') && s[0] != '_' {
 		return false
 	}
 
 	// Check that all characters are valid identifier characters
 	for _, r := range s {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' {
 			return false
 		}
 	}

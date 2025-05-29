@@ -376,7 +376,8 @@ func runsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 
 // GET /runs/{id}.
 func runStatusHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if r.Method == http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
 		idStr := r.URL.Path[len("/runs/"):]
 		id, err := uuid.Parse(idStr)
 		if err != nil {
@@ -398,8 +399,7 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 		if err := json.NewEncoder(w).Encode(run); err != nil {
 			utils.Error("json.Encode failed: %v", err)
 		}
-		return
-	} else if r.Method == http.MethodDelete {
+	case http.MethodDelete:
 		idStr := r.URL.Path[len("/runs/"):]
 		id, err := uuid.Parse(idStr)
 		if err != nil {
@@ -421,9 +421,9 @@ func runStatusHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 		if _, err := w.Write([]byte("deleted")); err != nil {
 			utils.Error("w.Write failed: %v", err)
 		}
-		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
-	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
 // POST /resume/{token}.
@@ -649,7 +649,8 @@ func toolsManifestHandler(w http.ResponseWriter, r *http.Request, svc FlowServic
 
 // Handler: GET /flows (list all flow specs), POST /flows (upload/update flow).
 func flowsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
-	if r.Method == http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
 		// List all flow specs
 		flows, err := svc.ListFlows(r.Context())
 		if err != nil {
@@ -671,16 +672,15 @@ func flowsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 		if err := json.NewEncoder(w).Encode(specs); err != nil {
 			utils.Error("json.Encode failed: %v", err)
 		}
-		return
-	} else if r.Method == http.MethodPost {
+	case http.MethodPost:
 		// Upload or update a flow (stub)
 		w.WriteHeader(http.StatusNotImplemented)
 		if _, err := w.Write([]byte("upload/update flow not implemented yet")); err != nil {
 			utils.Error("w.Write failed: %v", err)
 		}
-		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
-	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
 // Handler: GET /flows/{name} (get flow spec), DELETE /flows/{name} (delete flow).
@@ -693,7 +693,8 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 		}
 		return
 	}
-	if r.Method == http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
 		flow, err := svc.GetFlow(r.Context(), name)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -706,16 +707,15 @@ func flowSpecHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 		if err := json.NewEncoder(w).Encode(flow); err != nil {
 			utils.Error("json.Encode failed: %v", err)
 		}
-		return
-	} else if r.Method == http.MethodDelete {
+	case http.MethodDelete:
 		// Delete flow (stub)
 		w.WriteHeader(http.StatusNotImplemented)
 		if _, err := w.Write([]byte("delete flow not implemented yet")); err != nil {
 			utils.Error("w.Write failed: %v", err)
 		}
-		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
-	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
 // Handler: POST /events (publish event).
@@ -749,9 +749,22 @@ func eventsHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
 	}
 }
 
+// convertOpenAPISpec is a DRY helper that calls the core adapter for OpenAPI conversion
+func convertOpenAPISpec(ctx context.Context, openapi, apiName, baseURL string) (map[string]any, error) {
+	coreAdapter := &adapter.CoreAdapter{}
+	inputs := map[string]any{
+		"__use":    "core.convert_openapi",
+		"openapi":  openapi,
+		"api_name": apiName,
+		"base_url": baseURL,
+	}
+	return coreAdapter.Execute(ctx, inputs)
+}
+
 // convertOpenAPIHandler converts OpenAPI specs to BeemFlow tool manifests
 // POST /tools/convert with JSON body: { "openapi": "...", "api_name": "my_api", "base_url": "https://..." }
 func convertOpenAPIHandler(w http.ResponseWriter, r *http.Request, svc FlowService) {
+	_ = svc // Service not needed for this operation, uses core adapter directly
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -798,16 +811,4 @@ func convertOpenAPIHandler(w http.ResponseWriter, r *http.Request, svc FlowServi
 	if err := json.NewEncoder(w).Encode(result); err != nil {
 		utils.Error("json.Encode failed: %v", err)
 	}
-}
-
-// convertOpenAPISpec is a DRY helper that calls the core adapter for OpenAPI conversion
-func convertOpenAPISpec(ctx context.Context, openapi, apiName, baseURL string) (map[string]any, error) {
-	coreAdapter := &adapter.CoreAdapter{}
-	inputs := map[string]any{
-		"__use":    "core.convert_openapi",
-		"openapi":  openapi,
-		"api_name": apiName,
-		"base_url": baseURL,
-	}
-	return coreAdapter.Execute(ctx, inputs)
 }

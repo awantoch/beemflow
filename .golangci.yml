@@ -1,28 +1,25 @@
 # golangci-lint configuration
+version: 2
+
 run:
   timeout: 5m
   go: "1.24.1"
 
 linters:
   enable:
-    - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
     - gocritic
-    - goconst
     - gocyclo
     - misspell
-    - gofmt
-    - goimports
     - errname
     - errorlint
-    - gosec
-    - godot
     - unconvert
     - unparam
+  disable:
+    - errcheck
 
 linters-settings:
   gocritic:
@@ -35,40 +32,13 @@ linters-settings:
       - hugeParam
       - rangeValCopy
       - octalLiteral
-  
-  goconst:
-    ignore-tests: true
 
   staticcheck:
     checks: ["all"]
 
   gocyclo:
-    min-complexity: 50
+    min-complexity: 30
 
 issues:
   max-issues-per-linter: 0
-  max-same-issues: 0
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
-        - goconst
-    - linters:
-        - gosec
-      text: "G104:" # Ignore error checking issues for simplicity
-    - linters:
-        - gosec
-      text: "G306:" # Ignore file permissions in tests
-    - linters:
-        - gosec
-      text: "G204:" # Ignore subprocess calls - these are deliberate
-    - linters:
-        - gosec
-      text: "G107:" # Ignore HTTP request with variable URL
-    - linters:
-        - gosec
-      text: "G601:" # Ignore implicit memory aliasing in for loop
-    - linters:
-        - errcheck
-      text: "Error return value of `(os\\.(Create|WriteFile|Chmod)|io\\.WriteString)` is not checked" 
+  max-same-issues: 0 

@@ -639,6 +639,27 @@ func TestSqliteStorage_SaveStep(t *testing.T) {
 	if len(allSteps) != 3 {
 		t.Errorf("Expected 3 steps, got %d", len(allSteps))
 	}
+
+	// Verify step data integrity
+	for _, step := range steps {
+		switch step.StepName {
+		case "complex_step":
+			if step.Outputs == nil {
+				t.Error("Expected non-nil outputs for complex_step")
+			} else {
+				if step.Outputs["string"] != "value" {
+					t.Errorf("Expected string value 'value', got %v", step.Outputs["string"])
+				}
+				if step.Outputs["number"] != float64(42) { // JSON unmarshaling converts numbers to float64
+					t.Errorf("Expected number 42, got %v", step.Outputs["number"])
+				}
+			}
+		case "nil_outputs_step":
+			if step.Outputs != nil {
+				t.Errorf("Expected nil outputs for nil_outputs_step, got %v", step.Outputs)
+			}
+		}
+	}
 }
 
 // TestSqliteStorage_RegisterWait tests the RegisterWait function
@@ -903,7 +924,8 @@ func TestSqliteStorage_GetSteps_EdgeCases(t *testing.T) {
 
 	// Verify step data integrity
 	for _, step := range steps {
-		if step.StepName == "complex_step" {
+		switch step.StepName {
+		case "complex_step":
 			if step.Outputs == nil {
 				t.Error("Expected non-nil outputs for complex_step")
 			} else {
@@ -914,7 +936,7 @@ func TestSqliteStorage_GetSteps_EdgeCases(t *testing.T) {
 					t.Errorf("Expected number 42, got %v", step.Outputs["number"])
 				}
 			}
-		} else if step.StepName == "nil_outputs_step" {
+		case "nil_outputs_step":
 			if step.Outputs != nil {
 				t.Errorf("Expected nil outputs for nil_outputs_step, got %v", step.Outputs)
 			}
@@ -933,7 +955,8 @@ func TestNewSqliteStorage_ErrorCases(t *testing.T) {
 
 	// Test with empty path - this may or may not error depending on the system
 	_, err = NewSqliteStorage("")
-	// Don't assert error for empty path as behavior may vary
+	// Intentionally ignoring error as behavior may vary across systems
+	_ = err
 
 	// Test with valid path
 	tempDir, err := os.MkdirTemp("", "sqlite_test")

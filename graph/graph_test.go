@@ -34,7 +34,7 @@ func TestExportMermaid_RealFlow(t *testing.T) {
 	if s == "" {
 		t.Errorf("expected non-empty string")
 	}
-	if !(strings.Contains(s, "fetch_tweet") && strings.Contains(s, "rewrite") && strings.Contains(s, "post_instagram")) {
+	if !strings.Contains(s, "fetch_tweet") || !strings.Contains(s, "rewrite") || !strings.Contains(s, "post_instagram") {
 		t.Errorf("output missing step names: %q", s)
 	}
 }

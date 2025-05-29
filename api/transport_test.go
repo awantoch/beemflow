@@ -100,31 +100,30 @@ func TestConvertOpenAPIHandler(t *testing.T) {
 	manifest1 := manifests[0].(map[string]any)
 	manifest2 := manifests[1].(map[string]any)
 
-	// Both should have the same name (path-based)
-	if manifest1["name"] != "test_api.users" {
-		t.Errorf("Expected name 'test_api.users', got %v", manifest1["name"])
-	}
-	if manifest2["name"] != "test_api.users" {
-		t.Errorf("Expected name 'test_api.users', got %v", manifest2["name"])
+	// Tools should have method-specific names to avoid collisions
+	name1 := manifest1["name"].(string)
+	name2 := manifest2["name"].(string)
+
+	// Should have different names based on HTTP method
+	if name1 == name2 {
+		t.Errorf("Expected different names for different HTTP methods, both got %v", name1)
 	}
 
-	// Check that we have both GET and POST methods (order may vary)
-	methods := []string{manifest1["method"].(string), manifest2["method"].(string)}
-	hasGet := false
-	hasPost := false
-	for _, method := range methods {
-		if method == "GET" {
-			hasGet = true
+	// Check that both names start with the expected prefix
+	expectedNames := []string{"test_api.users_get", "test_api.users_post"}
+	actualNames := []string{name1, name2}
+
+	for _, expected := range expectedNames {
+		found := false
+		for _, actual := range actualNames {
+			if actual == expected {
+				found = true
+				break
+			}
 		}
-		if method == "POST" {
-			hasPost = true
+		if !found {
+			t.Errorf("Expected to find tool name %s in %v", expected, actualNames)
 		}
-	}
-	if !hasGet {
-		t.Error("Expected to find GET method in manifests")
-	}
-	if !hasPost {
-		t.Error("Expected to find POST method in manifests")
 	}
 }
 

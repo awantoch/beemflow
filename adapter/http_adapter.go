@@ -65,10 +65,7 @@ func (a *HTTPAdapter) executeManifestRequest(ctx context.Context, inputs map[str
 	enrichedInputs := a.enrichInputsWithDefaults(inputs)
 
 	// Prepare headers
-	headers, err := a.prepareManifestHeaders(enrichedInputs)
-	if err != nil {
-		return nil, utils.Errorf("failed to prepare headers: %w", err)
-	}
+	headers := a.prepareManifestHeaders(enrichedInputs)
 
 	// Create request
 	req := HTTPRequest{
@@ -219,7 +216,7 @@ func (a *HTTPAdapter) enrichInputsWithDefaults(inputs map[string]any) map[string
 }
 
 // prepareManifestHeaders prepares headers for manifest-based requests
-func (a *HTTPAdapter) prepareManifestHeaders(inputs map[string]any) (map[string]string, error) {
+func (a *HTTPAdapter) prepareManifestHeaders(inputs map[string]any) map[string]string {
 	headers := make(map[string]string)
 
 	// Add manifest headers with environment variable expansion
@@ -238,7 +235,7 @@ func (a *HTTPAdapter) prepareManifestHeaders(inputs map[string]any) (map[string]
 		}
 	}
 
-	return headers, nil
+	return headers
 }
 
 // extractMethod extracts HTTP method from inputs with safe default
