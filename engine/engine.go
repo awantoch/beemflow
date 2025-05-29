@@ -297,31 +297,27 @@ func (e *Engine) executeCatchBlocks(ctx context.Context, flow *model.Flow, event
 	return catchOutputs, originalErr
 }
 
-// collectSecrets gathers secrets from environment and event
+// collectSecrets extracts secrets from event data and environment variables
 func (e *Engine) collectSecrets(event map[string]any) SecretsData {
-	secretsMap := make(SecretsData)
+	secrets := make(SecretsData)
 
-	// Collect env secrets
+	// First, load secrets from event data
+	if s, ok := safeMapAssert(event[constants.SecretsKey]); ok {
+		for k, v := range s {
+			secrets[k] = v
+		}
+	}
+
+	// Then, load from environment variables
 	for _, envKV := range os.Environ() {
-		if eq := strings.Index(envKV, "="); eq != -1 {
-			k := envKV[:eq]
-			v := envKV[eq+1:]
-			secretsMap[k] = v
+		if eq := strings.Index(envKV, constants.FieldEqualityOperator); eq != -1 {
+			key := envKV[:eq]
+			value := envKV[eq+1:]
+			secrets[key] = value
 		}
 	}
 
-	// Merge with event-supplied secrets
-	if event != nil {
-		if s, ok := safeMapAssert(event["secrets"]); ok {
-			for k, v := range s {
-				if secretVal, ok := safeStringAssert(v); ok {
-					secretsMap[k] = secretVal
-				}
-			}
-		}
-	}
-
-	return secretsMap
+	return secrets
 }
 
 // Helper to get pointer to time.Time.
@@ -364,11 +360,31 @@ func (e *Engine) executeStepsWithPersistence(ctx context.Context, flow *model.Fl
 
 // handleAwaitEventStep processes await_event steps and sets up pause/resume logic
 func (e *Engine) handleAwaitEventStep(ctx context.Context, step *model.Step, flow *model.Flow, stepCtx *StepContext, stepIdx int, runID uuid.UUID) (map[string]any, error) {
-	// Render token from match (support template)
+	// Extract and render token
+	token, err := e.extractAndRenderAwaitToken(step, stepCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle existing paused run with same token
+	e.handleExistingPausedRun(ctx, token)
+
+	// Register new paused run
+	e.registerPausedRun(ctx, token, flow, stepCtx, stepIdx, runID)
+
+	// Setup event subscription for resume
+	e.setupResumeEventSubscription(ctx, token)
+
+	return nil, utils.Errorf(constants.ErrStepWaitingForEvent, step.ID)
+}
+
+// extractAndRenderAwaitToken validates and renders the await event token
+func (e *Engine) extractAndRenderAwaitToken(step *model.Step, stepCtx *StepContext) (string, error) {
+	// Extract token from match configuration
 	match := step.AwaitEvent.Match
 	tokenRaw, ok := safeStringAssert(match[constants.MatchKeyToken])
-	if !ok || tokenRaw == "" {
-		return nil, utils.Errorf(constants.ErrAwaitEventMissingToken)
+	if !ok || tokenRaw == constants.EmptyString {
+		return constants.EmptyString, utils.Errorf(constants.ErrAwaitEventMissingToken)
 	}
 
 	// Prepare template data and render token
@@ -377,17 +393,14 @@ func (e *Engine) handleAwaitEventStep(ctx context.Context, step *model.Step, flo
 
 	renderedToken, err := e.Templater.Render(tokenRaw, data)
 	if err != nil {
-		return nil, utils.Errorf(constants.ErrFailedToRenderToken, err)
+		return constants.EmptyString, utils.Errorf(constants.ErrFailedToRenderToken, err)
 	}
-	token := renderedToken
 
-	// Handle existing paused run with same token
-	e.handleExistingPausedRun(ctx, token)
+	return renderedToken, nil
+}
 
-	// Register new paused run
-	e.registerPausedRun(ctx, token, flow, stepCtx, stepIdx, runID)
-
-	// Subscribe to resume events
+// setupResumeEventSubscription configures event bus subscription for resume events
+func (e *Engine) setupResumeEventSubscription(ctx context.Context, token string) {
 	e.EventBus.Subscribe(ctx, constants.EventTopicResumePrefix+token, func(payload any) {
 		resumeEvent, ok := payload.(map[string]any)
 		if !ok {
@@ -395,8 +408,6 @@ func (e *Engine) handleAwaitEventStep(ctx context.Context, step *model.Step, flo
 		}
 		e.Resume(ctx, token, resumeEvent)
 	})
-
-	return nil, utils.Errorf(constants.ErrStepWaitingForEvent, step.ID)
 }
 
 // handleExistingPausedRun manages cleanup of existing paused runs with the same token
@@ -680,19 +691,19 @@ func (e *Engine) executeSequentialBlock(ctx context.Context, step *model.Step, s
 
 // executeForeachBlock handles foreach loop execution
 func (e *Engine) executeForeachBlock(ctx context.Context, step *model.Step, stepCtx *StepContext, stepID string) error {
-	// Prepare template data for foreach evaluation
+	// Prepare template data for expression evaluation
 	data := e.prepareTemplateDataAsMap(stepCtx)
 
 	// Evaluate the foreach expression to get the actual value (not rendered as string)
 	rendered, err := e.Templater.EvaluateExpression(step.Foreach, data)
 	if err != nil {
-		return utils.Errorf("template error in foreach expression: %w", err)
+		return utils.Errorf(constants.ErrTemplateErrorForeach, err)
 	}
 
 	// The rendered result should be a list
 	list, ok := rendered.([]any)
 	if !ok {
-		return utils.Errorf("foreach expression did not evaluate to a list, got: %T", rendered)
+		return utils.Errorf(constants.ErrForeachNotList, rendered)
 	}
 
 	if len(list) == 0 {
@@ -757,14 +768,19 @@ func (e *Engine) executeIterationSteps(ctx context.Context, steps []model.Step, 
 	return nil
 }
 
-// renderStepID renders a step ID as a template
+// renderStepID renders a step ID with templating support
 func (e *Engine) renderStepID(stepID string, stepCtx *StepContext) (string, error) {
-	iterData := e.prepareTemplateDataAsMap(stepCtx)
-	renderedStepID, err := e.Templater.Render(stepID, iterData)
+	data := e.prepareTemplateDataAsMap(stepCtx)
+	rendered, err := e.renderValue(stepID, data)
 	if err != nil {
-		return "", utils.Errorf("template error in step ID %s: %w", stepID, err)
+		return constants.EmptyString, utils.Errorf(constants.ErrTemplateErrorStepID, stepID, err)
 	}
-	return renderedStepID, nil
+
+	renderedStr, ok := safeStringAssert(rendered)
+	if !ok {
+		return stepID, nil // fallback to original stepID if not a string
+	}
+	return renderedStr, nil
 }
 
 // copyIterationOutput safely copies output from iteration context to main context
@@ -853,17 +869,17 @@ func (e *Engine) resolveAdapter(toolName string, stepCtx *StepContext, stepID st
 	if !ok {
 		switch {
 		case strings.HasPrefix(toolName, constants.AdapterPrefixMCP):
-			adapterInst, ok = e.Adapters.Get("mcp")
+			adapterInst, ok = e.Adapters.Get(constants.AdapterIDMCP)
 			if !ok {
-				return nil, setEmptyOutputAndError(stepCtx, stepID, "MCPAdapter not registered")
+				return nil, setEmptyOutputAndError(stepCtx, stepID, constants.ErrMCPAdapterNotRegistered)
 			}
 		case strings.HasPrefix(toolName, constants.AdapterPrefixCore):
-			adapterInst, ok = e.Adapters.Get("core")
+			adapterInst, ok = e.Adapters.Get(constants.AdapterIDCore)
 			if !ok {
-				return nil, setEmptyOutputAndError(stepCtx, stepID, "CoreAdapter not registered")
+				return nil, setEmptyOutputAndError(stepCtx, stepID, constants.ErrCoreAdapterNotRegistered)
 			}
 		default:
-			return nil, setEmptyOutputAndError(stepCtx, stepID, "adapter not found: %s", toolName)
+			return nil, setEmptyOutputAndError(stepCtx, stepID, constants.ErrAdapterNotFound, toolName)
 		}
 	}
 	return adapterInst, nil
@@ -903,7 +919,7 @@ func (e *Engine) handleToolExecution(ctx context.Context, toolName, stepID strin
 	outputs, err := adapterInst.Execute(ctx, inputs)
 	if err != nil {
 		stepCtx.SetOutput(stepID, outputs)
-		return utils.Errorf("step %s failed: %w", stepID, err)
+		return utils.Errorf(constants.ErrStepFailed, stepID, err)
 	}
 
 	// Store outputs and log success using our helper
@@ -928,23 +944,23 @@ func (e *Engine) prepareTemplateDataAsMap(stepCtx *StepContext) map[string]any {
 // isValidIdentifier checks if a string is a valid template identifier
 // Valid identifiers contain only letters, numbers, and underscores, and don't contain template syntax
 func isValidIdentifier(s string) bool {
-	if s == "" {
+	if s == constants.EmptyString {
 		return false
 	}
 
 	// Check for template syntax that would make this an invalid identifier
-	if strings.Contains(s, "{{") || strings.Contains(s, "}}") || strings.Contains(s, "{%") || strings.Contains(s, "%}") {
+	if strings.Contains(s, constants.TemplateOpenDelim) || strings.Contains(s, constants.TemplateCloseDelim) || strings.Contains(s, constants.TemplateControlOpen) || strings.Contains(s, constants.TemplateControlClose) {
 		return false
 	}
 
 	// Check that it starts with a letter or underscore
-	if (s[0] < 'a' || s[0] > 'z') && (s[0] < 'A' || s[0] > 'Z') && s[0] != '_' {
+	if (s[0] < constants.IdentifierMinLowercase || s[0] > constants.IdentifierMaxLowercase) && (s[0] < constants.IdentifierMinUppercase || s[0] > constants.IdentifierMaxUppercase) && s[0] != constants.IdentifierUnderscore {
 		return false
 	}
 
 	// Check that all characters are valid identifier characters
 	for _, r := range s {
-		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' {
+		if (r < constants.IdentifierMinLowercase || r > constants.IdentifierMaxLowercase) && (r < constants.IdentifierMinUppercase || r > constants.IdentifierMaxUppercase) && (r < constants.IdentifierMinDigit || r > constants.IdentifierMaxDigit) && r != constants.IdentifierUnderscore {
 			return false
 		}
 	}
@@ -975,15 +991,14 @@ func (e *Engine) prepareToolInputs(step *model.Step, stepCtx *StepContext, stepI
 	data := e.prepareTemplateDataAsMap(stepCtx)
 	inputs := make(map[string]any)
 
-	for k, v := range step.With {
-		// DEBUG: Log context keys and important values using our helper
-		varsKeys := extractVarsKeysForDebug(data)
-		utils.Debug("Template context keys: %v, vars keys: %v, vars: %+v", mapKeys(data), varsKeys, data[constants.TemplateFieldVars])
-		utils.Debug("About to render template for step %s: data = %#v", stepID, data)
+	// Log debug information for template context
+	e.logTemplateDebugInfo(data, stepID)
 
+	// Render each input parameter
+	for k, v := range step.With {
 		rendered, err := e.renderValue(v, data)
 		if err != nil {
-			return nil, utils.Errorf("template error in step %s: %w", stepID, err)
+			return nil, utils.Errorf(constants.ErrTemplateError, stepID, err)
 		}
 		inputs[k] = rendered
 	}
@@ -991,40 +1006,83 @@ func (e *Engine) prepareToolInputs(step *model.Step, stepCtx *StepContext, stepI
 	return inputs, nil
 }
 
+// logTemplateDebugInfo logs debug information about template context
+func (e *Engine) logTemplateDebugInfo(data map[string]any, stepID string) {
+	varsKeys := extractVarsKeysForDebug(data)
+	utils.Debug("Template context keys: %v, vars keys: %v, vars: %+v",
+		mapKeys(data), varsKeys, data[constants.TemplateFieldVars])
+	utils.Debug("About to render template for step %s: data = %#v", stepID, data)
+}
+
 // autoFillRequiredParams fills missing required parameters from manifest defaults
 func (e *Engine) autoFillRequiredParams(adapterInst adapter.Adapter, inputs map[string]any, stepCtx *StepContext) {
-	if manifest := adapterInst.Manifest(); manifest != nil {
-		params, ok := safeMapAssert(manifest.Parameters["properties"])
+	manifest := adapterInst.Manifest()
+	if manifest == nil {
+		return
+	}
+
+	params, required := e.extractManifestParameters(manifest)
+	if params == nil || required == nil {
+		return
+	}
+
+	secrets := stepCtx.Snapshot().Secrets
+	e.fillMissingRequiredParameters(inputs, params, required, secrets)
+}
+
+// extractManifestParameters extracts parameters and required fields from adapter manifest
+func (e *Engine) extractManifestParameters(manifest *registry.ToolManifest) (map[string]any, []any) {
+	params, ok := safeMapAssert(manifest.Parameters[constants.DefaultKeyProperties])
+	if !ok {
+		return nil, nil
+	}
+
+	required, ok := safeSliceAssert(manifest.Parameters[constants.DefaultKeyRequired])
+	if !ok {
+		return nil, nil
+	}
+
+	return params, required
+}
+
+// fillMissingRequiredParameters iterates through required parameters and fills missing ones
+func (e *Engine) fillMissingRequiredParameters(inputs, params map[string]any, required []any, secrets SecretsData) {
+	for _, req := range required {
+		key, ok := safeStringAssert(req)
 		if !ok {
-			return
+			continue
 		}
 
-		required, ok := safeSliceAssert(manifest.Parameters["required"])
-		if !ok {
-			return
-		}
-
-		secrets := stepCtx.Snapshot().Secrets
-
-		for _, req := range required {
-			key, ok := safeStringAssert(req)
-			if !ok {
-				continue
-			}
-
-			if _, present := inputs[key]; !present {
-				if prop, ok := safeMapAssert(params[key]); ok {
-					if def, ok := safeMapAssert(prop["default"]); ok {
-						if envVar, ok := safeStringAssert(def["$env"]); ok {
-							if val, ok := secrets[envVar]; ok {
-								inputs[key] = val
-							}
-						}
-					}
-				}
+		if _, present := inputs[key]; !present {
+			if defaultValue := e.resolveParameterDefault(params[key], secrets); defaultValue != nil {
+				inputs[key] = defaultValue
 			}
 		}
 	}
+}
+
+// resolveParameterDefault resolves default value from parameter definition and secrets
+func (e *Engine) resolveParameterDefault(paramDef any, secrets SecretsData) any {
+	prop, ok := safeMapAssert(paramDef)
+	if !ok {
+		return nil
+	}
+
+	def, ok := safeMapAssert(prop[constants.DefaultKeyDefault])
+	if !ok {
+		return nil
+	}
+
+	envVar, ok := safeStringAssert(def[constants.EnvVarPrefix])
+	if !ok {
+		return nil
+	}
+
+	if val, ok := secrets[envVar]; ok {
+		return val
+	}
+
+	return nil
 }
 
 // StepContext holds context for step execution (event, vars, outputs, secrets).
@@ -1122,12 +1180,12 @@ func (e *Engine) Close() error {
 // Helper to convert PausedRun to map[string]any for storage.
 func pausedRunToMap(pr *PausedRun) map[string]any {
 	return map[string]any{
-		"flow":     pr.Flow,
-		"step_idx": pr.StepIdx,
-		"step_ctx": pr.StepCtx,
-		"outputs":  pr.Outputs,
-		"token":    pr.Token,
-		"run_id":   pr.RunID.String(),
+		constants.PausedRunKeyFlow:    pr.Flow,
+		constants.PausedRunKeyStepIdx: pr.StepIdx,
+		constants.PausedRunKeyStepCtx: pr.StepCtx,
+		constants.PausedRunKeyOutputs: pr.Outputs,
+		constants.PausedRunKeyToken:   pr.Token,
+		constants.PausedRunKeyRunID:   pr.RunID.String(),
 	}
 }
 

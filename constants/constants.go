@@ -228,12 +228,27 @@ const (
 	ErrFailedToRenderToken     = "failed to render token: %v"
 	ErrStepWaitingForEvent     = "step '%s' is waiting for event"
 	ErrFailedToDeletePausedRun = "failed to delete paused run"
+	// New engine error messages
+	ErrMCPAdapterNotRegistered  = "MCPAdapter not registered"
+	ErrCoreAdapterNotRegistered = "CoreAdapter not registered"
+	ErrAdapterNotFound          = "adapter not found: %s"
+	ErrStepFailed               = "step %s failed: %w"
+	ErrTemplateError            = "template error in step %s: %w"
+	ErrTemplateErrorStepID      = "template error in step ID %s: %w"
+	ErrForeachNotList           = "foreach expression did not evaluate to a list, got: %T"
+	ErrTemplateErrorForeach     = "template error in foreach expression: %w"
 )
 
 // Engine constants
 const (
 	MatchKeyToken          = "token"
 	EventTopicResumePrefix = "resume."
+	// New engine constants
+	AdapterIDMCP          = "mcp"
+	AdapterIDCore         = "core"
+	SecretsKey            = "secrets"
+	FieldEqualityOperator = "="
+	EmptyString           = ""
 )
 
 // JSON formatting
@@ -369,4 +384,49 @@ const (
 // Flow file extensions
 const (
 	FlowFileExtension = ".flow.yaml"
+)
+
+// ============================================================================
+// ENGINE TEMPLATE CONSTANTS
+// ============================================================================
+
+// Template syntax markers
+const (
+	TemplateOpenDelim    = "{{"
+	TemplateCloseDelim   = "}}"
+	TemplateControlOpen  = "{%"
+	TemplateControlClose = "%}"
+)
+
+// Valid identifier characters for template validation
+const (
+	IdentifierUnderscore   = '_'
+	IdentifierMinLowercase = 'a'
+	IdentifierMaxLowercase = 'z'
+	IdentifierMinUppercase = 'A'
+	IdentifierMaxUppercase = 'Z'
+	IdentifierMinDigit     = '0'
+	IdentifierMaxDigit     = '9'
+)
+
+// Paused run map keys
+const (
+	PausedRunKeyFlow    = "flow"
+	PausedRunKeyStepIdx = "step_idx"
+	PausedRunKeyStepCtx = "step_ctx"
+	PausedRunKeyOutputs = "outputs"
+	PausedRunKeyToken   = "token"
+	PausedRunKeyRunID   = "run_id"
+)
+
+// Environment variable handling
+const (
+	EnvVarPrefix = "$env"
+)
+
+// Default parameter sources
+const (
+	DefaultKeyProperties = "properties"
+	DefaultKeyRequired   = "required"
+	DefaultKeyDefault    = "default"
 )
