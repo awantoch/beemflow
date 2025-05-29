@@ -108,6 +108,167 @@ func GetAllOperations() map[string]*OperationDefinition {
 	return operationRegistry
 }
 
+// Handler functions to reduce cyclomatic complexity of init()
+func validateFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) error {
+	if len(args) != 1 {
+		return fmt.Errorf("exactly one argument required (flow name or file path)")
+	}
+	nameOrFile := args[0]
+
+	var err error
+
+	// Try as flow name first, then as file
+	if strings.Contains(nameOrFile, ".") || strings.Contains(nameOrFile, "/") {
+		// Looks like a file path - parse and validate it directly
+		flow, parseErr := dsl.Parse(nameOrFile)
+		if parseErr != nil {
+			utils.Error("YAML parse error: %v\n", parseErr)
+			return fmt.Errorf("YAML parse error: %w", parseErr)
+		}
+		err = dsl.Validate(flow)
+		if err != nil {
+			utils.Error("Schema validation error: %v\n", err)
+			return fmt.Errorf("schema validation error: %w", err)
+		}
+	} else {
+		// Looks like a flow name - use service
+		err = svc.ValidateFlow(cmd.Context(), nameOrFile)
+		if err != nil {
+			utils.Error("Validation error: %v\n", err)
+			return fmt.Errorf("validation error: %w", err)
+		}
+	}
+
+	utils.User("Validation OK: flow is valid!")
+	return nil
+}
+
+func validateFlowHandler(ctx context.Context, svc FlowService, args any) (any, error) {
+	a := args.(*ValidateFlowArgs)
+
+	// Try as flow name first, then as file
+	if strings.Contains(a.Name, ".") || strings.Contains(a.Name, "/") {
+		// Looks like a file path - parse and validate it directly
+		flow, parseErr := dsl.Parse(a.Name)
+		if parseErr != nil {
+			return nil, fmt.Errorf("YAML parse error: %w", parseErr)
+		}
+		err := dsl.Validate(flow)
+		if err != nil {
+			return nil, fmt.Errorf("schema validation error: %w", err)
+		}
+	} else {
+		// Looks like a flow name - use service
+		err := svc.ValidateFlow(ctx, a.Name)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return map[string]any{"status": "valid", "message": "Validation OK: flow is valid!"}, nil
+}
+
+func graphFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) error {
+	if len(args) != 1 {
+		return fmt.Errorf("exactly one argument required (flow name or file path)")
+	}
+	nameOrFile := args[0]
+
+	// Get output flag
+	outPath, _ := cmd.Flags().GetString("output")
+
+	var diagram string
+	var err error
+
+	// Try as flow name first, then as file
+	if strings.Contains(nameOrFile, ".") || strings.Contains(nameOrFile, "/") {
+		// Looks like a file path - parse it directly
+		flow, parseErr := dsl.Parse(nameOrFile)
+		if parseErr != nil {
+			utils.Error("YAML parse error: %v\n", parseErr)
+			return fmt.Errorf("YAML parse error: %w", parseErr)
+		}
+		diagram, err = graph.ExportMermaid(flow)
+	} else {
+		// Looks like a flow name - use service
+		diagram, err = svc.GraphFlow(cmd.Context(), nameOrFile)
+	}
+
+	if err != nil {
+		utils.Error("Graph export error: %v\n", err)
+		return fmt.Errorf("graph export error: %w", err)
+	}
+
+	if outPath != "" {
+		if err := os.WriteFile(outPath, []byte(diagram), 0644); err != nil {
+			utils.Error("Failed to write graph to %s: %v\n", outPath, err)
+			return fmt.Errorf("failed to write graph to %s: %w", outPath, err)
+		}
+		utils.User("Graph written to %s", outPath)
+	} else {
+		utils.Info("%s", diagram)
+	}
+	return nil
+}
+
+func graphFlowHandler(ctx context.Context, svc FlowService, args any) (any, error) {
+	a := args.(*GraphFlowArgs)
+
+	var diagram string
+	var err error
+
+	// Try as flow name first, then as file
+	if strings.Contains(a.Name, ".") || strings.Contains(a.Name, "/") {
+		// Looks like a file path - parse it directly
+		flow, parseErr := dsl.Parse(a.Name)
+		if parseErr != nil {
+			return nil, fmt.Errorf("YAML parse error: %w", parseErr)
+		}
+		diagram, err = graph.ExportMermaid(flow)
+	} else {
+		// Looks like a flow name - use service
+		diagram, err = svc.GraphFlow(ctx, a.Name)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("graph export error: %w", err)
+	}
+
+	return map[string]any{"diagram": diagram}, nil
+}
+
+func lintFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) error {
+	if len(args) != 1 {
+		return fmt.Errorf("exactly one file argument required")
+	}
+	file := args[0]
+	flow, err := dsl.Parse(file)
+	if err != nil {
+		utils.Error("YAML parse error: %v\n", err)
+		return fmt.Errorf("YAML parse error: %w", err)
+	}
+	err = dsl.Validate(flow)
+	if err != nil {
+		utils.Error("Schema validation error: %v\n", err)
+		return fmt.Errorf("schema validation error: %w", err)
+	}
+	utils.User("Lint OK: flow is valid!")
+	return nil
+}
+
+func lintFlowHandler(ctx context.Context, svc FlowService, args any) (any, error) {
+	a := args.(*FlowFileArgs)
+	flow, err := dsl.Parse(a.File)
+	if err != nil {
+		return nil, fmt.Errorf("YAML parse error: %w", err)
+	}
+	err = dsl.Validate(flow)
+	if err != nil {
+		return nil, fmt.Errorf("schema validation error: %w", err)
+	}
+	return map[string]any{"status": "valid", "message": "Lint OK: flow is valid!"}, nil
+}
+
 // init registers all core operations
 func init() {
 	// List Flows
@@ -154,63 +315,8 @@ func init() {
 		CLIShort:    "Validate a flow (from name or file)",
 		MCPName:     "beemflow_validate_flow",
 		ArgsType:    reflect.TypeOf(ValidateFlowArgs{}),
-		CLIHandler: func(cmd *cobra.Command, args []string, svc FlowService) error {
-			if len(args) != 1 {
-				return fmt.Errorf("exactly one argument required (flow name or file path)")
-			}
-			nameOrFile := args[0]
-
-			var err error
-
-			// Try as flow name first, then as file
-			if strings.Contains(nameOrFile, ".") || strings.Contains(nameOrFile, "/") {
-				// Looks like a file path - parse and validate it directly
-				flow, parseErr := dsl.Parse(nameOrFile)
-				if parseErr != nil {
-					utils.Error("YAML parse error: %v\n", parseErr)
-					return fmt.Errorf("YAML parse error: %w", parseErr)
-				}
-				err = dsl.Validate(flow)
-				if err != nil {
-					utils.Error("Schema validation error: %v\n", err)
-					return fmt.Errorf("schema validation error: %w", err)
-				}
-			} else {
-				// Looks like a flow name - use service
-				err = svc.ValidateFlow(cmd.Context(), nameOrFile)
-				if err != nil {
-					utils.Error("Validation error: %v\n", err)
-					return fmt.Errorf("validation error: %w", err)
-				}
-			}
-
-			utils.User("Validation OK: flow is valid!")
-			return nil
-		},
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
-			a := args.(*ValidateFlowArgs)
-
-			// Try as flow name first, then as file
-			if strings.Contains(a.Name, ".") || strings.Contains(a.Name, "/") {
-				// Looks like a file path - parse and validate it directly
-				flow, parseErr := dsl.Parse(a.Name)
-				if parseErr != nil {
-					return nil, fmt.Errorf("YAML parse error: %w", parseErr)
-				}
-				err := dsl.Validate(flow)
-				if err != nil {
-					return nil, fmt.Errorf("schema validation error: %w", err)
-				}
-			} else {
-				// Looks like a flow name - use service
-				err := svc.ValidateFlow(ctx, a.Name)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			return map[string]any{"status": "valid", "message": "Validation OK: flow is valid!"}, nil
-		},
+		CLIHandler:  validateFlowCLIHandler,
+		Handler:     validateFlowHandler,
 	})
 
 	// Graph Flow (Unified: handles both flow names and files)
@@ -224,73 +330,8 @@ func init() {
 		CLIShort:    "Generate a Mermaid diagram for a flow",
 		MCPName:     "beemflow_graph_flow",
 		ArgsType:    reflect.TypeOf(GraphFlowArgs{}),
-		CLIHandler: func(cmd *cobra.Command, args []string, svc FlowService) error {
-			if len(args) != 1 {
-				return fmt.Errorf("exactly one argument required (flow name or file path)")
-			}
-			nameOrFile := args[0]
-
-			// Get output flag
-			outPath, _ := cmd.Flags().GetString("output")
-
-			var diagram string
-			var err error
-
-			// Try as flow name first, then as file
-			if strings.Contains(nameOrFile, ".") || strings.Contains(nameOrFile, "/") {
-				// Looks like a file path - parse it directly
-				flow, parseErr := dsl.Parse(nameOrFile)
-				if parseErr != nil {
-					utils.Error("YAML parse error: %v\n", parseErr)
-					return fmt.Errorf("YAML parse error: %w", parseErr)
-				}
-				diagram, err = graph.ExportMermaid(flow)
-			} else {
-				// Looks like a flow name - use service
-				diagram, err = svc.GraphFlow(cmd.Context(), nameOrFile)
-			}
-
-			if err != nil {
-				utils.Error("Graph export error: %v\n", err)
-				return fmt.Errorf("graph export error: %w", err)
-			}
-
-			if outPath != "" {
-				if err := os.WriteFile(outPath, []byte(diagram), 0644); err != nil {
-					utils.Error("Failed to write graph to %s: %v\n", outPath, err)
-					return fmt.Errorf("failed to write graph to %s: %w", outPath, err)
-				}
-				utils.User("Graph written to %s", outPath)
-			} else {
-				utils.Info("%s", diagram)
-			}
-			return nil
-		},
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
-			a := args.(*GraphFlowArgs)
-
-			var diagram string
-			var err error
-
-			// Try as flow name first, then as file
-			if strings.Contains(a.Name, ".") || strings.Contains(a.Name, "/") {
-				// Looks like a file path - parse it directly
-				flow, parseErr := dsl.Parse(a.Name)
-				if parseErr != nil {
-					return nil, fmt.Errorf("YAML parse error: %w", parseErr)
-				}
-				diagram, err = graph.ExportMermaid(flow)
-			} else {
-				// Looks like a flow name - use service
-				diagram, err = svc.GraphFlow(ctx, a.Name)
-			}
-
-			if err != nil {
-				return nil, fmt.Errorf("graph export error: %w", err)
-			}
-
-			return map[string]any{"diagram": diagram}, nil
-		},
+		CLIHandler:  graphFlowCLIHandler,
+		Handler:     graphFlowHandler,
 	})
 
 	// Start Run
@@ -449,36 +490,8 @@ func init() {
 		CLIShort:    "Lint a flow file (YAML parse + schema validate)",
 		MCPName:     "beemflow_lint_flow",
 		ArgsType:    reflect.TypeOf(FlowFileArgs{}),
-		CLIHandler: func(cmd *cobra.Command, args []string, svc FlowService) error {
-			if len(args) != 1 {
-				return fmt.Errorf("exactly one file argument required")
-			}
-			file := args[0]
-			flow, err := dsl.Parse(file)
-			if err != nil {
-				utils.Error("YAML parse error: %v\n", err)
-				return fmt.Errorf("YAML parse error: %w", err)
-			}
-			err = dsl.Validate(flow)
-			if err != nil {
-				utils.Error("Schema validation error: %v\n", err)
-				return fmt.Errorf("schema validation error: %w", err)
-			}
-			utils.User("Lint OK: flow is valid!")
-			return nil
-		},
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
-			a := args.(*FlowFileArgs)
-			flow, err := dsl.Parse(a.File)
-			if err != nil {
-				return nil, fmt.Errorf("YAML parse error: %w", err)
-			}
-			err = dsl.Validate(flow)
-			if err != nil {
-				return nil, fmt.Errorf("schema validation error: %w", err)
-			}
-			return map[string]any{"status": "valid", "message": "Lint OK: flow is valid!"}, nil
-		},
+		CLIHandler:  lintFlowCLIHandler,
+		Handler:     lintFlowHandler,
 	})
 
 	// Test Flow (stub for now)
