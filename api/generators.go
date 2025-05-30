@@ -173,8 +173,14 @@ func GenerateMCPTools(svc FlowService) []mcpserver.ToolRegistration {
 			continue
 		}
 
-		// Create tool registration
+		// Create tool registration with proper handler
 		handler := generateMCPHandler(op, svc)
+
+		// Skip operations that don't have supported handlers
+		if handler == nil {
+			continue
+		}
+
 		tools = append(tools, mcpserver.ToolRegistration{
 			Name:        op.MCPName,
 			Description: op.Description,
@@ -185,6 +191,20 @@ func GenerateMCPTools(svc FlowService) []mcpserver.ToolRegistration {
 	return tools
 }
 
+// parseJSONString safely parses a JSON string, falling back to a simple value wrapper
+func parseJSONString(jsonStr string) map[string]any {
+	if jsonStr == "" {
+		return nil
+	}
+
+	var data map[string]any
+	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+		// If JSON parsing fails, wrap the string as a simple value
+		return map[string]any{"value": jsonStr}
+	}
+	return data
+}
+
 // generateMCPHandler creates an MCP handler for the given operation
 func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 	// Use custom handler if provided
@@ -192,36 +212,140 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 		return op.MCPHandler
 	}
 
-	// Create generic handler based on args type
-	return func(ctx context.Context, args any) (*mcp.ToolResponse, error) {
-		// Convert args to expected type
-		convertedArgs, err := convertMCPArgs(args, op.ArgsType)
-		if err != nil {
-			return nil, err
+	// Check for nil ArgsType and provide a default
+	argsType := op.ArgsType
+	if argsType == nil {
+		argsType = reflect.TypeOf(EmptyArgs{})
+	}
+
+	// Create handlers using predefined MCP-compatible types
+	switch argsType.Name() {
+	case "StartRunArgs":
+		return func(args MCPStartRunArgs) (*mcp.ToolResponse, error) {
+			result, err := op.Handler(context.Background(), svc, &StartRunArgs{
+				FlowName: args.FlowName,
+				Event:    parseJSONString(args.Event),
+			})
+			if err != nil {
+				return nil, err
+			}
+			return convertToMCPResponse(result)
 		}
 
-		// Execute operation
-		result, err := op.Handler(ctx, svc, convertedArgs)
-		if err != nil {
-			return nil, err
+	case "PublishEventArgs":
+		return func(args MCPPublishEventArgs) (*mcp.ToolResponse, error) {
+			result, err := op.Handler(context.Background(), svc, &PublishEventArgs{
+				Topic:   args.Topic,
+				Payload: parseJSONString(args.Payload),
+			})
+			if err != nil {
+				return nil, err
+			}
+			return convertToMCPResponse(result)
 		}
 
-		// Convert result to MCP response
-		return convertToMCPResponse(result)
+	case "ResumeRunArgs":
+		return func(args MCPResumeRunArgs) (*mcp.ToolResponse, error) {
+			result, err := op.Handler(context.Background(), svc, &ResumeRunArgs{
+				Token: args.Token,
+				Event: parseJSONString(args.Event),
+			})
+			if err != nil {
+				return nil, err
+			}
+			return convertToMCPResponse(result)
+		}
+
+	case "GetFlowArgs":
+		return func(args MCPGetFlowArgs) (*mcp.ToolResponse, error) {
+			result, err := op.Handler(context.Background(), svc, &GetFlowArgs{Name: args.Name})
+			if err != nil {
+				return nil, err
+			}
+			return convertToMCPResponse(result)
+		}
+
+	case "ValidateFlowArgs":
+		return func(args MCPValidateFlowArgs) (*mcp.ToolResponse, error) {
+			result, err := op.Handler(context.Background(), svc, &ValidateFlowArgs{Name: args.Name})
+			if err != nil {
+				return nil, err
+			}
+			return convertToMCPResponse(result)
+		}
+
+	case "GraphFlowArgs":
+		return func(args MCPGraphFlowArgs) (*mcp.ToolResponse, error) {
+			result, err := op.Handler(context.Background(), svc, &GraphFlowArgs{Name: args.Name})
+			if err != nil {
+				return nil, err
+			}
+			return convertToMCPResponse(result)
+		}
+
+	case "GetRunArgs":
+		return func(args MCPGetRunArgs) (*mcp.ToolResponse, error) {
+			result, err := op.Handler(context.Background(), svc, &GetRunArgs{RunID: args.RunID})
+			if err != nil {
+				return nil, err
+			}
+			return convertToMCPResponse(result)
+		}
+
+	case "ConvertOpenAPIExtendedArgs":
+		return func(args MCPConvertOpenAPIExtendedArgs) (*mcp.ToolResponse, error) {
+			result, err := op.Handler(context.Background(), svc, &ConvertOpenAPIExtendedArgs{
+				OpenAPI: args.Spec,
+				APIName: "",
+				BaseURL: "",
+			})
+			if err != nil {
+				return nil, err
+			}
+			return convertToMCPResponse(result)
+		}
+
+	case "FlowFileArgs":
+		return func(args MCPFlowFileArgs) (*mcp.ToolResponse, error) {
+			result, err := op.Handler(context.Background(), svc, &FlowFileArgs{File: args.Name})
+			if err != nil {
+				return nil, err
+			}
+			return convertToMCPResponse(result)
+		}
+
+	case "EmptyArgs":
+		return func(args EmptyArgs) (*mcp.ToolResponse, error) {
+			result, err := op.Handler(context.Background(), svc, &args)
+			if err != nil {
+				return nil, err
+			}
+			return convertToMCPResponse(result)
+		}
+
+	default:
+		// Skip unsupported types
+		return nil
 	}
 }
 
 // convertMCPArgs converts MCP arguments to the expected type
 func convertMCPArgs(args any, targetType reflect.Type) (any, error) {
+	// Handle nil cases
+	if targetType == nil {
+		return args, nil
+	}
+	if args == nil {
+		return reflect.Zero(targetType).Interface(), nil
+	}
+
 	// If args is already the right type, return as-is
 	if reflect.TypeOf(args) == targetType {
 		return args, nil
 	}
 
-	// Create new instance of target type
+	// Create new instance of target type and convert via JSON
 	target := reflect.New(targetType).Interface()
-
-	// Convert via JSON marshaling/unmarshaling
 	data, err := json.Marshal(args)
 	if err != nil {
 		return nil, err

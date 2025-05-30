@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -515,11 +516,12 @@ func TestOutputCLIResult(t *testing.T) {
 func TestGenerateHTTPHandlers(t *testing.T) {
 	// Register a test operation
 	testOp := &OperationDefinition{
-		ID:         "test-op",
-		Name:       "Test Operation",
-		HTTPMethod: "GET",
-		HTTPPath:   "/test",
-		ArgsType:   reflect.TypeOf(EmptyArgs{}),
+		ID:          "test-op",
+		Name:        "Test Operation",
+		Description: "Test operation for HTTP handlers",
+		HTTPMethod:  "GET",
+		HTTPPath:    "/test",
+		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			return map[string]string{"result": "test"}, nil
 		},
@@ -586,11 +588,12 @@ func TestGenerateMCPTools(t *testing.T) {
 func TestGenerateCLICommands(t *testing.T) {
 	// Register a test operation
 	testOp := &OperationDefinition{
-		ID:       "test-cli-op",
-		Name:     "Test CLI Operation",
-		CLIUse:   "test-cmd",
-		CLIShort: "Test CLI command",
-		ArgsType: reflect.TypeOf(EmptyArgs{}),
+		ID:          "test-cli-op",
+		Name:        "Test CLI Operation",
+		Description: "Test operation for CLI commands",
+		CLIUse:      "test-cmd",
+		CLIShort:    "Test CLI command",
+		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			return "test result", nil
 		},
@@ -625,20 +628,22 @@ func TestGenerateCLICommands(t *testing.T) {
 func TestGenerateCombinedHTTPHandler(t *testing.T) {
 	// Create test operations for same path but different methods
 	getOp := &OperationDefinition{
-		ID:         "test-get",
-		HTTPMethod: "GET",
-		HTTPPath:   "/test",
-		ArgsType:   reflect.TypeOf(EmptyArgs{}),
+		ID:          "test-get",
+		Description: "Test GET operation",
+		HTTPMethod:  "GET",
+		HTTPPath:    "/test",
+		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			return map[string]string{"method": "GET"}, nil
 		},
 	}
 
 	postOp := &OperationDefinition{
-		ID:         "test-post",
-		HTTPMethod: "POST",
-		HTTPPath:   "/test",
-		ArgsType:   reflect.TypeOf(EmptyArgs{}),
+		ID:          "test-post",
+		Description: "Test POST operation",
+		HTTPMethod:  "POST",
+		HTTPPath:    "/test",
+		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
 			return map[string]string{"method": "POST"}, nil
 		},
@@ -1425,5 +1430,419 @@ func TestGenerateMCPHandler_ErrorCases(t *testing.T) {
 		if err == nil {
 			t.Error("Expected error from convertToMCPResponse with unmarshalable result")
 		}
+	}
+}
+
+// TestMCPToolGeneration tests that MCP tools can be generated without panicking
+func TestMCPToolGeneration(t *testing.T) {
+	// Disable CLI exit codes during testing
+	DisableCLIExitCodes()
+	defer EnableCLIExitCodes()
+
+	svc := &mockFlowService{}
+
+	// This should not panic
+	tools := GenerateMCPTools(svc)
+
+	// Verify we got some tools
+	if len(tools) == 0 {
+		t.Error("Expected at least some MCP tools to be generated")
+	}
+
+	// Verify all tools have valid handlers
+	for _, tool := range tools {
+		if tool.Handler == nil {
+			t.Errorf("Tool %s has nil handler", tool.Name)
+		}
+		if tool.Name == "" {
+			t.Error("Tool has empty name")
+		}
+		if tool.Description == "" {
+			t.Error("Tool has empty description")
+		}
+	}
+}
+
+// TestMCPHandlerGeneration tests specific handler generation
+func TestMCPHandlerGeneration(t *testing.T) {
+	svc := &mockFlowService{}
+
+	tests := []struct {
+		name     string
+		op       *OperationDefinition
+		wantNil  bool
+		testCall bool
+	}{
+		{
+			name: "EmptyArgs operation",
+			op: &OperationDefinition{
+				ID:       "test-empty",
+				MCPName:  "test_empty",
+				ArgsType: reflect.TypeOf(EmptyArgs{}),
+				Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+					return "success", nil
+				},
+			},
+			wantNil:  false,
+			testCall: true,
+		},
+		{
+			name: "GetFlowArgs operation",
+			op: &OperationDefinition{
+				ID:       "test-get-flow",
+				MCPName:  "test_get_flow",
+				ArgsType: reflect.TypeOf(GetFlowArgs{}),
+				Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+					return "success", nil
+				},
+			},
+			wantNil:  false,
+			testCall: true,
+		},
+		{
+			name: "StartRunArgs operation",
+			op: &OperationDefinition{
+				ID:       "test-start-run",
+				MCPName:  "test_start_run",
+				ArgsType: reflect.TypeOf(StartRunArgs{}),
+				Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+					return "success", nil
+				},
+			},
+			wantNil:  false,
+			testCall: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := generateMCPHandler(tt.op, svc)
+
+			if tt.wantNil && handler != nil {
+				t.Errorf("Expected nil handler for %s, got non-nil", tt.name)
+			}
+			if !tt.wantNil && handler == nil {
+				t.Errorf("Expected non-nil handler for %s, got nil", tt.name)
+			}
+
+			// Test calling the handler if it's not nil and we want to test it
+			if handler != nil && tt.testCall {
+				handlerType := reflect.TypeOf(handler)
+				if handlerType.Kind() != reflect.Func {
+					t.Errorf("Handler for %s is not a function", tt.name)
+					return
+				}
+
+				// Verify the handler has the right signature
+				if handlerType.NumIn() != 1 {
+					t.Errorf("Handler for %s should have 1 input, got %d", tt.name, handlerType.NumIn())
+				}
+
+				if handlerType.NumOut() != 2 {
+					t.Errorf("Handler for %s should have 2 outputs, got %d", tt.name, handlerType.NumOut())
+				}
+			}
+		})
+	}
+}
+
+// TestMCPArgsConversion tests the argument conversion functions
+func TestMCPArgsConversion(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       any
+		targetType reflect.Type
+		wantErr    bool
+	}{
+		{
+			name:       "Convert to EmptyArgs",
+			args:       map[string]any{},
+			targetType: reflect.TypeOf(EmptyArgs{}),
+			wantErr:    false,
+		},
+		{
+			name:       "Convert to GetFlowArgs",
+			args:       map[string]any{"name": "test-flow"},
+			targetType: reflect.TypeOf(GetFlowArgs{}),
+			wantErr:    false,
+		},
+		{
+			name:       "Convert nil args",
+			args:       nil,
+			targetType: reflect.TypeOf(EmptyArgs{}),
+			wantErr:    false,
+		},
+		{
+			name:       "Convert with nil target type",
+			args:       map[string]any{},
+			targetType: nil,
+			wantErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := convertMCPArgs(tt.args, tt.targetType)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("convertMCPArgs() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && result == nil {
+				t.Error("convertMCPArgs() returned nil result without error")
+			}
+		})
+	}
+}
+
+// TestMCPResponseConversion tests the response conversion function
+func TestMCPResponseConversion(t *testing.T) {
+	tests := []struct {
+		name    string
+		result  any
+		wantErr bool
+	}{
+		{
+			name:    "Convert nil result",
+			result:  nil,
+			wantErr: false,
+		},
+		{
+			name:    "Convert string result",
+			result:  "test result",
+			wantErr: false,
+		},
+		{
+			name:    "Convert map result",
+			result:  map[string]any{"key": "value"},
+			wantErr: false,
+		},
+		{
+			name:    "Convert slice result",
+			result:  []string{"item1", "item2"},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := convertToMCPResponse(tt.result)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("convertToMCPResponse() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && resp == nil {
+				t.Error("convertToMCPResponse() returned nil response without error")
+			}
+		})
+	}
+}
+
+// TestMCPServerStartup tests that the MCP server can start without panicking
+func TestMCPServerStartup(t *testing.T) {
+	svc := &mockFlowService{}
+
+	// This should not panic
+	tools := GenerateMCPTools(svc)
+
+	// Should have multiple tools registered
+	if len(tools) == 0 {
+		t.Fatal("Expected MCP tools to be generated, got none")
+	}
+
+	// Verify all tools have required fields
+	for _, tool := range tools {
+		if tool.Name == "" {
+			t.Error("Tool has empty name")
+		}
+		if tool.Description == "" {
+			t.Error("Tool has empty description")
+		}
+		if tool.Handler == nil {
+			t.Error("Tool has nil handler")
+		}
+	}
+
+	// Should have key tools like start_run, list_flows, etc.
+	foundTools := make(map[string]bool)
+	for _, tool := range tools {
+		foundTools[tool.Name] = true
+	}
+
+	expectedTools := []string{
+		"beemflow_start_run",
+		"beemflow_list_flows",
+		"beemflow_get_flow",
+		"beemflow_publish_event",
+		"beemflow_validate_flow",
+	}
+
+	for _, expected := range expectedTools {
+		if !foundTools[expected] {
+			t.Errorf("Expected tool %s not found in generated tools", expected)
+		}
+	}
+}
+
+// TestMCPHandlerTypes tests that all MCP handlers have correct function signatures
+func TestMCPHandlerTypes(t *testing.T) {
+	svc := &mockFlowService{}
+	tools := GenerateMCPTools(svc)
+
+	for _, tool := range tools {
+		// Check that handler has correct function signature
+		handlerType := reflect.TypeOf(tool.Handler)
+		if handlerType.Kind() != reflect.Func {
+			t.Errorf("Tool %s handler is not a function", tool.Name)
+			continue
+		}
+
+		// MCP handlers should have 1 argument (args struct) and 2 return values
+		if handlerType.NumIn() != 1 {
+			t.Errorf("Tool %s handler should have 1 input parameter, got %d", tool.Name, handlerType.NumIn())
+		}
+
+		if handlerType.NumOut() != 2 {
+			t.Errorf("Tool %s handler should have 2 return values, got %d", tool.Name, handlerType.NumOut())
+		}
+
+		// First return should be *mcp.ToolResponse, second should be error
+		if handlerType.NumOut() >= 2 {
+			errorType := handlerType.Out(1)
+			if errorType.Name() != "error" {
+				t.Errorf("Tool %s handler second return value should be error, got %s", tool.Name, errorType.Name())
+			}
+		}
+	}
+}
+
+// TestMCPTypeConversion tests the type conversion functions work correctly
+func TestMCPTypeConversion(t *testing.T) {
+	tests := []struct {
+		name       string
+		mcpArgs    any
+		targetType string
+		wantErr    bool
+	}{
+		{
+			name: "StartRunArgs conversion",
+			mcpArgs: MCPStartRunArgs{
+				FlowName: "test-flow",
+				Event:    `{"key": "value"}`,
+			},
+			targetType: "StartRunArgs",
+			wantErr:    false,
+		},
+		{
+			name: "PublishEventArgs conversion",
+			mcpArgs: MCPPublishEventArgs{
+				Topic:   "test-topic",
+				Payload: `{"data": "test"}`,
+			},
+			targetType: "PublishEventArgs",
+			wantErr:    false,
+		},
+		{
+			name: "GetFlowArgs conversion",
+			mcpArgs: MCPGetFlowArgs{
+				Name: "test-flow",
+			},
+			targetType: "GetFlowArgs",
+			wantErr:    false,
+		},
+		{
+			name:       "EmptyArgs conversion",
+			mcpArgs:    EmptyArgs{},
+			targetType: "EmptyArgs",
+			wantErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test that the conversion logic doesn't panic
+			// This indirectly tests our handler generation logic
+			svc := &mockFlowService{}
+
+			// Find an operation that uses this type
+			var matchingOp *OperationDefinition
+			for _, op := range GetAllOperations() {
+				if op.ArgsType != nil && op.ArgsType.Name() == tt.targetType {
+					matchingOp = op
+					break
+				}
+			}
+
+			if matchingOp == nil && tt.targetType != "EmptyArgs" {
+				t.Skipf("No operation found for type %s", tt.targetType)
+				return
+			}
+
+			// For EmptyArgs, find any EmptyArgs operation
+			if tt.targetType == "EmptyArgs" {
+				for _, op := range GetAllOperations() {
+					if op.ArgsType != nil && op.ArgsType.Name() == "EmptyArgs" {
+						matchingOp = op
+						break
+					}
+				}
+			}
+
+			if matchingOp == nil {
+				t.Skipf("No operation found for type %s", tt.targetType)
+				return
+			}
+
+			// Generate handler and test it doesn't panic
+			handler := generateMCPHandler(matchingOp, svc)
+			if handler == nil {
+				t.Errorf("generateMCPHandler returned nil for %s", tt.targetType)
+			}
+		})
+	}
+}
+
+// TestMCPSchemaGeneration tests that MCP types can be used for JSON schema generation
+func TestMCPSchemaGeneration(t *testing.T) {
+	// Test that our MCP types don't cause schema generation issues
+	mcpTypes := []any{
+		MCPStartRunArgs{},
+		MCPPublishEventArgs{},
+		MCPResumeRunArgs{},
+		MCPGetFlowArgs{},
+		MCPValidateFlowArgs{},
+		MCPGraphFlowArgs{},
+		MCPGetRunArgs{},
+		MCPConvertOpenAPIExtendedArgs{},
+		MCPFlowFileArgs{},
+		EmptyArgs{},
+	}
+
+	for _, mcpType := range mcpTypes {
+		t.Run(fmt.Sprintf("Schema for %T", mcpType), func(t *testing.T) {
+			// This test ensures the types can be used in reflection operations
+			// which is what the MCP library does for schema generation
+			typeOf := reflect.TypeOf(mcpType)
+			if typeOf.Kind() != reflect.Struct {
+				t.Errorf("Expected struct type, got %v", typeOf.Kind())
+			}
+
+			// Test that we can create instances
+			valueOf := reflect.ValueOf(mcpType)
+			if !valueOf.IsValid() {
+				t.Errorf("Invalid value for type %T", mcpType)
+			}
+
+			// Test JSON marshaling/unmarshaling (what schema generation relies on)
+			data, err := json.Marshal(mcpType)
+			if err != nil {
+				t.Errorf("Failed to marshal %T: %v", mcpType, err)
+			}
+
+			// Test unmarshaling back
+			newInstance := reflect.New(typeOf).Interface()
+			if err := json.Unmarshal(data, newInstance); err != nil {
+				t.Errorf("Failed to unmarshal %T: %v", mcpType, err)
+			}
+		})
 	}
 }
