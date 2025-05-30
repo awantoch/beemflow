@@ -10,7 +10,7 @@ INTEGRATION_FLOWS := $(shell find flows/integration -name "*.flow.yaml" 2>/dev/n
 E2E_FLOWS := $(shell find flows/e2e -name "*.flow.yaml" 2>/dev/null)
 
 # ────────────────────────────────────────────────────────────────────────────
-.PHONY: all clean build install test test-race coverage e2e integration test-all check fmt vet lint tidy fix release
+.PHONY: all clean build build-static install test test-race coverage e2e integration test-all check fmt vet lint tidy fix release
 
 all: clean test build install
 
@@ -19,6 +19,9 @@ clean:
 
 build:
 	go build -o $(BINARY) $(CMD_PATH)
+
+build-static:
+	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o $(BINARY) $(CMD_PATH)
 
 install: build
 	go install $(CMD_PATH)
