@@ -5,7 +5,20 @@ on:
     branches: [ main ]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
+          cache: true
+      - run: make test
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -16,11 +29,10 @@ jobs:
       GOARCH: ${{ matrix.goarch }}
 
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.24.1'
           cache: true
