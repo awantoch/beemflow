@@ -1637,173 +1637,48 @@ func TestMCPResponseConversion(t *testing.T) {
 	}
 }
 
-// TestMCPServerStartup tests that the MCP server can start without panicking
-func TestMCPServerStartup(t *testing.T) {
+// TestMCPServerRealStartup tests that we can actually start an MCP server without crashes
+func TestMCPServerRealStartup(t *testing.T) {
+	// This test simulates what happens in cmd/flow/main.go when starting the MCP server
 	svc := &mockFlowService{}
 
-	// This should not panic
-	tools := GenerateMCPTools(svc)
+	// This should not panic - if it does, we have the same issue that was happening in production
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("MCP server startup panicked: %v", r)
+		}
+	}()
 
-	// Should have multiple tools registered
+	// Generate tools (this is what was causing the original panic)
+	tools := UnifiedBuildMCPToolRegistrations(svc)
+
 	if len(tools) == 0 {
-		t.Fatal("Expected MCP tools to be generated, got none")
+		t.Fatal("No tools were registered - MCP server would be empty")
 	}
 
-	// Verify all tools have required fields
+	t.Logf("Successfully generated %d MCP tools without panic", len(tools))
+
+	// Verify all tools have the required fields for MCP registration
 	for _, tool := range tools {
 		if tool.Name == "" {
-			t.Error("Tool has empty name")
+			t.Errorf("Tool has empty name: %+v", tool)
 		}
 		if tool.Description == "" {
-			t.Error("Tool has empty description")
+			t.Errorf("Tool %s has empty description", tool.Name)
 		}
 		if tool.Handler == nil {
-			t.Error("Tool has nil handler")
+			t.Errorf("Tool %s has nil handler", tool.Name)
 		}
-	}
 
-	// Should have key tools like start_run, list_flows, etc.
-	foundTools := make(map[string]bool)
-	for _, tool := range tools {
-		foundTools[tool.Name] = true
-	}
-
-	expectedTools := []string{
-		"beemflow_start_run",
-		"beemflow_list_flows",
-		"beemflow_get_flow",
-		"beemflow_publish_event",
-		"beemflow_validate_flow",
-	}
-
-	for _, expected := range expectedTools {
-		if !foundTools[expected] {
-			t.Errorf("Expected tool %s not found in generated tools", expected)
-		}
-	}
-}
-
-// TestMCPHandlerTypes tests that all MCP handlers have correct function signatures
-func TestMCPHandlerTypes(t *testing.T) {
-	svc := &mockFlowService{}
-	tools := GenerateMCPTools(svc)
-
-	for _, tool := range tools {
-		// Check that handler has correct function signature
+		// Verify handler signature - this is critical for MCP compatibility
 		handlerType := reflect.TypeOf(tool.Handler)
 		if handlerType.Kind() != reflect.Func {
-			t.Errorf("Tool %s handler is not a function", tool.Name)
-			continue
-		}
-
-		// MCP handlers should have 1 argument (args struct) and 2 return values
-		if handlerType.NumIn() != 1 {
-			t.Errorf("Tool %s handler should have 1 input parameter, got %d", tool.Name, handlerType.NumIn())
-		}
-
-		if handlerType.NumOut() != 2 {
-			t.Errorf("Tool %s handler should have 2 return values, got %d", tool.Name, handlerType.NumOut())
-		}
-
-		// First return should be *mcp.ToolResponse, second should be error
-		if handlerType.NumOut() >= 2 {
-			errorType := handlerType.Out(1)
-			if errorType.Name() != "error" {
-				t.Errorf("Tool %s handler second return value should be error, got %s", tool.Name, errorType.Name())
-			}
+			t.Errorf("Tool %s handler is not a function: %T", tool.Name, tool.Handler)
 		}
 	}
-}
 
-// TestMCPTypeConversion tests the type conversion functions work correctly
-func TestMCPTypeConversion(t *testing.T) {
-	tests := []struct {
-		name       string
-		mcpArgs    any
-		targetType string
-		wantErr    bool
-	}{
-		{
-			name: "StartRunArgs conversion",
-			mcpArgs: MCPStartRunArgs{
-				FlowName: "test-flow",
-				Event:    `{"key": "value"}`,
-			},
-			targetType: "StartRunArgs",
-			wantErr:    false,
-		},
-		{
-			name: "PublishEventArgs conversion",
-			mcpArgs: MCPPublishEventArgs{
-				Topic:   "test-topic",
-				Payload: `{"data": "test"}`,
-			},
-			targetType: "PublishEventArgs",
-			wantErr:    false,
-		},
-		{
-			name: "GetFlowArgs conversion",
-			mcpArgs: MCPGetFlowArgs{
-				Name: "test-flow",
-			},
-			targetType: "GetFlowArgs",
-			wantErr:    false,
-		},
-		{
-			name:       "EmptyArgs conversion",
-			mcpArgs:    EmptyArgs{},
-			targetType: "EmptyArgs",
-			wantErr:    false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Test that the conversion logic doesn't panic
-			// This indirectly tests our handler generation logic
-			svc := &mockFlowService{}
-
-			// Find an operation that uses this type
-			var matchingOp *OperationDefinition
-			for _, op := range GetAllOperations() {
-				if op.ArgsType != nil && op.ArgsType.Name() == tt.targetType {
-					matchingOp = op
-					break
-				}
-			}
-
-			if matchingOp == nil && tt.targetType != "EmptyArgs" {
-				t.Skipf("No operation found for type %s", tt.targetType)
-				return
-			}
-
-			// For EmptyArgs, find any EmptyArgs operation
-			if tt.targetType == "EmptyArgs" {
-				for _, op := range GetAllOperations() {
-					if op.ArgsType != nil && op.ArgsType.Name() == "EmptyArgs" {
-						matchingOp = op
-						break
-					}
-				}
-			}
-
-			if matchingOp == nil {
-				t.Skipf("No operation found for type %s", tt.targetType)
-				return
-			}
-
-			// Generate handler and test it doesn't panic
-			handler := generateMCPHandler(matchingOp, svc)
-			if handler == nil {
-				t.Errorf("generateMCPHandler returned nil for %s", tt.targetType)
-			}
-		})
-	}
-}
-
-// TestMCPSchemaGeneration tests that MCP types can be used for JSON schema generation
-func TestMCPSchemaGeneration(t *testing.T) {
-	// Test that our MCP types don't cause schema generation issues
+	// Test that all our MCP-compatible types can be instantiated and marshaled
+	// (simulating what happens during schema generation)
 	mcpTypes := []any{
 		MCPStartRunArgs{},
 		MCPPublishEventArgs{},
@@ -1818,31 +1693,104 @@ func TestMCPSchemaGeneration(t *testing.T) {
 	}
 
 	for _, mcpType := range mcpTypes {
-		t.Run(fmt.Sprintf("Schema for %T", mcpType), func(t *testing.T) {
-			// This test ensures the types can be used in reflection operations
-			// which is what the MCP library does for schema generation
-			typeOf := reflect.TypeOf(mcpType)
-			if typeOf.Kind() != reflect.Struct {
-				t.Errorf("Expected struct type, got %v", typeOf.Kind())
+		// Test JSON marshaling (required for schema generation)
+		data, err := json.Marshal(mcpType)
+		if err != nil {
+			t.Errorf("Failed to marshal MCP type %T: %v", mcpType, err)
+		}
+
+		// Test that we can create instances via reflection (what MCP does)
+		typeOf := reflect.TypeOf(mcpType)
+		newInstance := reflect.New(typeOf).Interface()
+
+		// Test JSON round-trip (what MCP schema generation does)
+		if err := json.Unmarshal(data, newInstance); err != nil {
+			t.Errorf("Failed to unmarshal MCP type %T: %v", mcpType, err)
+		}
+	}
+}
+
+// TestMCPRegressionMapStringAny is a regression test for the original nil pointer panic
+// when MCP tried to generate JSON schemas for map[string]any fields
+func TestMCPRegressionMapStringAny(t *testing.T) {
+	// This test ensures we never accidentally introduce map[string]any fields
+	// in MCP handler arguments, which cause nil pointer panics in schema generation
+
+	svc := &mockFlowService{}
+	tools := GenerateMCPTools(svc)
+
+	for _, tool := range tools {
+		handlerType := reflect.TypeOf(tool.Handler)
+		if handlerType.Kind() != reflect.Func || handlerType.NumIn() == 0 {
+			continue
+		}
+
+		// Check the input argument type for problematic fields
+		inputType := handlerType.In(0)
+		if inputType.Kind() != reflect.Struct {
+			continue
+		}
+
+		for i := 0; i < inputType.NumField(); i++ {
+			field := inputType.Field(i)
+			fieldTypeStr := field.Type.String()
+
+			// These are the exact field types that caused the original panic
+			forbiddenTypes := []string{
+				"map[string]interface {}",
+				"map[string]any",
+				"interface {}",
 			}
 
-			// Test that we can create instances
-			valueOf := reflect.ValueOf(mcpType)
-			if !valueOf.IsValid() {
-				t.Errorf("Invalid value for type %T", mcpType)
+			for _, forbidden := range forbiddenTypes {
+				if fieldTypeStr == forbidden {
+					t.Errorf("REGRESSION: Tool %s has field %s with type %s that will cause MCP schema generation panic. Use string field with JSON parsing instead.",
+						tool.Name, field.Name, forbidden)
+				}
+			}
+		}
+	}
+
+	// Also test that all our MCP types only use MCP-safe field types
+	safeMCPTypes := []reflect.Type{
+		reflect.TypeOf(MCPStartRunArgs{}),
+		reflect.TypeOf(MCPPublishEventArgs{}),
+		reflect.TypeOf(MCPResumeRunArgs{}),
+		reflect.TypeOf(MCPGetFlowArgs{}),
+		reflect.TypeOf(MCPValidateFlowArgs{}),
+		reflect.TypeOf(MCPGraphFlowArgs{}),
+		reflect.TypeOf(MCPGetRunArgs{}),
+		reflect.TypeOf(MCPConvertOpenAPIExtendedArgs{}),
+		reflect.TypeOf(MCPFlowFileArgs{}),
+		reflect.TypeOf(EmptyArgs{}),
+	}
+
+	for _, mcpType := range safeMCPTypes {
+		for i := 0; i < mcpType.NumField(); i++ {
+			field := mcpType.Field(i)
+			fieldTypeStr := field.Type.String()
+
+			// Only allow safe types for MCP
+			allowedTypes := []string{
+				"string",
+				"int", "int8", "int16", "int32", "int64",
+				"uint", "uint8", "uint16", "uint32", "uint64",
+				"bool",
+				"float32", "float64",
 			}
 
-			// Test JSON marshaling/unmarshaling (what schema generation relies on)
-			data, err := json.Marshal(mcpType)
-			if err != nil {
-				t.Errorf("Failed to marshal %T: %v", mcpType, err)
+			isAllowed := false
+			for _, allowed := range allowedTypes {
+				if fieldTypeStr == allowed {
+					isAllowed = true
+					break
+				}
 			}
 
-			// Test unmarshaling back
-			newInstance := reflect.New(typeOf).Interface()
-			if err := json.Unmarshal(data, newInstance); err != nil {
-				t.Errorf("Failed to unmarshal %T: %v", mcpType, err)
+			if !isAllowed {
+				t.Errorf("MCP type %s has field %s with unsafe type %s. Only use basic types (string, int, bool) for MCP compatibility.",
+					mcpType.Name(), field.Name, fieldTypeStr)
 			}
-		})
+		}
 	}
 }

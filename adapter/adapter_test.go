@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/registry"
@@ -68,6 +69,406 @@ func TestRegistryRegisterGet(t *testing.T) {
 	if got.ID() != "dummy" {
 		t.Errorf("expected ID 'dummy', got '%s'", got.ID())
 	}
+}
+
+// ========================================
+// INTEGRATION TESTS - Real behavior testing
+// ========================================
+
+// TestCoreAdapterRealExecution tests the actual core adapter with real operations
+func TestCoreAdapterRealExecution(t *testing.T) {
+	coreAdapter := &CoreAdapter{}
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		inputs   map[string]any
+		wantErr  bool
+		validate func(result map[string]any) bool
+	}{
+		{
+			name: "core.echo with real text",
+			inputs: map[string]any{
+				"__use": "core.echo",
+				"text":  "Hello, integration test!",
+			},
+			wantErr: false,
+			validate: func(result map[string]any) bool {
+				text, ok := result["text"].(string)
+				return ok && text == "Hello, integration test!"
+			},
+		},
+		{
+			name: "core.echo with complex object",
+			inputs: map[string]any{
+				"__use": "core.echo",
+				"text":  map[string]any{"nested": "value", "count": 42},
+			},
+			wantErr: false,
+			validate: func(result map[string]any) bool {
+				_, ok := result["text"].(map[string]any)
+				return ok
+			},
+		},
+		{
+			name: "core.echo with empty text",
+			inputs: map[string]any{
+				"__use": "core.echo",
+				"text":  "",
+			},
+			wantErr: false,
+			validate: func(result map[string]any) bool {
+				text, ok := result["text"].(string)
+				return ok && text == ""
+			},
+		},
+		{
+			name: "core.echo with nil text",
+			inputs: map[string]any{
+				"__use": "core.echo",
+				"text":  nil,
+			},
+			wantErr: false,
+			validate: func(result map[string]any) bool {
+				return result["text"] == nil
+			},
+		},
+		{
+			name: "invalid core operation",
+			inputs: map[string]any{
+				"__use": "core.nonexistent",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := coreAdapter.Execute(ctx, tt.inputs)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && tt.validate != nil && !tt.validate(result) {
+				t.Errorf("Execute() validation failed. Result: %+v", result)
+			}
+		})
+	}
+}
+
+// TestHTTPAdapterRealRequests tests the HTTP adapter with real HTTP calls
+func TestHTTPAdapterRealRequests(t *testing.T) {
+	// Create a test HTTP server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/json":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"message": "success",
+				"method":  r.Method,
+				"headers": r.Header,
+			})
+		case "/text":
+			w.Header().Set("Content-Type", "text/plain")
+			w.Write([]byte("Hello from test server"))
+		case "/error":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Internal Server Error"))
+		case "/slow":
+			// Simulate slow response
+			time.Sleep(100 * time.Millisecond)
+			w.Write([]byte("slow response"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	httpAdapter := &HTTPAdapter{}
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		inputs   map[string]any
+		wantErr  bool
+		validate func(result map[string]any) bool
+	}{
+		{
+			name: "GET JSON endpoint",
+			inputs: map[string]any{
+				"__use":  "http.request",
+				"url":    server.URL + "/json",
+				"method": "GET",
+			},
+			wantErr: false,
+			validate: func(result map[string]any) bool {
+				// JSON objects are returned directly, not wrapped in body
+				message, ok := result["message"].(string)
+				return ok && message == "success"
+			},
+		},
+		{
+			name: "GET text endpoint",
+			inputs: map[string]any{
+				"__use":  "http.request",
+				"url":    server.URL + "/text",
+				"method": "GET",
+			},
+			wantErr: false,
+			validate: func(result map[string]any) bool {
+				// Non-JSON responses are wrapped in body
+				body, ok := result["body"].(string)
+				return ok && body == "Hello from test server"
+			},
+		},
+		{
+			name: "POST with body",
+			inputs: map[string]any{
+				"__use":  "http.request",
+				"url":    server.URL + "/json",
+				"method": "POST",
+				"body":   `{"test": "data"}`,
+				"headers": map[string]any{
+					"Content-Type": "application/json",
+				},
+			},
+			wantErr: false,
+			validate: func(result map[string]any) bool {
+				// JSON objects are returned directly, not wrapped in body
+				method, ok := result["method"].(string)
+				return ok && method == "POST"
+			},
+		},
+		{
+			name: "HTTP error response",
+			inputs: map[string]any{
+				"__use":  "http.request",
+				"url":    server.URL + "/error",
+				"method": "GET",
+			},
+			wantErr: true, // HTTP adapter returns errors for non-2xx status codes
+		},
+		{
+			name: "Invalid URL",
+			inputs: map[string]any{
+				"__use":  "http.request",
+				"url":    "not-a-valid-url",
+				"method": "GET",
+			},
+			wantErr: true,
+		},
+		{
+			name: "Missing URL",
+			inputs: map[string]any{
+				"__use":  "http.request",
+				"method": "GET",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := httpAdapter.Execute(ctx, tt.inputs)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && tt.validate != nil && !tt.validate(result) {
+				t.Errorf("Execute() validation failed. Result: %+v", result)
+			}
+		})
+	}
+}
+
+// TestAdapterRegistryRealBehavior tests the registry with real adapter interactions
+func TestAdapterRegistryRealBehavior(t *testing.T) {
+	registry := NewRegistry()
+	ctx := context.Background()
+
+	// Register real adapters
+	coreAdapter := &CoreAdapter{}
+
+	registry.Register(coreAdapter)
+
+	// Test adapter registry behavior with core adapter
+	core, ok := registry.Get("core")
+	if !ok {
+		t.Fatal("Core adapter not found in registry")
+	}
+
+	// Test actual execution through registry
+	result, err := core.Execute(ctx, map[string]any{
+		"__use": "core.echo",
+		"text":  "registry test",
+	})
+	if err != nil {
+		t.Fatalf("Core adapter execution failed: %v", err)
+	}
+
+	if result["text"] != "registry test" {
+		t.Errorf("Expected 'registry test', got %v", result["text"])
+	}
+
+	// Test adapter closing
+	closableAdapter := &closableAdapter{id: "closable", closed: false}
+	registry.Register(closableAdapter)
+
+	err = registry.CloseAll()
+	if err != nil {
+		t.Errorf("CloseAll failed: %v", err)
+	}
+
+	if !closableAdapter.closed {
+		t.Error("Closable adapter was not closed")
+	}
+}
+
+// TestAdapterStressTest - Test adapters under load
+func TestAdapterStressTest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping stress test in short mode")
+	}
+
+	coreAdapter := &CoreAdapter{}
+	ctx := context.Background()
+
+	// Run multiple concurrent executions
+	const numGoroutines = 50
+	const executionsPerGoroutine = 10
+
+	errChan := make(chan error, numGoroutines*executionsPerGoroutine)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(workerID int) {
+			for j := 0; j < executionsPerGoroutine; j++ {
+				result, err := coreAdapter.Execute(ctx, map[string]any{
+					"__use": "core.echo",
+					"text":  fmt.Sprintf("worker %d execution %d", workerID, j),
+				})
+
+				if err != nil {
+					errChan <- fmt.Errorf("worker %d execution %d failed: %w", workerID, j, err)
+					return
+				}
+
+				expected := fmt.Sprintf("worker %d execution %d", workerID, j)
+				if result["text"] != expected {
+					errChan <- fmt.Errorf("worker %d execution %d: expected %s, got %v", workerID, j, expected, result["text"])
+					return
+				}
+			}
+		}(i)
+	}
+
+	// Collect errors
+	var errors []error
+	timeout := time.After(5 * time.Second)
+	completed := 0
+	expectedCompletions := numGoroutines * executionsPerGoroutine
+
+	for completed < expectedCompletions {
+		select {
+		case err := <-errChan:
+			errors = append(errors, err)
+			completed++
+		case <-timeout:
+			t.Fatalf("Stress test timed out with %d/%d completions", completed, expectedCompletions)
+		default:
+			// Check if all goroutines completed successfully
+			select {
+			case err := <-errChan:
+				errors = append(errors, err)
+				completed++
+			default:
+				time.Sleep(1 * time.Millisecond)
+				completed++ // Assume successful completion if no error
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		t.Errorf("Stress test failed with %d errors. First few: %v", len(errors), errors[:min(5, len(errors))])
+	}
+}
+
+// TestAdapterErrorHandlingRealScenarios tests real error scenarios
+func TestAdapterErrorHandlingRealScenarios(t *testing.T) {
+	coreAdapter := &CoreAdapter{}
+	ctx := context.Background()
+
+	// Test error scenarios that could happen in production
+	errorScenarios := []struct {
+		name    string
+		inputs  map[string]any
+		wantErr bool
+	}{
+		{
+			name: "missing __use field",
+			inputs: map[string]any{
+				"text": "hello",
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty __use field",
+			inputs: map[string]any{
+				"__use": "",
+				"text":  "hello",
+			},
+			wantErr: true,
+		},
+		{
+			name: "nil inputs",
+			inputs: map[string]any{
+				"__use": "core.echo",
+				"text":  nil,
+			},
+			wantErr: false, // This should be handled gracefully
+		},
+		{
+			name: "very large text input",
+			inputs: map[string]any{
+				"__use": "core.echo",
+				"text":  strings.Repeat("x", 1000000), // 1MB of text
+			},
+			wantErr: false, // Should handle large inputs
+		},
+		{
+			name: "circular reference in inputs",
+			inputs: func() map[string]any {
+				circular := make(map[string]any)
+				circular["self"] = circular
+				return map[string]any{
+					"__use": "core.echo",
+					"text":  circular,
+				}
+			}(),
+			wantErr: false, // Should handle gracefully
+		},
+	}
+
+	for _, scenario := range errorScenarios {
+		t.Run(scenario.name, func(t *testing.T) {
+			_, err := coreAdapter.Execute(ctx, scenario.inputs)
+
+			if (err != nil) != scenario.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, scenario.wantErr)
+			}
+		})
+	}
+}
+
+// Helper function for older Go versions that don't have min()
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // func TestNewRegistryFetcher(t *testing.T) {

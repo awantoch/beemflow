@@ -2,6 +2,11 @@ package api
 
 // MCP-compatible argument types that avoid interface{} fields
 // These are used specifically for MCP tool registration to avoid JSON schema generation issues
+//
+// ⚠️  CRITICAL: DO NOT USE map[string]any OR interface{} FIELDS IN THESE TYPES! ⚠️
+// The MCP-golang library will panic with nil pointer dereference when generating
+// JSON schemas for these types. Always use string fields and parse JSON manually.
+// See TestMCPRegressionMapStringAny for the regression test.
 
 // MCPStartRunArgs is a simplified version of StartRunArgs for MCP
 type MCPStartRunArgs struct {

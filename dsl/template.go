@@ -13,11 +13,13 @@ import (
 var (
 	// Global filter registration to avoid duplicate registrations
 	filterRegistrationOnce sync.Once
+	// Global mutex to protect all Pongo2 operations since the library has global state
+	pongo2Mutex sync.Mutex
 )
 
 // Templater provides template rendering with Jinja2-style (pongo2) for BeemFlow flows.
 type Templater struct {
-	mu sync.Mutex // protects pongo2 operations which are not thread-safe
+	// Removed per-instance mutex since we need global protection
 }
 
 // NewTemplater creates a new Templater.
@@ -37,13 +39,15 @@ func NewTemplater() *Templater {
 			},
 		}
 
-		// Register the filters globally
+		// Register the filters globally (this also needs global protection)
+		pongo2Mutex.Lock()
 		for name, fn := range defaultFilters {
 			if err := pongo2.RegisterFilter(name, fn); err != nil {
 				// Log the error but don't fail - the filter might already exist
 				utils.Debug("Filter registration warning: %v", err)
 			}
 		}
+		pongo2Mutex.Unlock()
 	})
 
 	return t
@@ -58,15 +62,15 @@ func (t *Templater) Render(tmpl string, data map[string]any) (string, error) {
 	// DEBUG: Log template string and context keys before rendering
 	utils.Debug("Templater.Render: tmpl = %q, context keys = %v", tmpl, contextKeys(ctx))
 
-	// Protect pongo2 operations with mutex since they're not thread-safe
-	t.mu.Lock()
+	// Protect ALL pongo2 operations with global mutex since they share global state
+	pongo2Mutex.Lock()
 	pl, err := pongo2.FromString(tmpl)
 	if err != nil {
-		t.mu.Unlock()
+		pongo2Mutex.Unlock()
 		return "", err
 	}
 	out, err := pl.Execute(ctx)
-	t.mu.Unlock()
+	pongo2Mutex.Unlock()
 
 	if err != nil {
 		return "", err
@@ -76,8 +80,8 @@ func (t *Templater) Render(tmpl string, data map[string]any) (string, error) {
 
 // RegisterFilters allows registering custom pongo2 filters.
 func (t *Templater) RegisterFilters(filters map[string]pongo2.FilterFunction) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	pongo2Mutex.Lock()
+	defer pongo2Mutex.Unlock()
 	for name, fn := range filters {
 		if err := pongo2.RegisterFilter(name, fn); err != nil {
 			return utils.Errorf("failed to register filter %s: %w", name, err)
