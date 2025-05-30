@@ -13,19 +13,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: '1.24.1'
+          cache: true
 
       - name: Run tests
-        run: make test-all
-
-      - name: Set up Node (for MCP servers in example flows)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+        run: make test-race integration
 
       - name: Run example workflows
         run: make e2e
