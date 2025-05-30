@@ -10,7 +10,7 @@ INTEGRATION_FLOWS := $(shell find flows/integration -name "*.flow.yaml" 2>/dev/n
 E2E_FLOWS := $(shell find flows/e2e -name "*.flow.yaml" 2>/dev/null)
 
 # ────────────────────────────────────────────────────────────────────────────
-.PHONY: all clean build install test test-race coverage e2e integration test-all check fmt vet lint tidy fix
+.PHONY: all clean build install test test-race coverage e2e integration test-all check fmt vet lint tidy fix release
 
 all: clean test build install
 
@@ -25,6 +25,17 @@ install: build
 
 serve:
 	go run $(CMD_PATH) serve
+
+# ────────────────────────────────────────────────────────────────────────────
+# Release
+# ────────────────────────────────────────────────────────────────────────────
+
+release:
+	@if [ -z "$(TAG)" ]; then echo "Usage: make release TAG=v0.1.1"; exit 1; fi
+	@echo "Creating and pushing tag $(TAG)..."
+	git tag $(TAG)
+	git push origin $(TAG)
+	@echo "✅ Tag $(TAG) pushed! Check GitHub Actions for release progress."
 
 # ────────────────────────────────────────────────────────────────────────────
 # Tests
