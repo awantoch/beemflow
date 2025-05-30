@@ -20,7 +20,7 @@ jobs:
           go-version: '1.24.1'
 
       - name: Run tests
-        run: make test
+        run: make test-all
 
       - name: Set up Node (for MCP servers in example flows)
         uses: actions/setup-node@v4
