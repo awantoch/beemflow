@@ -8,7 +8,6 @@ package constants
 const (
 	ConfigFileName     = "flow.config.json"
 	BeemflowSchemaFile = "beemflow.schema.json"
-	RegistryIndexFile  = "registry/index.json"
 )
 
 // Configuration Schema Keys
@@ -407,17 +406,6 @@ const (
 	TemplateCloseDelim   = "}}"
 	TemplateControlOpen  = "{%"
 	TemplateControlClose = "%}"
-)
-
-// Valid identifier characters for template validation
-const (
-	IdentifierUnderscore   = '_'
-	IdentifierMinLowercase = 'a'
-	IdentifierMaxLowercase = 'z'
-	IdentifierMinUppercase = 'A'
-	IdentifierMaxUppercase = 'Z'
-	IdentifierMinDigit     = '0'
-	IdentifierMaxDigit     = '9'
 )
 
 // Paused run map keys

@@ -54,3 +54,12 @@ func WithCleanup[T any](t *testing.T, setup func() (T, string), test func(T)) {
 	}()
 	test(resource)
 }
+
+// Min returns the minimum of two integers
+// Helper function for older Go versions that don't have min()
+func Min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

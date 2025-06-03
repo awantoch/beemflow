@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 )
@@ -33,12 +34,12 @@ func createTestConfig(t *testing.T) *config.Config {
 
 // Helper function to create and write a config file
 func createTempConfigFile(t *testing.T, cfg *config.Config) {
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("Failed to create config directory: %v", err)
 	}
 
-	configFile, err := os.Create(config.DefaultConfigPath)
+	configFile, err := os.Create(constants.ConfigFileName)
 	if err != nil {
 		t.Fatalf("Failed to create config file: %v", err)
 	}
@@ -234,7 +235,7 @@ func TestInitTracerFromConfig(t *testing.T) {
 func TestUpdateRunEvent(t *testing.T) {
 	tempConfig := createTestConfig(t)
 	createTempConfigFile(t, tempConfig)
-	defer os.Remove(config.DefaultConfigPath)
+	defer os.Remove(constants.ConfigFileName)
 
 	runID := uuid.New()
 	newEvent := map[string]any{"hello": "world"}
@@ -254,7 +255,7 @@ func TestHTTPServer_ListRuns(t *testing.T) {
 	tempConfig.HTTP = &config.HTTPConfig{Port: 18080}
 
 	createTempConfigFile(t, tempConfig)
-	defer os.Remove(config.DefaultConfigPath)
+	defer os.Remove(constants.ConfigFileName)
 
 	go func() {
 		_ = StartServer(tempConfig)

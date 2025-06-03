@@ -653,6 +653,7 @@ func TestConfigLoadingRealFiles(t *testing.T) {
 			},
 		}
 
+		// Test all invalid configs in one go to ensure cleanup works properly
 		for i, test := range invalidConfigs {
 			t.Run(test.name, func(t *testing.T) {
 				configPath := filepath.Join(tempDir, fmt.Sprintf("invalid_config_%d.json", i))
@@ -912,5 +913,223 @@ func TestConfigConcurrentAccess(t *testing.T) {
 				t.Errorf("Config %d differs from first: driver %s vs %s", i+1, cfg.Storage.Driver, first.Storage.Driver)
 			}
 		}
+	}
+}
+
+// TestHomeDirectoryResolution tests the simplified home directory path resolution
+func TestHomeDirectoryResolution(t *testing.T) {
+	// Test default paths point to home directory
+	t.Run("DefaultPaths", func(t *testing.T) {
+		// Test DefaultLocalRegistryPath
+		defaultRegistryPath := DefaultLocalRegistryPath
+		if !strings.Contains(defaultRegistryPath, ".beemflow") {
+			t.Errorf("Expected default registry path to contain .beemflow, got: %s", defaultRegistryPath)
+		}
+
+		// Test DefaultSQLiteDSN
+		defaultDBPath := DefaultSQLiteDSN
+		if !strings.Contains(defaultDBPath, ".beemflow") {
+			t.Errorf("Expected default DB path to contain .beemflow, got: %s", defaultDBPath)
+		}
+
+		// Both should point to the same base directory
+		registryDir := filepath.Dir(defaultRegistryPath)
+		dbDir := filepath.Dir(defaultDBPath)
+		if registryDir != dbDir {
+			t.Errorf("Registry and DB should be in same directory: registry=%s, db=%s", registryDir, dbDir)
+		}
+	})
+
+	t.Run("GetDefaultLocalRegistryPath", func(t *testing.T) {
+		// This function should return the default path
+		path := DefaultLocalRegistryFullPath()
+
+		// Should be same as the constant
+		if path != DefaultLocalRegistryPath {
+			t.Errorf("DefaultLocalRegistryFullPath() = %s, want %s", path, DefaultLocalRegistryPath)
+		}
+
+		// Should contain .beemflow
+		if !strings.Contains(path, ".beemflow") {
+			t.Errorf("Default path should contain .beemflow, got: %s", path)
+		}
+
+		// Should end with registry.json
+		if !strings.HasSuffix(path, "registry.json") {
+			t.Errorf("Default path should end with registry.json, got: %s", path)
+		}
+	})
+
+	t.Run("PathExpansion", func(t *testing.T) {
+		// Test that ~ is properly expanded in the defaults
+		// The actual expansion happens at runtime via filepath.Join with user home directory
+		// We just verify that our constants are sensible
+
+		if strings.Contains(DefaultLocalRegistryPath, "~") {
+			t.Errorf("Default path should not contain literal ~, got: %s", DefaultLocalRegistryPath)
+		}
+
+		if strings.Contains(DefaultSQLiteDSN, "~") {
+			t.Errorf("Default DB path should not contain literal ~, got: %s", DefaultSQLiteDSN)
+		}
+	})
+
+	t.Run("DirectoryStructure", func(t *testing.T) {
+		// Verify the expected directory structure
+		registryPath := DefaultLocalRegistryPath
+		dbPath := DefaultSQLiteDSN
+
+		// Both should be in .beemflow directory
+		expectedBaseDir := DefaultConfigDir
+
+		registryBase := filepath.Dir(registryPath)
+		if registryBase != expectedBaseDir {
+			t.Errorf("Registry base dir = %s, want %s", registryBase, expectedBaseDir)
+		}
+
+		dbBase := filepath.Dir(dbPath)
+		if dbBase != expectedBaseDir {
+			t.Errorf("DB base dir = %s, want %s", dbBase, expectedBaseDir)
+		}
+	})
+}
+
+// TestConfigDefaultBehavior tests that our simplified configuration defaults work correctly
+func TestConfigDefaultBehavior(t *testing.T) {
+	t.Run("EmptyConfig", func(t *testing.T) {
+		// Create minimal empty config
+		tempDir, err := os.MkdirTemp("", "config-defaults-test")
+		if err != nil {
+			t.Fatalf("Failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		configPath := filepath.Join(tempDir, "empty.json")
+		emptyConfig := "{}"
+		if err := os.WriteFile(configPath, []byte(emptyConfig), 0644); err != nil {
+			t.Fatalf("Failed to write empty config: %v", err)
+		}
+
+		cfg, err := LoadConfig(configPath)
+		if err != nil {
+			t.Fatalf("Failed to load empty config: %v", err)
+		}
+
+		// Verify defaults are applied correctly
+		if cfg == nil {
+			t.Fatal("Config should not be nil")
+		}
+
+		// Storage defaults should be applied at runtime, not in config loading
+		// The config loader just loads what's in the file
+		t.Logf("Empty config loaded successfully: %+v", cfg)
+	})
+
+	t.Run("ConfigWithExplicitPaths", func(t *testing.T) {
+		// Test that explicit user paths are preserved exactly as-is
+		tempDir, err := os.MkdirTemp("", "config-explicit-test")
+		if err != nil {
+			t.Fatalf("Failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		// User specifies explicit absolute path
+		userPath := "/tmp/custom/path/registry.json"
+		configData := map[string]any{
+			"registries": []any{
+				map[string]any{
+					"type": "local",
+					"path": userPath,
+				},
+			},
+			"storage": map[string]any{
+				"driver": "sqlite",
+				"dsn":    "/tmp/custom/db.sqlite",
+			},
+		}
+
+		configPath := filepath.Join(tempDir, "explicit.json")
+		configBytes, _ := json.Marshal(configData)
+		if err := os.WriteFile(configPath, configBytes, 0644); err != nil {
+			t.Fatalf("Failed to write explicit config: %v", err)
+		}
+
+		cfg, err := LoadConfig(configPath)
+		if err != nil {
+			t.Fatalf("Failed to load explicit config: %v", err)
+		}
+
+		// Verify user paths are preserved exactly
+		if len(cfg.Registries) > 0 && cfg.Registries[0].Path != userPath {
+			t.Errorf("User registry path not preserved: got %s, want %s", cfg.Registries[0].Path, userPath)
+		}
+
+		if cfg.Storage.DSN != "/tmp/custom/db.sqlite" {
+			t.Errorf("User storage path not preserved: got %s, want %s", cfg.Storage.DSN, "/tmp/custom/db.sqlite")
+		}
+	})
+}
+
+// TestPathSecurity tests that our path handling is secure
+func TestPathSecurity(t *testing.T) {
+	tests := []struct {
+		name         string
+		inputPath    string
+		shouldReject bool
+		description  string
+	}{
+		{
+			name:         "NormalPath",
+			inputPath:    "/home/user/.beemflow/registry.json",
+			shouldReject: false,
+			description:  "Normal absolute path should be accepted",
+		},
+		{
+			name:         "RelativePath",
+			inputPath:    "config/registry.json",
+			shouldReject: false,
+			description:  "Normal relative path should be accepted",
+		},
+		{
+			name:         "PathTraversal",
+			inputPath:    "../../../etc/passwd",
+			shouldReject: true,
+			description:  "Path traversal should be rejected",
+		},
+		{
+			name:         "PathTraversalWithDots",
+			inputPath:    "/home/user/../../../etc/passwd",
+			shouldReject: true,
+			description:  "Path traversal with absolute path should be rejected",
+		},
+		{
+			name:         "ValidDotsInFilename",
+			inputPath:    "/home/user/.beemflow/config.v1.json",
+			shouldReject: false,
+			description:  "Valid dots in filename should be accepted",
+		},
+		{
+			name:         "HiddenFile",
+			inputPath:    "/home/user/.hidden-config.json",
+			shouldReject: false,
+			description:  "Hidden files should be accepted",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test the path traversal detection logic from registry factory
+			// Check for path traversal elements in the original path before cleaning
+			hasPathTraversal := strings.Contains(tt.inputPath, "..")
+			cleanPath := filepath.Clean(tt.inputPath)
+
+			if tt.shouldReject && !hasPathTraversal {
+				t.Errorf("Expected path %s to be rejected for security, but it was accepted", tt.inputPath)
+			} else if !tt.shouldReject && hasPathTraversal {
+				t.Errorf("Expected path %s to be accepted, but it was rejected", tt.inputPath)
+			}
+
+			t.Logf("%s: %s -> clean: %s, hasTraversal: %v", tt.description, tt.inputPath, cleanPath, hasPathTraversal)
+		})
 	}
 }

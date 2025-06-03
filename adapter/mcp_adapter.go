@@ -54,7 +54,7 @@ var mcpRe = regexp.MustCompile(`^mcp://([^/]+)/([\w.-]+)$`)
 
 // Helper to resolve MCP server config from environment/config file.
 func getMCPServerConfig(host string) (config.MCPServerConfig, error) {
-	cfgPath := config.DefaultConfigPath
+	cfgPath := constants.ConfigFileName
 	cfg, err := config.LoadConfig(cfgPath)
 	if err != nil {
 		return config.MCPServerConfig{}, err

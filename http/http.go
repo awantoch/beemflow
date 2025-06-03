@@ -12,6 +12,7 @@ import (
 
 	"github.com/awantoch/beemflow/api"
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -60,9 +61,16 @@ func StartServer(cfg *config.Config) error {
 	// Register static file serving
 	mux.HandleFunc("/", http.FileServer(http.Dir(".")).ServeHTTP)
 
-	// Create service and attach all API handlers using the unified system
-	svc := api.NewFlowService()
-	api.UnifiedAttachHTTPHandlers(mux, svc)
+	// Register system endpoints (health, spec) that don't follow the operation pattern
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"status":"healthy"}`)); err != nil {
+			utils.Error("Failed to write health check response: %v", err)
+		}
+	})
+
+	// Generate and register all operation handlers
+	api.GenerateHTTPHandlers(mux)
 
 	// Register metrics endpoint
 	mux.Handle("/metrics", promhttp.Handler())
@@ -229,7 +237,7 @@ func (rw *responseWriter) WriteHeader(code int) {
 // Used for tests and directly accesses the storage layer.
 func UpdateRunEvent(id uuid.UUID, newEvent map[string]any) error {
 	// Get storage from config
-	cfg, err := config.LoadConfig(config.DefaultConfigPath)
+	cfg, err := config.LoadConfig(constants.ConfigFileName)
 	if err != nil {
 		return utils.Errorf("failed to load config: %v", err)
 	}

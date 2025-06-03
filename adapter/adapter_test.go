@@ -13,6 +13,7 @@ import (
 
 	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/registry"
+	"github.com/awantoch/beemflow/utils"
 )
 
 // dummyAdapter implements Adapter for testing.
@@ -392,7 +393,7 @@ func TestAdapterStressTest(t *testing.T) {
 	}
 
 	if len(errors) > 0 {
-		t.Errorf("Stress test failed with %d errors. First few: %v", len(errors), errors[:min(5, len(errors))])
+		t.Errorf("Stress test failed with %d errors. First few: %v", len(errors), errors[:utils.Min(5, len(errors))])
 	}
 }
 
@@ -462,28 +463,6 @@ func TestAdapterErrorHandlingRealScenarios(t *testing.T) {
 		})
 	}
 }
-
-// Helper function for older Go versions that don't have min()
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// func TestNewRegistryFetcher(t *testing.T) {
-//  f := NewRegistryFetcher()
-//  if f == nil {
-//  	t.Errorf("expected NewRegistryFetcher not nil")
-//  }
-// }
-
-// func TestNewMCPManifestResolver(t *testing.T) {
-//  m := NewMCPManifestResolver()
-//  if m == nil {
-//  	t.Errorf("expected NewMCPManifestResolver not nil")
-//  }
-// }
 
 func TestHTTPAdapter(t *testing.T) {
 	// Start a mock HTTP server to simulate the endpoint

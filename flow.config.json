@@ -1,6 +1,6 @@
 {
   "storage": {
     "driver": "sqlite",
-    "dsn": "./.beemflow/flow.db"
+    "dsn": ".beemflow/flow.db"
   }
 }

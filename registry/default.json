@@ -4,7 +4,8 @@
     "name": "http.fetch",
     "description": "Fetches a URL via HTTP GET and returns the response body as text.",
     "kind": "task",
-    "version": "0.1.0",
+    "version": "1.0.0",
+    "registry": "default",
     "parameters": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -23,7 +24,8 @@
     "name": "openai.chat_completion",
     "description": "Call OpenAI's Chat Completions API (v1/chat/completions) for LLM and function-calling tasks.",
     "kind": "task",
-    "version": "0.1.0",
+    "version": "1.0.0",
+    "registry": "default",
     "parameters": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -59,21 +61,12 @@
     }
   },
   {
-    "type": "mcp_server",
-    "name": "airtable",
-    "command": "npx",
-    "args": ["-y", "airtable-mcp-server"],
-    "version": "0.1.0",
-    "env": {
-      "AIRTABLE_API_KEY": "$env:AIRTABLE_API_KEY"
-    }
-  },
-  {
     "type": "tool",
     "name": "anthropic.chat_completion",
     "description": "Call Anthropic's Claude models via OpenAI-compatible API.",
     "kind": "task",
-    "version": "0.1.0",
+    "version": "1.0.0",
+    "registry": "default",
     "parameters": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -114,5 +107,18 @@
       "content-type": "application/json",
       "anthropic-version": "2023-06-01"
     }
+  },
+  {
+    "type": "mcp_server",
+    "name": "airtable",
+    "description": "Airtable integration via MCP protocol for database operations.",
+    "command": "npx",
+    "args": ["-y", "airtable-mcp-server"],
+    "version": "0.1.0",
+    "registry": "default",
+    "env": {
+      "AIRTABLE_API_KEY": "$env:AIRTABLE_API_KEY"
+    },
+    "transport": "stdio"
   }
 ] 

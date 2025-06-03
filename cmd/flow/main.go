@@ -49,7 +49,7 @@ func main() {
 // NewRootCmd creates the root 'flow' command with persistent flags and subcommands.
 func NewRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{Use: "flow"}
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", config.DefaultConfigPath, "Path to flow config JSON")
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", constants.ConfigFileName, "Path to flow config JSON")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logs")
 	rootCmd.PersistentFlags().DurationVar(&mcpStartupTimeout, "mcp-timeout", 60*time.Second, "Timeout for MCP server startup")
 	rootCmd.PersistentFlags().StringVar(&flowsDir, "flows-dir", "", "Path to flows directory (overrides config file)")
@@ -74,12 +74,13 @@ func NewRootCmd() *cobra.Command {
 		newServeCmd(),
 		newRunCmd(),
 		newMCPCmd(),
-		newToolsCmd(),
 	)
 
 	// Add auto-generated commands from the unified system
-	svc := api.NewFlowService()
-	api.UnifiedAttachCLICommands(rootCmd, svc)
+	commands := api.GenerateCLICommands()
+	for _, cmd := range commands {
+		rootCmd.AddCommand(cmd)
+	}
 
 	return rootCmd
 }
@@ -97,7 +98,7 @@ func newServeCmd() *cobra.Command {
 		Short: "Start the BeemFlow runtime HTTP server",
 		Run: func(cmd *cobra.Command, args []string) {
 
-			cfg, err := config.LoadConfig(config.DefaultConfigPath)
+			cfg, err := config.LoadConfig(constants.ConfigFileName)
 			if err != nil {
 				if os.IsNotExist(err) {
 					cfg = &config.Config{}
@@ -201,8 +202,7 @@ func runFlowExecution(cmd *cobra.Command, args []string, eventPath, eventJSON st
 	}
 
 	// Use the API service instead of direct engine access
-	svc := api.NewFlowService()
-	runID, outputs, err := svc.RunSpec(cmd.Context(), flow, event)
+	runID, outputs, err := api.RunSpec(cmd.Context(), flow, event)
 	if err != nil {
 		utils.Error(constants.ErrFlowExecutionFailed, err)
 		exit(5)
@@ -436,13 +436,13 @@ type registrySearchOptions struct {
 // runRegistrySearch handles search functionality for both MCP servers and tools
 func runRegistrySearch(opts registrySearchOptions) error {
 	ctx := context.Background()
-	apiKey := os.Getenv(constants.EnvSmitheryKey)
-	if apiKey == "" {
-		return fmt.Errorf(constants.ErrEnvVarRequired, constants.EnvSmitheryKey)
-	}
 
-	client := registry.NewSmitheryRegistry(apiKey, "")
-	entries, err := client.ListServers(ctx, registry.ListOptions{
+	// Use federated registry system instead of just Smithery
+	factory := registry.NewFactory()
+	cfg, _ := config.LoadConfig(configPath) // Ignore errors, use defaults
+	manager := factory.CreateStandardManager(ctx, cfg)
+
+	entries, err := manager.ListAllServers(ctx, registry.ListOptions{
 		Query:    opts.query,
 		PageSize: constants.DefaultMCPPageSize,
 	})
@@ -452,12 +452,13 @@ func runRegistrySearch(opts registrySearchOptions) error {
 
 	utils.User(opts.headerFormat, "Name", "Description", "Endpoint")
 	for _, s := range entries {
-		// Apply filtering based on kind
-		if opts.filterKind == "mcp" && s.Kind == constants.MCPServerKind {
+		// Apply filtering based on type (not kind)
+		switch {
+		case opts.filterKind == "mcp" && s.Type == "mcp_server":
 			utils.User(opts.threeColFormat, s.Name, s.Description, s.Endpoint)
-		} else if opts.filterKind == "tool" && s.Kind != constants.MCPServerKind {
+		case opts.filterKind == "tool" && s.Type == "tool":
 			utils.User(opts.threeColFormat, s.Name, s.Description, s.Endpoint)
-		} else if opts.filterKind == "" {
+		case opts.filterKind == "":
 			// No filtering, show all
 			utils.User(opts.threeColFormat, s.Name, s.Description, s.Endpoint)
 		}
@@ -465,7 +466,7 @@ func runRegistrySearch(opts registrySearchOptions) error {
 	return nil
 }
 
-// runRegistryInstall handles installation for both MCP servers and tools
+// runRegistryInstall handles installation for MCP servers to config file
 func runRegistryInstall(itemName, configFile, successMsg string) error {
 	// Read existing config as raw JSON (preserve only user overrides)
 	doc, err := loadConfigAsMap(configFile)
@@ -644,14 +645,18 @@ func runMCPList(configFile string) error {
 		}
 	}
 
-	// List servers from local registry
-	localMgr := registry.NewLocalRegistry("")
-	servers, err := localMgr.ListMCPServers(ctx, registry.ListOptions{
+	// List servers from all registries using factory
+	factory := registry.NewFactory()
+	manager := factory.CreateStandardManager(ctx, cfg)
+	allEntries, err := manager.ListAllServers(ctx, registry.ListOptions{
 		PageSize: constants.DefaultToolPageSize,
 	})
 	if err == nil {
-		for _, s := range servers {
-			utils.User(constants.FormatFiveColumns, s.Registry, s.Name, s.Description, s.Kind, s.Endpoint)
+		// Filter for MCP servers only
+		for _, s := range allEntries {
+			if s.Type == "mcp_server" {
+				utils.User(constants.FormatFiveColumns, s.Registry, s.Name, s.Description, s.Kind, s.Endpoint)
+			}
 		}
 	}
 	return nil
@@ -665,8 +670,7 @@ func newMCPServeCmd() *cobra.Command {
 		Use:   constants.CmdServe,
 		Short: constants.DescMCPServe,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			svc := api.NewFlowService()
-			tools := api.UnifiedBuildMCPToolRegistrations(svc)
+			tools := api.GenerateMCPTools()
 			return mcpserver.Serve(configPath, debug, stdio, addr, tools)
 		},
 	}
@@ -676,136 +680,5 @@ func newMCPServeCmd() *cobra.Command {
 }
 
 // ============================================================================
-// TOOLS COMMANDS
+// END OF FILE - Clean Architecture Achieved
 // ============================================================================
-
-// newToolsCmd creates the 'tools' subcommand and its subcommands.
-func newToolsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   constants.CmdTools,
-		Short: constants.DescToolsCommands,
-	}
-
-	var configFile = &configPath
-
-	cmd.AddCommand(
-		newToolSearchCmd(),
-		newToolInstallCmd(configFile),
-		newToolListCmd(configFile),
-		newToolGetCmd(),
-	)
-	return cmd
-}
-
-// newToolSearchCmd creates the search subcommand for tools
-func newToolSearchCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   constants.CmdSearch + " [query]",
-		Short: constants.DescSearchTools,
-		Args:  cobra.MaximumNArgs(1),
-		RunE:  runToolSearch,
-	}
-}
-
-// runToolSearch handles the search functionality for tools (same as MCP but filtered)
-func runToolSearch(cmd *cobra.Command, args []string) error {
-	query := ""
-	if len(args) > 0 {
-		query = args[0]
-	}
-
-	return runRegistrySearch(registrySearchOptions{
-		query:          query,
-		filterKind:     "tool",
-		headerFormat:   constants.HeaderTools,
-		threeColFormat: constants.FormatThreeColumns,
-	})
-}
-
-// newToolInstallCmd creates the install subcommand for tools
-func newToolInstallCmd(configFile *string) *cobra.Command {
-	return &cobra.Command{
-		Use:   constants.CmdInstall + " <toolName>",
-		Short: constants.DescInstallTool,
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runToolInstall(args[0], *configFile)
-		},
-	}
-}
-
-// runToolInstall handles the installation of tools (reuses same logic as MCP)
-func runToolInstall(toolName, configFile string) error {
-	return runRegistryInstall(toolName, configFile, constants.MsgToolInstalled)
-}
-
-// newToolGetCmd creates the get subcommand for tools
-func newToolGetCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   constants.CmdGet + " <toolName>",
-		Short: constants.DescGetTool,
-		Args:  cobra.ExactArgs(1),
-		RunE:  runToolGet,
-	}
-}
-
-// runToolGet handles getting a specific tool manifest
-func runToolGet(cmd *cobra.Command, args []string) error {
-	toolName := args[0]
-
-	ctx := context.Background()
-	svc := api.NewFlowService()
-
-	manifest, err := svc.GetToolManifest(ctx, toolName)
-	if err != nil {
-		return err
-	}
-
-	if manifest == nil {
-		utils.User("Tool '%s' not found", toolName)
-		return nil
-	}
-
-	// Output the tool manifest as formatted JSON
-	output, err := json.MarshalIndent(manifest, "", constants.JSONIndent)
-	if err != nil {
-		return err
-	}
-
-	utils.User("%s", string(output))
-	return nil
-}
-
-// newToolListCmd creates the list subcommand for tools
-func newToolListCmd(configFile *string) *cobra.Command {
-	return &cobra.Command{
-		Use:   constants.CmdList,
-		Short: constants.DescListTools,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runToolList(*configFile)
-		},
-	}
-}
-
-// runToolList handles listing all tools (filtered from the registry)
-func runToolList(configFile string) error {
-	ctx := context.Background()
-	svc := api.NewFlowService()
-
-	// Get all tools from the service
-	tools, err := svc.ListTools(ctx)
-	if err != nil {
-		return err
-	}
-
-	utils.User(constants.HeaderToolsList, "Source", "Name", "Description", "Type", "Endpoint")
-
-	// List tool manifests (filter out MCP servers)
-	for _, tool := range tools {
-		if tool.Kind != constants.MCPServerKind {
-			utils.User(constants.FormatFiveColumns, "registry", tool.Name, tool.Description, tool.Kind, tool.Endpoint)
-		}
-	}
-
-	return nil
-}

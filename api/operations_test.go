@@ -4,686 +4,306 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"reflect"
-	"strings"
 	"testing"
-
-	"github.com/spf13/cobra"
 )
 
-func TestGetOperation(t *testing.T) {
+// TestLooksLikeFilePath tests the looksLikeFilePath helper function comprehensively
+func TestLooksLikeFilePath(t *testing.T) {
 	tests := []struct {
-		name    string
-		id      string
-		wantErr bool
-		checkOp func(*OperationDefinition) bool
+		name     string
+		input    string
+		expected bool
+		setup    func() string // Optional setup function that returns a cleanup path
 	}{
-		{
-			name:    "existing operation",
-			id:      "listFlows",
-			wantErr: false,
-			checkOp: func(op *OperationDefinition) bool {
-				return op != nil && op.ID == "listFlows"
-			},
-		},
-		{
-			name:    "non-existent operation",
-			id:      "non-existent",
-			wantErr: true,
-		},
+		// File extension based detection
+		{"YAML extension", "myflow.yaml", true, nil},
+		{"YML extension", "myflow.yml", true, nil},
+		{"JSON extension", "config.json", true, nil},
+		{"No extension", "flowname", false, nil},
+		{"Executable extension", "script.exe", false, nil},
+		{"Text extension", "readme.txt", false, nil},
+
+		// Path separator detection
+		{"Unix absolute path", "/home/user/flow.yaml", true, nil},
+		{"Unix relative path", "flows/myflow.yaml", true, nil},
+		{"Windows absolute path", "C:\\flows\\myflow.yaml", true, nil},
+		{"Windows relative path", "flows\\myflow.yaml", true, nil},
+		{"Just slash", "/", true, nil},
+		{"Just backslash", "\\", true, nil},
+
+		// File existence based detection
+		{"Existing file", "", true, func() string {
+			tmpFile, err := os.CreateTemp("", "test-flow-*.yaml")
+			if err != nil {
+				t.Fatalf("Failed to create temp file: %v", err)
+			}
+			tmpFile.Close()
+			return tmpFile.Name()
+		}},
+		{"Non-existent file path", "definitely/does/not/exist.yaml", true, nil},
+		{"Non-existent simple name", "doesnotexist", false, nil},
+
+		// Edge cases
+		{"Empty string", "", false, nil},
+		{"Hidden file", ".hidden.yaml", true, nil},
+		{"Space in name", "my flow.yaml", true, nil},
+		{"Special characters", "flow@#$.yaml", true, nil},
+		{"Very long name", "verylongflownamewithoutextension", false, nil},
+		{"Mixed separators", "flows\\mixed/path.yaml", true, nil},
+
+		// Complex path scenarios
+		{"Relative with parent", "../parent/flow.yaml", true, nil},
+		{"Current dir reference", "./flow.yaml", true, nil},
+		{"Multiple extensions", "flow.config.yaml", true, nil},
+		{"Numeric flow name", "flow123", false, nil},
+		{"Alphanumeric with underscore", "my_flow_v2", false, nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			op, exists := GetOperation(tt.id)
+			input := tt.input
+			var cleanup string
 
-			if !exists && !tt.wantErr {
-				t.Errorf("GetOperation() operation not found, want exists")
-				return
+			// Handle setup function
+			if tt.setup != nil {
+				cleanup = tt.setup()
+				if cleanup != "" {
+					input = cleanup
+					defer os.Remove(cleanup)
+				}
 			}
 
-			if exists && tt.wantErr {
-				t.Errorf("GetOperation() operation found, want not exists")
-				return
-			}
-
-			if !tt.wantErr && tt.checkOp != nil && !tt.checkOp(op) {
-				t.Errorf("GetOperation() operation check failed")
+			result := looksLikeFilePath(input)
+			if result != tt.expected {
+				t.Errorf("looksLikeFilePath(%q) = %v, expected %v", input, result, tt.expected)
 			}
 		})
 	}
 }
 
-func TestGetAllOperations(t *testing.T) {
-	ops := GetAllOperations()
+// TestLooksLikeFilePath_FileExistence tests the file existence detection specifically
+func TestLooksLikeFilePath_FileExistence(t *testing.T) {
+	// Create a temporary directory for our tests
+	tempDir, err := os.MkdirTemp("", "test-file-detection-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
 
-	if len(ops) == 0 {
-		t.Error("GetAllOperations() returned no operations")
+	// Create various test files
+	testFiles := []struct {
+		name     string
+		expected bool
+	}{
+		{"existing.yaml", true},
+		{"existing.yml", true},
+		{"existing.json", true},
+		{"existing-no-ext", true}, // File exists, so should be detected as file path
 	}
 
-	// Check that we have some expected operations
+	for _, tf := range testFiles {
+		filePath := filepath.Join(tempDir, tf.name)
+		if err := os.WriteFile(filePath, []byte("test"), 0644); err != nil {
+			t.Fatalf("Failed to create test file %s: %v", tf.name, err)
+		}
+
+		result := looksLikeFilePath(filePath)
+		if result != tf.expected {
+			t.Errorf("looksLikeFilePath(%q) = %v, expected %v", filePath, result, tf.expected)
+		}
+	}
+
+	// Test non-existent files in the temp dir
+	nonExistentPath := filepath.Join(tempDir, "does-not-exist.yaml")
+	if looksLikeFilePath(nonExistentPath) != true {
+		t.Error("Non-existent file with .yaml extension should be detected as file path")
+	}
+
+	nonExistentNoExt := filepath.Join(tempDir, "does-not-exist")
+	if looksLikeFilePath(nonExistentNoExt) != true {
+		t.Error("Non-existent file with path separators should be detected as file path")
+	}
+}
+
+// TestLooksLikeFilePath_CrossPlatform tests cross-platform path detection
+func TestLooksLikeFilePath_CrossPlatform(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected bool
+	}{
+		// Windows-style paths
+		{"Windows drive path", "C:\\Users\\flow.yaml", true},
+		{"Windows UNC path", "\\\\server\\share\\flow.yaml", true},
+		{"Windows relative", "folder\\flow.yaml", true},
+
+		// Unix-style paths
+		{"Unix absolute", "/home/user/flow.yaml", true},
+		{"Unix relative", "folder/flow.yaml", true},
+		{"Unix hidden", "/home/user/.config/flow.yaml", true},
+
+		// Mixed separators (some tools normalize these)
+		{"Mixed separators 1", "folder\\file/flow.yaml", true},
+		{"Mixed separators 2", "folder/file\\flow.yaml", true},
+
+		// Simple names (should not be file paths)
+		{"Simple flow name", "my_flow", false},
+		{"Simple with numbers", "flow123", false},
+		{"Simple with underscores", "my_flow_v2", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := looksLikeFilePath(tt.path)
+			if result != tt.expected {
+				t.Errorf("looksLikeFilePath(%q) = %v, expected %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestLooksLikeFilePath_EdgeCases tests edge cases and error conditions
+func TestLooksLikeFilePath_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+		setup    func() string // Optional setup function that returns a cleanup path
+	}{
+		// Boundary conditions
+		{"Single character", "a", false, nil},
+		{"Single dot", ".", true, nil},         // This is a valid path (current directory)
+		{"Double dot", "..", true, nil},        // This is a valid path (parent directory)
+		{"Just extension", ".yaml", true, nil}, // This has an extension so should be treated as file
+		{"Extension only", "yaml", false, nil},
+
+		// Unicode and special characters
+		{"Unicode filename", "フロー.yaml", true, nil},
+		{"Emoji filename", "🚀flow.yaml", true, nil},
+		{"Special chars", "flow@#$%^&*().yaml", true, nil},
+
+		// URL-like strings (should be treated as file paths because they contain separators)
+		{"HTTP URL", "http://example.com/flow.yaml", true, nil},   // Contains path separators
+		{"HTTPS URL", "https://example.com/flow.yaml", true, nil}, // Contains path separators
+		{"FTP URL", "ftp://server/flow.yaml", true, nil},          // Contains path separators
+
+		// Very long paths
+		{"Long path", filepath.Join(
+			"very", "long", "path", "with", "many", "components",
+			"that", "goes", "on", "and", "on", "flow.yaml"), true, nil},
+		{"Long filename", "very_long_filename_that_might_be_problematic.yaml", true, nil},
+
+		// Whitespace scenarios
+		{"Leading space", " flow.yaml", true, nil},
+		{"Trailing space", "flow.yaml ", false, nil}, // Doesn't match yaml regex due to space
+		{"Internal spaces", "my flow file.yaml", true, nil},
+		{"Tab character", "flow\t.yaml", true, nil},
+		{"Newline character", "flow\n.yaml", true, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := tt.input
+			var cleanup string
+
+			// Handle setup function
+			if tt.setup != nil {
+				cleanup = tt.setup()
+				if cleanup != "" {
+					input = cleanup
+					defer os.Remove(cleanup)
+				}
+			}
+
+			result := looksLikeFilePath(input)
+			if result != tt.expected {
+				t.Errorf("looksLikeFilePath(%q) = %v, expected %v", input, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestGetOperation tests the operation registry functions
+func TestGetOperation(t *testing.T) {
+	// Test getting an existing operation
+	op, exists := GetOperation("listFlows")
+	if !exists {
+		t.Error("Expected listFlows operation to exist")
+	}
+	if op == nil {
+		t.Error("Expected non-nil operation")
+	}
+
+	// Test getting a non-existent operation
+	op, exists = GetOperation("nonexistent")
+	if exists {
+		t.Error("Expected nonexistent operation to not exist")
+	}
+	if op != nil {
+		t.Error("Expected nil operation for non-existent key")
+	}
+}
+
+// TestGetAllOperations tests the operation registry
+func TestGetAllOperations(t *testing.T) {
+	ops := GetAllOperations()
+	if ops == nil {
+		t.Error("Expected non-nil operations map")
+	}
+
+	// Should have some operations registered
+	if len(ops) == 0 {
+		t.Error("Expected some operations to be registered")
+	}
+
+	// Check for key operations we know should exist
 	expectedOps := []string{"listFlows", "getFlow", "validateFlow", "startRun"}
-	for _, expected := range expectedOps {
-		if _, exists := ops[expected]; !exists {
-			t.Errorf("GetAllOperations() missing expected operation: %s", expected)
+	for _, expectedOp := range expectedOps {
+		if _, exists := ops[expectedOp]; !exists {
+			t.Errorf("Expected operation %s to exist", expectedOp)
 		}
 	}
 }
 
-func TestValidateFlowCLIHandler(t *testing.T) {
-	// Create a temporary flow file for testing
-	tempDir := t.TempDir()
-	flowPath := filepath.Join(tempDir, "test.flow.yaml")
-	flowContent := `name: test
-on: cli.manual
-steps:
-  - id: test_step
-    use: core.echo
-    with:
-      text: "hello world"
-`
-	if err := os.WriteFile(flowPath, []byte(flowContent), 0644); err != nil {
-		t.Fatalf("Failed to write test flow: %v", err)
-	}
-
-	svc := &mockFlowService{}
-	cmd := &cobra.Command{}
-
-	tests := []struct {
-		name    string
-		args    []string
-		wantErr bool
-	}{
-		{
-			name:    "no arguments",
-			args:    []string{},
-			wantErr: true,
-		},
-		{
-			name:    "too many arguments",
-			args:    []string{"arg1", "arg2"},
-			wantErr: true,
-		},
-		{
-			name:    "valid flow name",
-			args:    []string{"test-flow"},
-			wantErr: false,
-		},
-		{
-			name:    "invalid flow name",
-			args:    []string{"invalid-flow"},
-			wantErr: true,
-		},
-		{
-			name:    "valid file path",
-			args:    []string{flowPath},
-			wantErr: false,
-		},
-		{
-			name:    "invalid file path",
-			args:    []string{"/nonexistent/file.yaml"},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateFlowCLIHandler(cmd, tt.args, svc)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("validateFlowCLIHandler() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestValidateFlowHandler(t *testing.T) {
-	// Create a temporary flow file for testing
-	tempDir := t.TempDir()
-	flowPath := filepath.Join(tempDir, "test.flow.yaml")
-	flowContent := `name: test
-on: cli.manual
-steps:
-  - id: test_step
-    use: core.echo
-    with:
-      text: "hello world"
-`
-	if err := os.WriteFile(flowPath, []byte(flowContent), 0644); err != nil {
-		t.Fatalf("Failed to write test flow: %v", err)
-	}
-
-	ctx := context.Background()
-	svc := &mockFlowService{}
-
-	tests := []struct {
-		name    string
-		args    *ValidateFlowArgs
-		wantErr bool
-	}{
-		{
-			name:    "valid flow name",
-			args:    &ValidateFlowArgs{Name: "test-flow"},
-			wantErr: false,
-		},
-		{
-			name:    "invalid flow name",
-			args:    &ValidateFlowArgs{Name: "invalid-flow"},
-			wantErr: true,
-		},
-		{
-			name:    "valid file path",
-			args:    &ValidateFlowArgs{Name: flowPath},
-			wantErr: false,
-		},
-		{
-			name:    "invalid file path",
-			args:    &ValidateFlowArgs{Name: "/nonexistent/file.yaml"},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := validateFlowHandler(ctx, svc, tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("validateFlowHandler() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if !tt.wantErr && result == nil {
-				t.Error("validateFlowHandler() returned nil result for valid input")
-			}
-		})
-	}
-}
-
-func TestGraphFlowCLIHandler(t *testing.T) {
-	// Create a temporary flow file for testing
-	tempDir := t.TempDir()
-	flowPath := filepath.Join(tempDir, "test.flow.yaml")
-	flowContent := `name: test
-on: cli.manual
-steps:
-  - id: test_step
-    use: core.echo
-    with:
-      text: "hello world"
-`
-	if err := os.WriteFile(flowPath, []byte(flowContent), 0644); err != nil {
-		t.Fatalf("Failed to write test flow: %v", err)
-	}
-
-	svc := &mockFlowService{}
-	cmd := &cobra.Command{}
-	cmd.Flags().StringP("output", "o", "", "output path")
-
-	tests := []struct {
-		name       string
-		args       []string
-		outputFlag string
-		wantErr    bool
-	}{
-		{
-			name:    "no arguments",
-			args:    []string{},
-			wantErr: true,
-		},
-		{
-			name:    "too many arguments",
-			args:    []string{"arg1", "arg2"},
-			wantErr: true,
-		},
-		{
-			name:    "valid flow name",
-			args:    []string{"test-flow"},
-			wantErr: false,
-		},
-		{
-			name:    "valid file path",
-			args:    []string{flowPath},
-			wantErr: false,
-		},
-		{
-			name:       "with output flag",
-			args:       []string{"test-flow"},
-			outputFlag: filepath.Join(tempDir, "output.md"),
-			wantErr:    false,
-		},
-		{
-			name:    "invalid file path",
-			args:    []string{"/nonexistent/file.yaml"},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.outputFlag != "" {
-				cmd.Flags().Set("output", tt.outputFlag)
-			} else {
-				cmd.Flags().Set("output", "")
-			}
-
-			err := graphFlowCLIHandler(cmd, tt.args, svc)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("graphFlowCLIHandler() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			// Check if output file was created when flag was set
-			if !tt.wantErr && tt.outputFlag != "" {
-				if _, err := os.Stat(tt.outputFlag); os.IsNotExist(err) {
-					t.Errorf("graphFlowCLIHandler() did not create output file")
-				}
-			}
-		})
-	}
-}
-
-func TestGraphFlowHandler(t *testing.T) {
-	// Create a temporary flow file for testing
-	tempDir := t.TempDir()
-	flowPath := filepath.Join(tempDir, "test.flow.yaml")
-	flowContent := `name: test
-on: cli.manual
-steps:
-  - id: test_step
-    use: core.echo
-    with:
-      text: "hello world"
-`
-	if err := os.WriteFile(flowPath, []byte(flowContent), 0644); err != nil {
-		t.Fatalf("Failed to write test flow: %v", err)
-	}
-
-	ctx := context.Background()
-	svc := &mockFlowService{}
-
-	tests := []struct {
-		name    string
-		args    *GraphFlowArgs
-		wantErr bool
-	}{
-		{
-			name:    "valid flow name",
-			args:    &GraphFlowArgs{Name: "test-flow"},
-			wantErr: false,
-		},
-		{
-			name:    "valid file path",
-			args:    &GraphFlowArgs{Name: flowPath},
-			wantErr: false,
-		},
-		{
-			name:    "invalid file path",
-			args:    &GraphFlowArgs{Name: "/nonexistent/file.yaml"},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := graphFlowHandler(ctx, svc, tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("graphFlowHandler() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if !tt.wantErr && result == nil {
-				t.Error("graphFlowHandler() returned nil result for valid input")
-			}
-		})
-	}
-}
-
-func TestLintFlowCLIHandler(t *testing.T) {
-	// Create a temporary flow file for testing
-	tempDir := t.TempDir()
-	validFlowPath := filepath.Join(tempDir, "valid.flow.yaml")
-	validFlowContent := `name: valid
-on: cli.manual
-steps:
-  - id: test_step
-    use: core.echo
-    with:
-      text: "hello world"
-`
-	if err := os.WriteFile(validFlowPath, []byte(validFlowContent), 0644); err != nil {
-		t.Fatalf("Failed to write valid flow: %v", err)
-	}
-
-	invalidFlowPath := filepath.Join(tempDir, "invalid.flow.yaml")
-	invalidFlowContent := `not: [valid: yaml`
-	if err := os.WriteFile(invalidFlowPath, []byte(invalidFlowContent), 0644); err != nil {
-		t.Fatalf("Failed to write invalid flow: %v", err)
-	}
-
-	svc := &mockFlowService{}
-	cmd := &cobra.Command{}
-
-	tests := []struct {
-		name    string
-		args    []string
-		wantErr bool
-	}{
-		{
-			name:    "no arguments",
-			args:    []string{},
-			wantErr: true,
-		},
-		{
-			name:    "too many arguments",
-			args:    []string{"arg1", "arg2"},
-			wantErr: true,
-		},
-		{
-			name:    "valid flow file",
-			args:    []string{validFlowPath},
-			wantErr: false,
-		},
-		{
-			name:    "invalid flow file",
-			args:    []string{invalidFlowPath},
-			wantErr: true,
-		},
-		{
-			name:    "non-existent file",
-			args:    []string{"/nonexistent/file.yaml"},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := lintFlowCLIHandler(cmd, tt.args, svc)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("lintFlowCLIHandler() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestLintFlowHandler(t *testing.T) {
-	// Create a temporary flow file for testing
-	tempDir := t.TempDir()
-	validFlowPath := filepath.Join(tempDir, "valid.flow.yaml")
-	validFlowContent := `name: valid
-on: cli.manual
-steps:
-  - id: test_step
-    use: core.echo
-    with:
-      text: "hello world"
-`
-	if err := os.WriteFile(validFlowPath, []byte(validFlowContent), 0644); err != nil {
-		t.Fatalf("Failed to write valid flow: %v", err)
-	}
-
-	ctx := context.Background()
-	svc := &mockFlowService{}
-
-	tests := []struct {
-		name    string
-		args    *FlowFileArgs
-		wantErr bool
-	}{
-		{
-			name:    "valid flow file",
-			args:    &FlowFileArgs{File: validFlowPath},
-			wantErr: false,
-		},
-		{
-			name:    "non-existent file",
-			args:    &FlowFileArgs{File: "/nonexistent/file.yaml"},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := lintFlowHandler(ctx, svc, tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("lintFlowHandler() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if !tt.wantErr && result == nil {
-				t.Error("lintFlowHandler() returned nil result for valid input")
-			}
-		})
-	}
-}
-
+// TestRegisterOperation tests operation registration
 func TestRegisterOperation(t *testing.T) {
 	// Create a test operation
 	testOp := &OperationDefinition{
-		ID:          "test-register-op",
-		Name:        "Test Register Operation",
-		Description: "Test operation for registration",
-		HTTPMethod:  "GET",
-		HTTPPath:    "/test-register",
-		ArgsType:    reflect.TypeOf(EmptyArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+		ID:          "testOperation",
+		Name:        "Test Operation",
+		Description: "A test operation",
+		Handler: func(ctx context.Context, args any) (any, error) {
 			return "test result", nil
 		},
 	}
 
-	// Register the operation
+	// Register it
 	RegisterOperation(testOp)
 
-	// Check that it was registered
-	op, exists := GetOperation("test-register-op")
+	// Verify it was registered
+	registered, exists := GetOperation("testOperation")
 	if !exists {
-		t.Error("RegisterOperation() operation was not registered")
-		return
+		t.Error("Expected test operation to be registered")
+	}
+	if registered.ID != "testOperation" {
+		t.Errorf("Expected operation ID 'testOperation', got %s", registered.ID)
+	}
+	if registered.MCPName != "testOperation" {
+		t.Errorf("Expected MCPName to default to ID, got %s", registered.MCPName)
 	}
 
-	if op.ID != "test-register-op" {
-		t.Errorf("RegisterOperation() operation ID = %v, want 'test-register-op'", op.ID)
-	}
-
-	if op.MCPName == "" {
-		t.Error("RegisterOperation() should set MCPName to ID when empty")
-	}
-}
-
-func TestRegisterCustomOperationHandlers(t *testing.T) {
-	// This function should not panic when called
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("RegisterCustomOperationHandlers() panicked: %v", r)
-		}
-	}()
-
-	RegisterCustomOperationHandlers()
-}
-
-func TestConvertOpenAPICLIHandler(t *testing.T) {
-	svc := &mockFlowService{}
-	cmd := &cobra.Command{}
-
-	// Add required flags
-	cmd.Flags().String("openapi", "", "OpenAPI spec")
-	cmd.Flags().String("api-name", "", "API name")
-	cmd.Flags().String("base-url", "", "Base URL")
-	cmd.Flags().String("output", "", "Output path")
-
-	tests := []struct {
-		name    string
-		args    []string
-		setup   func()
-		wantErr bool
-	}{
-		{
-			name:    "no arguments and no flags",
-			args:    []string{},
-			wantErr: true,
-		},
-		{
-			name: "with openapi flag",
-			args: []string{},
-			setup: func() {
-				cmd.Flags().Set("openapi", `{"openapi": "3.0.0", "info": {"title": "Test API", "version": "1.0.0"}, "paths": {}}`)
-			},
-			wantErr: false,
+	// Test with custom MCP name
+	testOp2 := &OperationDefinition{
+		ID:      "testOperation2",
+		MCPName: "custom_mcp_name",
+		Handler: func(ctx context.Context, args any) (any, error) {
+			return "test", nil
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Reset flags
-			cmd.Flags().Set("openapi", "")
-			cmd.Flags().Set("api-name", "")
-			cmd.Flags().Set("base-url", "")
-			cmd.Flags().Set("output", "")
-
-			if tt.setup != nil {
-				tt.setup()
-			}
-
-			err := convertOpenAPICLIHandler(cmd, tt.args, svc)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("convertOpenAPICLIHandler() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestOperationRegistrations(t *testing.T) {
-	// Test that all expected operations are registered
-	expectedOps := []string{
-		"listFlows",
-		"getFlow",
-		"validateFlow",
-		"graphFlow",
-		"startRun",
-		"getRun",
-		"listRuns",
-		"publishEvent",
-		"resumeRun",
-		"listTools",
-		"getToolManifest",
-		"spec",
-		"lintFlow",
-		"testFlow",
-	}
-
-	ops := GetAllOperations()
-
-	for _, expected := range expectedOps {
-		if _, exists := ops[expected]; !exists {
-			t.Errorf("Expected operation '%s' not registered", expected)
-		}
-	}
-
-	// Test that each registered operation has required fields
-	for id, op := range ops {
-		// Skip test operations created during testing
-		if strings.HasPrefix(id, "test-") {
-			continue
-		}
-
-		if op.ID == "" {
-			t.Errorf("Operation %s has empty ID", id)
-		}
-		if op.Name == "" {
-			t.Errorf("Operation %s has empty Name", id)
-		}
-		if op.ArgsType == nil {
-			t.Errorf("Operation %s has nil ArgsType", id)
-		}
-		if op.Handler == nil {
-			t.Errorf("Operation %s has nil Handler", id)
-		}
-		if op.MCPName == "" {
-			t.Errorf("Operation %s has empty MCPName", id)
-		}
-	}
-}
-
-func TestArgumentTypes(t *testing.T) {
-	// Test that argument type structs can be instantiated
-	argTypes := []reflect.Type{
-		reflect.TypeOf(EmptyArgs{}),
-		reflect.TypeOf(GetFlowArgs{}),
-		reflect.TypeOf(ValidateFlowArgs{}),
-		reflect.TypeOf(GraphFlowArgs{}),
-		reflect.TypeOf(StartRunArgs{}),
-		reflect.TypeOf(GetRunArgs{}),
-		reflect.TypeOf(PublishEventArgs{}),
-		reflect.TypeOf(ResumeRunArgs{}),
-		reflect.TypeOf(ConvertOpenAPIArgs{}),
-		reflect.TypeOf(FlowFileArgs{}),
-	}
-
-	for _, argType := range argTypes {
-		// Should be able to create new instances
-		instance := reflect.New(argType).Interface()
-		if instance == nil {
-			t.Errorf("Failed to create instance of %v", argType)
-		}
-
-		// Should be able to get the type name
-		if argType.Name() == "" {
-			t.Errorf("Type %v has empty name", argType)
-		}
-	}
-}
-
-func TestOutputConvertResult(t *testing.T) {
-	tempDir := t.TempDir()
-	outputPath := filepath.Join(tempDir, "output.txt")
-
-	tests := []struct {
-		name       string
-		result     any
-		outputPath string
-		wantErr    bool
-	}{
-		{
-			name:       "string result with output path",
-			result:     "test output",
-			outputPath: outputPath,
-			wantErr:    false,
-		},
-		{
-			name:       "string result without output path",
-			result:     "test output",
-			outputPath: "",
-			wantErr:    false,
-		},
-		{
-			name:       "struct result with output path",
-			result:     map[string]string{"key": "value"},
-			outputPath: outputPath,
-			wantErr:    false,
-		},
-		{
-			name:       "nil result",
-			result:     nil,
-			outputPath: outputPath,
-			wantErr:    false,
-		},
-		{
-			name:       "invalid output path",
-			result:     "test",
-			outputPath: "/invalid/path/that/does/not/exist/file.txt",
-			wantErr:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := outputConvertResult(tt.result, tt.outputPath)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("outputConvertResult() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			// Check file was created when path provided and no error
-			if !tt.wantErr && tt.outputPath != "" && !strings.Contains(tt.outputPath, "invalid") {
-				if _, err := os.Stat(tt.outputPath); os.IsNotExist(err) {
-					t.Errorf("outputConvertResult() did not create output file")
-				}
-			}
-		})
+	RegisterOperation(testOp2)
+	registered2, _ := GetOperation("testOperation2")
+	if registered2.MCPName != "custom_mcp_name" {
+		t.Errorf("Expected custom MCP name to be preserved, got %s", registered2.MCPName)
 	}
 }

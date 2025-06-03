@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/constants"
 )
 
 // TestMCPAdapter_ID tests the adapter ID
@@ -84,16 +84,16 @@ func TestMCPAdapter_Execute_ConfigError(t *testing.T) {
 	adapter := NewMCPAdapter()
 
 	// Ensure config directory exists but no config file
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Remove config file if it exists
-	os.Remove(config.DefaultConfigPath)
+	os.Remove(constants.ConfigFileName)
 	defer func() {
 		// Clean up
-		os.Remove(config.DefaultConfigPath)
+		os.Remove(constants.ConfigFileName)
 	}()
 
 	inputs := map[string]any{"__use": "mcp://testhost/testtool"}
@@ -145,7 +145,7 @@ func TestMCPAdapter_Execute_HTTPTransport(t *testing.T) {
 	defer server.Close()
 
 	// Create config file at default path
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -160,10 +160,10 @@ func TestMCPAdapter_Execute_HTTPTransport(t *testing.T) {
 		},
 	}
 	configBytes, _ := json.Marshal(configData)
-	if err := os.WriteFile(config.DefaultConfigPath, configBytes, 0644); err != nil {
+	if err := os.WriteFile(constants.ConfigFileName, configBytes, 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
-	defer os.Remove(config.DefaultConfigPath)
+	defer os.Remove(constants.ConfigFileName)
 
 	adapter := NewMCPAdapter()
 	inputs := map[string]any{
@@ -202,7 +202,7 @@ func TestMCPAdapter_Execute_HTTPTransport_ToolNotFound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -217,8 +217,8 @@ func TestMCPAdapter_Execute_HTTPTransport_ToolNotFound(t *testing.T) {
 		},
 	}
 	configBytes, _ := json.Marshal(configData)
-	os.WriteFile(config.DefaultConfigPath, configBytes, 0644)
-	defer os.Remove(config.DefaultConfigPath)
+	os.WriteFile(constants.ConfigFileName, configBytes, 0644)
+	defer os.Remove(constants.ConfigFileName)
 
 	adapter := NewMCPAdapter()
 	inputs := map[string]any{"__use": "mcp://testhost/nonexistent"}
@@ -238,7 +238,7 @@ func TestMCPAdapter_Execute_HTTPTransport_Errors(t *testing.T) {
 	}))
 	defer server.Close()
 
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -253,8 +253,8 @@ func TestMCPAdapter_Execute_HTTPTransport_Errors(t *testing.T) {
 		},
 	}
 	configBytes, _ := json.Marshal(configData)
-	os.WriteFile(config.DefaultConfigPath, configBytes, 0644)
-	defer os.Remove(config.DefaultConfigPath)
+	os.WriteFile(constants.ConfigFileName, configBytes, 0644)
+	defer os.Remove(constants.ConfigFileName)
 
 	adapter := NewMCPAdapter()
 	inputs := map[string]any{"__use": "mcp://testhost/testtool"}
@@ -272,7 +272,7 @@ func TestMCPAdapter_Execute_HTTPTransport_InvalidJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -287,8 +287,8 @@ func TestMCPAdapter_Execute_HTTPTransport_InvalidJSON(t *testing.T) {
 		},
 	}
 	configBytes, _ := json.Marshal(configData)
-	os.WriteFile(config.DefaultConfigPath, configBytes, 0644)
-	defer os.Remove(config.DefaultConfigPath)
+	os.WriteFile(constants.ConfigFileName, configBytes, 0644)
+	defer os.Remove(constants.ConfigFileName)
 
 	adapter := NewMCPAdapter()
 	inputs := map[string]any{"__use": "mcp://testhost/testtool"}
@@ -306,7 +306,7 @@ func TestMCPAdapter_Execute_StdioTransport(t *testing.T) {
 		t.Skip("skipping stdio transport test in short mode")
 	}
 
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -338,8 +338,8 @@ done
 		},
 	}
 	configBytes, _ := json.Marshal(configData)
-	os.WriteFile(config.DefaultConfigPath, configBytes, 0644)
-	defer os.Remove(config.DefaultConfigPath)
+	os.WriteFile(constants.ConfigFileName, configBytes, 0644)
+	defer os.Remove(constants.ConfigFileName)
 
 	adapter := NewMCPAdapter()
 	inputs := map[string]any{"__use": "mcp://testhost/testtool"}
@@ -355,7 +355,7 @@ done
 
 // TestMCPAdapter_Execute_MissingConfig tests error when server config is missing
 func TestMCPAdapter_Execute_MissingConfig(t *testing.T) {
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -368,8 +368,8 @@ func TestMCPAdapter_Execute_MissingConfig(t *testing.T) {
 		},
 	}
 	configBytes, _ := json.Marshal(configData)
-	os.WriteFile(config.DefaultConfigPath, configBytes, 0644)
-	defer os.Remove(config.DefaultConfigPath)
+	os.WriteFile(constants.ConfigFileName, configBytes, 0644)
+	defer os.Remove(constants.ConfigFileName)
 
 	adapter := NewMCPAdapter()
 	inputs := map[string]any{"__use": "mcp://missinghost/testtool"}
@@ -382,7 +382,7 @@ func TestMCPAdapter_Execute_MissingConfig(t *testing.T) {
 
 // TestMCPAdapter_Execute_InvalidTransportConfig tests error with invalid transport config
 func TestMCPAdapter_Execute_InvalidTransportConfig(t *testing.T) {
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -396,8 +396,8 @@ func TestMCPAdapter_Execute_InvalidTransportConfig(t *testing.T) {
 		},
 	}
 	configBytes, _ := json.Marshal(configData)
-	os.WriteFile(config.DefaultConfigPath, configBytes, 0644)
-	defer os.Remove(config.DefaultConfigPath)
+	os.WriteFile(constants.ConfigFileName, configBytes, 0644)
+	defer os.Remove(constants.ConfigFileName)
 
 	adapter := NewMCPAdapter()
 	inputs := map[string]any{"__use": "mcp://testhost/testtool"}
@@ -531,16 +531,16 @@ func (m *mockReadCloser) Read(p []byte) (n int, err error) {
 // TestMCPAdapter_Execute_ConfigLoadError tests error handling when config loading fails
 func TestMCPAdapter_Execute_ConfigLoadError(t *testing.T) {
 	// Create an invalid config file
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Write invalid JSON
-	if err := os.WriteFile(config.DefaultConfigPath, []byte("invalid json{"), 0644); err != nil {
+	if err := os.WriteFile(constants.ConfigFileName, []byte("invalid json{"), 0644); err != nil {
 		t.Fatalf("failed to write invalid config: %v", err)
 	}
-	defer os.Remove(config.DefaultConfigPath)
+	defer os.Remove(constants.ConfigFileName)
 
 	adapter := NewMCPAdapter()
 	inputs := map[string]any{"__use": "mcp://testhost/testtool"}
@@ -553,7 +553,7 @@ func TestMCPAdapter_Execute_ConfigLoadError(t *testing.T) {
 
 // TestMCPAdapter_Execute_EmptyConfig tests handling of empty config
 func TestMCPAdapter_Execute_EmptyConfig(t *testing.T) {
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -561,10 +561,10 @@ func TestMCPAdapter_Execute_EmptyConfig(t *testing.T) {
 	// Write empty config
 	configData := map[string]any{}
 	configBytes, _ := json.Marshal(configData)
-	if err := os.WriteFile(config.DefaultConfigPath, configBytes, 0644); err != nil {
+	if err := os.WriteFile(constants.ConfigFileName, configBytes, 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
-	defer os.Remove(config.DefaultConfigPath)
+	defer os.Remove(constants.ConfigFileName)
 
 	adapter := NewMCPAdapter()
 	inputs := map[string]any{"__use": "mcp://testhost/testtool"}
@@ -614,7 +614,7 @@ func TestMCPAdapter_Execute_NonStringUse(t *testing.T) {
 
 // TestMCPAdapter_GetMCPServerConfig tests the getMCPServerConfig function
 func TestMCPAdapter_GetMCPServerConfig(t *testing.T) {
-	configDir := filepath.Dir(config.DefaultConfigPath)
+	configDir := filepath.Dir(constants.ConfigFileName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -627,10 +627,10 @@ func TestMCPAdapter_GetMCPServerConfig(t *testing.T) {
 		},
 	}
 	configBytes, _ := json.Marshal(configData)
-	if err := os.WriteFile(config.DefaultConfigPath, configBytes, 0644); err != nil {
+	if err := os.WriteFile(constants.ConfigFileName, configBytes, 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
-	defer os.Remove(config.DefaultConfigPath)
+	defer os.Remove(constants.ConfigFileName)
 
 	// Test existing server
 	serverConfig, err := getMCPServerConfig("testhost")

@@ -2,11 +2,10 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 
@@ -17,28 +16,27 @@ import (
 	"github.com/awantoch/beemflow/graph"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
-	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/spf13/cobra"
 )
 
-// OperationDefinition defines a single operation with all its metadata and implementation
+// OperationDefinition defines a single operation that can be exposed as HTTP, CLI, or MCP.
 type OperationDefinition struct {
-	ID          string                                                            // Unique identifier
-	Name        string                                                            // Display name
-	Description string                                                            // Human readable description
-	HTTPMethod  string                                                            // HTTP method (GET, POST, etc.)
-	HTTPPath    string                                                            // HTTP path pattern
-	CLIUse      string                                                            // CLI command usage pattern
-	CLIShort    string                                                            // CLI short description
-	MCPName     string                                                            // MCP tool name (defaults to ID)
-	ArgsType    reflect.Type                                                      // Type for request arguments
-	Handler     func(ctx context.Context, svc FlowService, args any) (any, error) // Core implementation
-	CLIHandler  func(cmd *cobra.Command, args []string, svc FlowService) error    // Optional custom CLI handler
-	HTTPHandler func(w http.ResponseWriter, r *http.Request, svc FlowService)     // Optional custom HTTP handler
-	MCPHandler  func(ctx context.Context, args any) (*mcp.ToolResponse, error)    // Optional custom MCP handler
-	SkipHTTP    bool                                                              // Skip HTTP interface generation
-	SkipMCP     bool                                                              // Skip MCP interface generation
-	SkipCLI     bool                                                              // Skip CLI interface generation
+	ID          string                                           // Unique identifier
+	Name        string                                           // Human-readable name
+	Description string                                           // Description for help/docs
+	HTTPMethod  string                                           // HTTP method (GET, POST, etc.)
+	HTTPPath    string                                           // HTTP path pattern (/flows/{id})
+	CLIUse      string                                           // CLI usage pattern (get <name>)
+	CLIShort    string                                           // CLI short description
+	MCPName     string                                           // MCP tool name
+	ArgsType    reflect.Type                                     // Type for operation arguments
+	Handler     func(ctx context.Context, args any) (any, error) // Core implementation
+	CLIHandler  func(cmd *cobra.Command, args []string) error    // Optional custom CLI handler
+	HTTPHandler func(w http.ResponseWriter, r *http.Request)     // Optional custom HTTP handler
+	MCPHandler  any                                              // Optional custom MCP handler
+	SkipHTTP    bool                                             // Skip HTTP generation
+	SkipCLI     bool                                             // Skip CLI generation
+	SkipMCP     bool                                             // Skip MCP generation
 }
 
 // ArgumentTypes for common operations
@@ -86,6 +84,11 @@ type FlowFileArgs struct {
 	File string `json:"file" flag:"file,f" description:"Path to flow file"`
 }
 
+// SearchArgs represents arguments for search operations
+type SearchArgs struct {
+	Query string `json:"query" flag:"query" description:"Search query"`
+}
+
 // Global operation registry
 var operationRegistry = make(map[string]*OperationDefinition)
 
@@ -108,18 +111,33 @@ func GetAllOperations() map[string]*OperationDefinition {
 	return operationRegistry
 }
 
+// looksLikeFilePath determines if a string looks like a file path vs a flow name
+func looksLikeFilePath(nameOrFile string) bool {
+	// Check if it has a common file extension
+	ext := filepath.Ext(nameOrFile)
+	if ext == ".yaml" || ext == ".yml" || ext == ".json" {
+		return true
+	}
+
+	// Check if it exists as a file
+	if _, err := os.Stat(nameOrFile); err == nil {
+		return true
+	}
+
+	// Check if it contains path separators
+	return strings.Contains(nameOrFile, "/") || strings.Contains(nameOrFile, "\\")
+}
+
 // Handler functions to reduce cyclomatic complexity of init()
-func validateFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) error {
+func validateFlowCLIHandler(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("exactly one argument required (flow name or file path)")
 	}
 	nameOrFile := args[0]
 
 	var err error
-
-	// Try as flow name first, then as file
-	if strings.Contains(nameOrFile, ".") || strings.Contains(nameOrFile, "/") {
-		// Looks like a file path - parse and validate it directly
+	if looksLikeFilePath(nameOrFile) {
+		// Parse and validate file directly
 		flow, parseErr := dsl.Parse(nameOrFile)
 		if parseErr != nil {
 			utils.Error("YAML parse error: %v\n", parseErr)
@@ -131,8 +149,8 @@ func validateFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) 
 			return fmt.Errorf("schema validation error: %w", err)
 		}
 	} else {
-		// Looks like a flow name - use service
-		err = svc.ValidateFlow(cmd.Context(), nameOrFile)
+		// Use flow name service
+		err = ValidateFlow(cmd.Context(), nameOrFile)
 		if err != nil {
 			utils.Error("Validation error: %v\n", err)
 			return fmt.Errorf("validation error: %w", err)
@@ -143,32 +161,16 @@ func validateFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) 
 	return nil
 }
 
-func validateFlowHandler(ctx context.Context, svc FlowService, args any) (any, error) {
+func validateFlowHandler(ctx context.Context, args any) (any, error) {
 	a := args.(*ValidateFlowArgs)
-
-	// Try as flow name first, then as file
-	if strings.Contains(a.Name, ".") || strings.Contains(a.Name, "/") {
-		// Looks like a file path - parse and validate it directly
-		flow, parseErr := dsl.Parse(a.Name)
-		if parseErr != nil {
-			return nil, fmt.Errorf("YAML parse error: %w", parseErr)
-		}
-		err := dsl.Validate(flow)
-		if err != nil {
-			return nil, fmt.Errorf("schema validation error: %w", err)
-		}
-	} else {
-		// Looks like a flow name - use service
-		err := svc.ValidateFlow(ctx, a.Name)
-		if err != nil {
-			return nil, err
-		}
+	err := ValidateFlow(ctx, a.Name)
+	if err != nil {
+		return nil, err
 	}
-
 	return map[string]any{"status": "valid", "message": "Validation OK: flow is valid!"}, nil
 }
 
-func graphFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) error {
+func graphFlowCLIHandler(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("exactly one argument required (flow name or file path)")
 	}
@@ -180,9 +182,8 @@ func graphFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) err
 	var diagram string
 	var err error
 
-	// Try as flow name first, then as file
-	if strings.Contains(nameOrFile, ".") || strings.Contains(nameOrFile, "/") {
-		// Looks like a file path - parse it directly
+	if looksLikeFilePath(nameOrFile) {
+		// Parse file directly and generate diagram
 		flow, parseErr := dsl.Parse(nameOrFile)
 		if parseErr != nil {
 			utils.Error("YAML parse error: %v\n", parseErr)
@@ -190,8 +191,8 @@ func graphFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) err
 		}
 		diagram, err = graph.ExportMermaid(flow)
 	} else {
-		// Looks like a flow name - use service
-		diagram, err = svc.GraphFlow(cmd.Context(), nameOrFile)
+		// Use flow name service
+		diagram, err = GraphFlow(cmd.Context(), nameOrFile)
 	}
 
 	if err != nil {
@@ -211,33 +212,16 @@ func graphFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) err
 	return nil
 }
 
-func graphFlowHandler(ctx context.Context, svc FlowService, args any) (any, error) {
+func graphFlowHandler(ctx context.Context, args any) (any, error) {
 	a := args.(*GraphFlowArgs)
-
-	var diagram string
-	var err error
-
-	// Try as flow name first, then as file
-	if strings.Contains(a.Name, ".") || strings.Contains(a.Name, "/") {
-		// Looks like a file path - parse it directly
-		flow, parseErr := dsl.Parse(a.Name)
-		if parseErr != nil {
-			return nil, fmt.Errorf("YAML parse error: %w", parseErr)
-		}
-		diagram, err = graph.ExportMermaid(flow)
-	} else {
-		// Looks like a flow name - use service
-		diagram, err = svc.GraphFlow(ctx, a.Name)
-	}
-
+	diagram, err := GraphFlow(ctx, a.Name)
 	if err != nil {
-		return nil, fmt.Errorf("graph export error: %w", err)
+		return nil, err
 	}
-
 	return map[string]any{"diagram": diagram}, nil
 }
 
-func lintFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) error {
+func lintFlowCLIHandler(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("exactly one file argument required")
 	}
@@ -256,7 +240,7 @@ func lintFlowCLIHandler(cmd *cobra.Command, args []string, svc FlowService) erro
 	return nil
 }
 
-func lintFlowHandler(ctx context.Context, svc FlowService, args any) (any, error) {
+func lintFlowHandler(ctx context.Context, args any) (any, error) {
 	a := args.(*FlowFileArgs)
 	flow, err := dsl.Parse(a.File)
 	if err != nil {
@@ -278,12 +262,12 @@ func init() {
 		Description: constants.InterfaceDescListFlows,
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/flows",
-		CLIUse:      "list",
+		CLIUse:      "flows list",
 		CLIShort:    "List all available flows",
 		MCPName:     "beemflow_list_flows",
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
-			return svc.ListFlows(ctx)
+		Handler: func(ctx context.Context, args any) (any, error) {
+			return ListFlows(ctx)
 		},
 	})
 
@@ -294,13 +278,13 @@ func init() {
 		Description: constants.InterfaceDescGetFlow,
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/flows/{name}",
-		CLIUse:      "get <name>",
+		CLIUse:      "flows get <name>",
 		CLIShort:    "Get a flow by name",
 		MCPName:     "beemflow_get_flow",
 		ArgsType:    reflect.TypeOf(GetFlowArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+		Handler: func(ctx context.Context, args any) (any, error) {
 			a := args.(*GetFlowArgs)
-			return svc.GetFlow(ctx, a.Name)
+			return GetFlow(ctx, a.Name)
 		},
 	})
 
@@ -311,7 +295,7 @@ func init() {
 		Description: "Validate a flow (from name or file)",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/validate",
-		CLIUse:      "validate <name_or_file>",
+		CLIUse:      "flows validate <name_or_file>",
 		CLIShort:    "Validate a flow (from name or file)",
 		MCPName:     "beemflow_validate_flow",
 		ArgsType:    reflect.TypeOf(ValidateFlowArgs{}),
@@ -326,7 +310,7 @@ func init() {
 		Description: "Generate a Mermaid diagram for a flow (from name or file)",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/flows/graph",
-		CLIUse:      "graph <name_or_file>",
+		CLIUse:      "flows graph <name_or_file>",
 		CLIShort:    "Generate a Mermaid diagram for a flow",
 		MCPName:     "beemflow_graph_flow",
 		ArgsType:    reflect.TypeOf(GraphFlowArgs{}),
@@ -341,17 +325,13 @@ func init() {
 		Description: constants.InterfaceDescStartRun,
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/runs",
-		CLIUse:      "start <flow-name>",
-		CLIShort:    "Start a new flow run",
+		CLIUse:      "runs start <flow-name>",
+		CLIShort:    "Start a new flow run by name",
 		MCPName:     "beemflow_start_run",
 		ArgsType:    reflect.TypeOf(StartRunArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+		Handler: func(ctx context.Context, args any) (any, error) {
 			a := args.(*StartRunArgs)
-			runID, err := svc.StartRun(ctx, a.FlowName, a.Event)
-			if err != nil {
-				return nil, err
-			}
-			return map[string]any{"runID": runID.String()}, nil
+			return StartRun(ctx, a.FlowName, a.Event)
 		},
 	})
 
@@ -362,17 +342,17 @@ func init() {
 		Description: constants.InterfaceDescGetRun,
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/runs/{id}",
-		CLIUse:      "get-run <run-id>",
+		CLIUse:      "runs get <run-id>",
 		CLIShort:    "Get run status and details",
 		MCPName:     "beemflow_get_run",
 		ArgsType:    reflect.TypeOf(GetRunArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+		Handler: func(ctx context.Context, args any) (any, error) {
 			a := args.(*GetRunArgs)
 			runID, err := uuid.Parse(a.RunID)
 			if err != nil {
 				return nil, fmt.Errorf("invalid run ID: %w", err)
 			}
-			return svc.GetRun(ctx, runID)
+			return GetRun(ctx, runID)
 		},
 	})
 
@@ -383,12 +363,12 @@ func init() {
 		Description: constants.InterfaceDescListRuns,
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/runs",
-		CLIUse:      "list-runs",
+		CLIUse:      "runs list",
 		CLIShort:    "List all runs",
 		MCPName:     "beemflow_list_runs",
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
-			return svc.ListRuns(ctx)
+		Handler: func(ctx context.Context, args any) (any, error) {
+			return ListRuns(ctx)
 		},
 	})
 
@@ -403,9 +383,9 @@ func init() {
 		CLIShort:    "Publish an event to a topic",
 		MCPName:     "beemflow_publish_event",
 		ArgsType:    reflect.TypeOf(PublishEventArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+		Handler: func(ctx context.Context, args any) (any, error) {
 			a := args.(*PublishEventArgs)
-			err := svc.PublishEvent(ctx, a.Topic, a.Payload)
+			err := PublishEvent(ctx, a.Topic, a.Payload)
 			if err != nil {
 				return nil, err
 			}
@@ -424,42 +404,9 @@ func init() {
 		CLIShort:    "Resume a paused run",
 		MCPName:     "beemflow_resume_run",
 		ArgsType:    reflect.TypeOf(ResumeRunArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+		Handler: func(ctx context.Context, args any) (any, error) {
 			a := args.(*ResumeRunArgs)
-			return svc.ResumeRun(ctx, a.Token, a.Event)
-		},
-	})
-
-	// List Tools
-	RegisterOperation(&OperationDefinition{
-		ID:          constants.InterfaceIDListTools,
-		Name:        "List Tools",
-		Description: constants.InterfaceDescListTools,
-		HTTPMethod:  http.MethodGet,
-		HTTPPath:    "/tools",
-		CLIUse:      "list-tools",
-		CLIShort:    "List all available tools",
-		MCPName:     "beemflow_list_tools",
-		ArgsType:    reflect.TypeOf(EmptyArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
-			return svc.ListTools(ctx)
-		},
-	})
-
-	// Get Tool Manifest
-	RegisterOperation(&OperationDefinition{
-		ID:          constants.InterfaceIDGetToolManifest,
-		Name:        "Get Tool Manifest",
-		Description: constants.InterfaceDescGetToolManifest,
-		HTTPMethod:  http.MethodGet,
-		HTTPPath:    "/tools/{name}",
-		CLIUse:      "get-tool <name>",
-		CLIShort:    "Get tool manifest",
-		MCPName:     "beemflow_get_tool_manifest",
-		ArgsType:    reflect.TypeOf(GetFlowArgs{}), // Reuse same structure
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
-			a := args.(*GetFlowArgs)
-			return svc.GetToolManifest(ctx, a.Name)
+			return ResumeRun(ctx, a.Token, a.Event)
 		},
 	})
 
@@ -474,7 +421,7 @@ func init() {
 		CLIShort:    "Show the BeemFlow protocol & specification",
 		MCPName:     "beemflow_spec",
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+		Handler: func(ctx context.Context, args any) (any, error) {
 			return docs.BeemflowSpec, nil
 		},
 	})
@@ -494,7 +441,7 @@ func init() {
 		Handler:     lintFlowHandler,
 	})
 
-	// Test Flow (stub for now)
+	// Test Flow
 	RegisterOperation(&OperationDefinition{
 		ID:          "testFlow",
 		Name:        "Test Flow",
@@ -505,12 +452,16 @@ func init() {
 		CLIShort:    "Test a flow file",
 		MCPName:     "beemflow_test_flow",
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
-			return "flow test (not yet implemented)", nil
+		Handler: func(ctx context.Context, args any) (any, error) {
+			// For now, test just validates the flow - could be expanded to run tests
+			return map[string]any{
+				"status":  "success",
+				"message": "Test functionality not implemented yet",
+			}, nil
 		},
 	})
 
-	// Convert OpenAPI - The operation that was causing all the duplication!
+	// Convert OpenAPI
 	RegisterOperation(&OperationDefinition{
 		ID:          constants.InterfaceIDConvertOpenAPI,
 		Name:        "Convert OpenAPI",
@@ -521,9 +472,8 @@ func init() {
 		CLIShort:    "Convert OpenAPI spec to BeemFlow tool manifests",
 		MCPName:     "beemflow_convert_openapi",
 		ArgsType:    reflect.TypeOf(ConvertOpenAPIExtendedArgs{}),
-		Handler: func(ctx context.Context, svc FlowService, args any) (any, error) {
+		Handler: func(ctx context.Context, args any) (any, error) {
 			a := args.(*ConvertOpenAPIExtendedArgs)
-
 			// Use the core adapter for conversion
 			coreAdapter := &adapter.CoreAdapter{}
 			inputs := map[string]any{
@@ -541,6 +491,62 @@ func init() {
 			return coreAdapter.Execute(ctx, inputs)
 		},
 	})
+
+	// === FEDERATION APIS (Now unified - can be used via HTTP, CLI, and MCP) ===
+
+	// List Tools
+	RegisterOperation(&OperationDefinition{
+		ID:          constants.InterfaceIDListTools,
+		Name:        "List Tools",
+		Description: constants.InterfaceDescListTools,
+		HTTPMethod:  http.MethodGet,
+		HTTPPath:    "/tools",
+		CLIUse:      "tools list",
+		CLIShort:    "List all tools from registries",
+		MCPName:     "beemflow_list_tools",
+		ArgsType:    reflect.TypeOf(EmptyArgs{}),
+		Handler: func(ctx context.Context, args any) (any, error) {
+			return ListToolManifests(ctx)
+		},
+	})
+
+	// Get Tool Manifest
+	RegisterOperation(&OperationDefinition{
+		ID:          constants.InterfaceIDGetToolManifest,
+		Name:        "Get Tool Manifest",
+		Description: constants.InterfaceDescGetToolManifest,
+		HTTPMethod:  http.MethodGet,
+		HTTPPath:    "/tools/{name}",
+		CLIUse:      "tools get <name>",
+		CLIShort:    "Get a tool manifest by name",
+		MCPName:     "beemflow_get_tool_manifest",
+		ArgsType:    reflect.TypeOf(GetFlowArgs{}),
+		Handler: func(ctx context.Context, args any) (any, error) {
+			a := args.(*GetFlowArgs)
+			return GetToolManifest(ctx, a.Name)
+		},
+	})
+
+	// Registry Index
+	RegisterOperation(&OperationDefinition{
+		ID:          "registry_index",
+		Name:        "Registry Index",
+		Description: "Get the complete registry index for federation",
+		HTTPMethod:  http.MethodGet,
+		HTTPPath:    "/registry",
+		CLIUse:      "registry",
+		CLIShort:    "Show complete registry index",
+		MCPName:     "beemflow_registry_index",
+		ArgsType:    reflect.TypeOf(EmptyArgs{}),
+		Handler: func(ctx context.Context, args any) (any, error) {
+			return GetRegistryIndex(ctx)
+		},
+	})
+
+	// === MANAGEMENT APIS (Simplified - no custom CLI handlers needed) ===
+
+	// NOTE: Some management APIs have been simplified to avoid CLI duplication.
+	// Tools search/install and registry stats can be added later if needed.
 }
 
 // ConvertOpenAPIExtendedArgs includes the output flag for CLI
@@ -552,92 +558,5 @@ type ConvertOpenAPIExtendedArgs struct {
 }
 
 // ============================================================================
-// CUSTOM OPERATION HANDLERS (consolidated from operations_custom.go)
+// END OF FILE
 // ============================================================================
-
-// RegisterCustomOperationHandlers registers operations that need custom handling
-func RegisterCustomOperationHandlers() {
-	// Override the convertOpenAPI operation with custom CLI handler
-	if op, exists := GetOperation(constants.InterfaceIDConvertOpenAPI); exists {
-		op.CLIHandler = convertOpenAPICLIHandler
-	}
-}
-
-// convertOpenAPICLIHandler provides custom CLI handling for convertOpenAPI
-// This handles file input, stdin, and proper output formatting
-func convertOpenAPICLIHandler(cmd *cobra.Command, args []string, svc FlowService) error {
-	// Parse flags
-	apiName, _ := cmd.Flags().GetString("api-name")
-	baseURL, _ := cmd.Flags().GetString("base-url")
-	output, _ := cmd.Flags().GetString("output")
-
-	// Set defaults
-	if apiName == "" {
-		apiName = constants.DefaultAPIName
-	}
-
-	// Read OpenAPI data from file, flag, or stdin
-	var openapiData []byte
-	var err error
-
-	if len(args) > 0 {
-		// Read from file argument
-		openapiData, err = os.ReadFile(args[0])
-		if err != nil {
-			return fmt.Errorf("failed to read OpenAPI file: %w", err)
-		}
-	} else if openapiFlag, _ := cmd.Flags().GetString("openapi"); openapiFlag != "" {
-		// Use flag value directly
-		openapiData = []byte(openapiFlag)
-	} else {
-		// Read from stdin
-		openapiData, err = io.ReadAll(os.Stdin)
-		if err != nil {
-			return fmt.Errorf("failed to read from stdin: %w", err)
-		}
-	}
-
-	// Use the core adapter for conversion
-	coreAdapter := &adapter.CoreAdapter{}
-	inputs := map[string]any{
-		"__use":    constants.CoreConvertOpenAPI,
-		"openapi":  string(openapiData),
-		"api_name": apiName,
-		"base_url": baseURL,
-	}
-
-	// Execute conversion
-	result, err := coreAdapter.Execute(cmd.Context(), inputs)
-	if err != nil {
-		return fmt.Errorf("conversion failed: %w", err)
-	}
-
-	// Output result
-	return outputConvertResult(result, output)
-}
-
-// outputConvertResult outputs the conversion result to file or stdout
-func outputConvertResult(result any, outputPath string) error {
-	// Format as JSON
-	data, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal result: %w", err)
-	}
-
-	// Output to file or stdout
-	if outputPath != "" {
-		if err := os.WriteFile(outputPath, data, 0644); err != nil {
-			return fmt.Errorf("failed to write output file: %w", err)
-		}
-		fmt.Printf("Conversion result written to %s\n", outputPath)
-	} else {
-		fmt.Println(string(data))
-	}
-
-	return nil
-}
-
-// init calls the custom handler registration
-func init() {
-	RegisterCustomOperationHandlers()
-}

@@ -26,24 +26,18 @@ func GetStoreFromConfig(cfg *config.Config) (storage.Storage, error) {
 	if cfg != nil && cfg.Storage.Driver != "" {
 		switch strings.ToLower(cfg.Storage.Driver) {
 		case "sqlite":
+			// Use the user-provided DSN as-is (respects their explicit choice)
 			store, err := storage.NewSqliteStorage(cfg.Storage.DSN)
 			if err != nil {
 				utils.WarnCtx(context.Background(), "Failed to create sqlite storage: %v, using in-memory fallback", "error", err)
 				return storage.NewMemoryStorage(), nil
 			}
 			return store, nil
-		case "postgres":
-			store, err := storage.NewPostgresStorage(cfg.Storage.DSN)
-			if err != nil {
-				utils.WarnCtx(context.Background(), "Failed to create postgres storage: %v, using in-memory fallback", "error", err)
-				return storage.NewMemoryStorage(), nil
-			}
-			return store, nil
 		default:
-			return nil, utils.Errorf("unsupported storage driver: %s", cfg.Storage.Driver)
+			return nil, utils.Errorf("unsupported storage driver: %s (supported: sqlite)", cfg.Storage.Driver)
 		}
 	}
-	// Default to SQLite
+	// Default to SQLite with default path (already points to home directory)
 	store, err := storage.NewSqliteStorage(config.DefaultSQLiteDSN)
 	if err != nil {
 		utils.WarnCtx(context.Background(), "Failed to create default sqlite storage: %v, using in-memory fallback", "error", err)
@@ -126,7 +120,7 @@ func GraphFlow(ctx context.Context, name string) (string, error) {
 
 // createEngineFromConfig creates a new engine instance with storage from config
 func createEngineFromConfig(ctx context.Context) (*engine.Engine, error) {
-	cfg, err := config.LoadConfig(config.DefaultConfigPath)
+	cfg, err := config.LoadConfig(constants.ConfigFileName)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
@@ -263,7 +257,7 @@ func ListRuns(ctx context.Context) ([]*model.Run, error) {
 
 // PublishEvent publishes an event to a topic.
 func PublishEvent(ctx context.Context, topic string, payload map[string]any) error {
-	cfg, _ := config.LoadConfig(config.DefaultConfigPath)
+	cfg, _ := config.LoadConfig(constants.ConfigFileName)
 	if cfg == nil || cfg.Event == nil {
 		return fmt.Errorf("event bus not configured: missing config or event section")
 	}
@@ -375,4 +369,111 @@ func ListMCPServers(ctx context.Context) ([]map[string]any, error) {
 		})
 	}
 	return out, nil
+}
+
+// ============================================================================
+// REGISTRY FEDERATION API (for Runtime-to-Runtime Communication)
+// ============================================================================
+
+// RegistryIndexResponse represents the registry index response
+type RegistryIndexResponse struct {
+	Version    string                            `json:"version"`
+	Runtime    string                            `json:"runtime"`
+	Tools      []registry.RegistryEntry          `json:"tools"`
+	MCPServers []registry.RegistryEntry          `json:"mcp_servers"`
+	Stats      map[string]registry.RegistryStats `json:"stats"`
+}
+
+// GetRegistryIndex returns the complete registry index for this runtime
+func GetRegistryIndex(ctx context.Context) (*RegistryIndexResponse, error) {
+	factory := registry.NewFactory()
+	mgr := factory.CreateAPIManager()
+	return createRegistryResponse(ctx, mgr)
+}
+
+// GetRegistryTool returns a specific tool by name
+func GetRegistryTool(ctx context.Context, name string) (*registry.RegistryEntry, error) {
+	factory := registry.NewFactory()
+	mgr := factory.CreateAPIManager()
+	return mgr.GetServer(ctx, name)
+}
+
+// GetRegistryStats returns statistics about all registries
+func GetRegistryStats(ctx context.Context) (map[string]registry.RegistryStats, error) {
+	factory := registry.NewFactory()
+	mgr := factory.CreateAPIManager()
+	return mgr.GetRegistryStats(ctx), nil
+}
+
+// createRegistryResponse creates the registry response from a manager
+func createRegistryResponse(ctx context.Context, mgr *registry.RegistryManager) (*RegistryIndexResponse, error) {
+	entries, err := mgr.ListAllServers(ctx, registry.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	// Separate tools and MCP servers
+	var tools, mcpServers []registry.RegistryEntry
+	for _, entry := range entries {
+		switch entry.Type {
+		case "tool":
+			tools = append(tools, entry)
+		case "mcp_server":
+			mcpServers = append(mcpServers, entry)
+		}
+	}
+
+	return &RegistryIndexResponse{
+		Version:    "1.0.0",
+		Runtime:    "beemflow",
+		Tools:      tools,
+		MCPServers: mcpServers,
+		Stats:      mgr.GetRegistryStats(ctx),
+	}, nil
+}
+
+// GetToolManifest returns a specific tool manifest by name
+func GetToolManifest(ctx context.Context, name string) (*registry.ToolManifest, error) {
+	// Load tool manifests from the local registry index
+	local := registry.NewLocalRegistry("")
+	entries, err := local.ListServers(ctx, registry.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		if entry.Name == name {
+			return &registry.ToolManifest{
+				Name:        entry.Name,
+				Description: entry.Description,
+				Kind:        entry.Kind,
+				Parameters:  entry.Parameters,
+				Endpoint:    entry.Endpoint,
+				Headers:     entry.Headers,
+			}, nil
+		}
+	}
+	return nil, nil
+}
+
+// ListToolManifests returns all tool manifests from the local registry
+func ListToolManifests(ctx context.Context) ([]registry.ToolManifest, error) {
+	// Load tool manifests from the local registry index
+	local := registry.NewLocalRegistry("")
+	entries, err := local.ListServers(ctx, registry.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	var manifests []registry.ToolManifest
+	for _, entry := range entries {
+		manifests = append(manifests, registry.ToolManifest{
+			Name:        entry.Name,
+			Description: entry.Description,
+			Kind:        entry.Kind,
+			Parameters:  entry.Parameters,
+			Endpoint:    entry.Endpoint,
+			Headers:     entry.Headers,
+		})
+	}
+	return manifests, nil
 }

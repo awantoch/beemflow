@@ -203,7 +203,7 @@ func (s *SqliteStorage) ResolveWait(ctx context.Context, token uuid.UUID) (*mode
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM waits WHERE token=?`, token.String()); err != nil {
 		// Log the cleanup error but don't fail the operation
 		// The wait token cleanup is not critical to the main operation
-		fmt.Printf("Warning: failed to cleanup wait token %s: %v\n", token.String(), err)
+		utils.Warn("Failed to cleanup wait token %s: %v", token.String(), err)
 	}
 	return nil, nil
 }

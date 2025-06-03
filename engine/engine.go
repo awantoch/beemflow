@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"maps"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +54,9 @@ type TemplateData struct {
 	Secrets SecretsData
 }
 
+// validIdentifierRegex matches valid Go-style identifiers
+var validIdentifierRegex = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+
 // Engine is the core runtime for executing BeemFlow flows. It manages adapters, templating, event bus, and in-memory state.
 type Engine struct {
 	Adapters  *adapter.Registry
@@ -99,68 +103,35 @@ func NewDefaultAdapterRegistry(ctx context.Context) *adapter.Registry {
 	return reg
 }
 
-// loadRegistryTools loads tools from curated and local registries
+// loadRegistryTools loads tools from all standard registries using the factory
 func loadRegistryTools(ctx context.Context, reg *adapter.Registry) {
-	localRegistryPath := config.DefaultLocalRegistryPath
+	// Load config to get custom registry configuration
+	cfg, _ := config.LoadConfig(constants.ConfigFileName)
 
-	// Load config if available to get custom registry path
-	if cfg, err := config.LoadConfig(config.DefaultConfigPath); err == nil {
-		for _, regCfg := range cfg.Registries {
-			if regCfg.Type == constants.LocalRegistryType && regCfg.Path != "" {
-				localRegistryPath = regCfg.Path
-				break
+	// Create standard registry manager using the factory
+	factory := registry.NewFactory()
+	mgr := factory.CreateStandardManager(ctx, cfg)
+
+	// Load all tools and register HTTP adapters
+	if tools, err := mgr.ListAllServers(ctx, registry.ListOptions{}); err == nil {
+		utils.Debug("Successfully loaded %d tools from registries", len(tools))
+		for _, entry := range tools {
+			if entry.Type == "tool" {
+				manifest := &registry.ToolManifest{
+					Name:        entry.Name,
+					Description: entry.Description,
+					Kind:        entry.Kind,
+					Parameters:  entry.Parameters,
+					Endpoint:    entry.Endpoint,
+					Headers:     entry.Headers,
+				}
+				reg.Register(&adapter.HTTPAdapter{AdapterID: entry.Name, ToolManifest: manifest})
+				utils.Debug("Registered tool: %s (registry: %s)", entry.Name, entry.Registry)
 			}
 		}
+	} else {
+		utils.Warn("Registry loading failed: %v", err)
 	}
-
-	// Load and merge tools from both registries
-	toolMap := mergeRegistryTools(ctx, localRegistryPath)
-
-	// Register HTTP adapters for each tool
-	for _, entry := range toolMap {
-		manifest := &registry.ToolManifest{
-			Name:        entry.Name,
-			Description: entry.Description,
-			Kind:        entry.Kind,
-			Parameters:  entry.Parameters,
-			Endpoint:    entry.Endpoint,
-			Headers:     entry.Headers,
-		}
-		reg.Register(&adapter.HTTPAdapter{AdapterID: entry.Name, ToolManifest: manifest})
-	}
-}
-
-// mergeRegistryTools loads and merges tools from curated and local registries
-func mergeRegistryTools(ctx context.Context, localRegistryPath string) map[string]registry.RegistryEntry {
-	toolMap := make(map[string]registry.RegistryEntry)
-
-	// Load curated registry
-	if curatedTools := loadRegistryFromPath(ctx, constants.RegistryIndexFile); curatedTools != nil {
-		for _, entry := range curatedTools {
-			toolMap[entry.Name] = entry
-		}
-	}
-
-	// Load local registry (takes precedence)
-	if localTools := loadRegistryFromPath(ctx, localRegistryPath); localTools != nil {
-		for _, entry := range localTools {
-			toolMap[entry.Name] = entry
-		}
-	}
-
-	return toolMap
-}
-
-// loadRegistryFromPath loads tools from a registry file path
-func loadRegistryFromPath(ctx context.Context, path string) []registry.RegistryEntry {
-	reg := registry.NewLocalRegistry(path)
-	mgr := registry.NewRegistryManager(reg)
-	tools, err := mgr.ListAllServers(ctx, registry.ListOptions{})
-	if err != nil {
-		utils.Debug("Failed to load registry from %s: %v", path, err)
-		return nil
-	}
-	return tools
 }
 
 // NewEngineWithBlobStore creates a new Engine with a custom BlobStore.
@@ -939,30 +910,20 @@ func (e *Engine) prepareTemplateDataAsMap(stepCtx *StepContext) map[string]any {
 }
 
 // isValidIdentifier checks if a string is a valid template identifier
-// Valid identifiers contain only letters, numbers, and underscores, and don't contain template syntax
+// Valid identifiers are Go-style identifiers without template syntax
 func isValidIdentifier(s string) bool {
-	if s == constants.EmptyString {
+	if s == "" {
 		return false
 	}
 
 	// Check for template syntax that would make this an invalid identifier
-	if strings.Contains(s, constants.TemplateOpenDelim) || strings.Contains(s, constants.TemplateCloseDelim) || strings.Contains(s, constants.TemplateControlOpen) || strings.Contains(s, constants.TemplateControlClose) {
+	if strings.Contains(s, "{{") || strings.Contains(s, "}}") ||
+		strings.Contains(s, "{%") || strings.Contains(s, "%}") {
 		return false
 	}
 
-	// Check that it starts with a letter or underscore
-	if (s[0] < constants.IdentifierMinLowercase || s[0] > constants.IdentifierMaxLowercase) && (s[0] < constants.IdentifierMinUppercase || s[0] > constants.IdentifierMaxUppercase) && s[0] != constants.IdentifierUnderscore {
-		return false
-	}
-
-	// Check that all characters are valid identifier characters
-	for _, r := range s {
-		if (r < constants.IdentifierMinLowercase || r > constants.IdentifierMaxLowercase) && (r < constants.IdentifierMinUppercase || r > constants.IdentifierMaxUppercase) && (r < constants.IdentifierMinDigit || r > constants.IdentifierMaxDigit) && r != constants.IdentifierUnderscore {
-			return false
-		}
-	}
-
-	return true
+	// Use regex for simple, clear validation
+	return validIdentifierRegex.MatchString(s)
 }
 
 // createIterationContext creates a new context for foreach iterations
@@ -1237,7 +1198,7 @@ func (e *Engine) ListMCPServers(ctx context.Context) ([]*MCPServerWithName, erro
 
 // loadRegistryTools loads all tools from the registry
 func (e *Engine) loadRegistryTools(ctx context.Context) ([]registry.RegistryEntry, error) {
-	localReg := registry.NewLocalRegistry(constants.RegistryIndexFile)
+	localReg := registry.NewLocalRegistry("")
 	regMgr := registry.NewRegistryManager(localReg)
 	return regMgr.ListAllServers(ctx, registry.ListOptions{})
 }

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/awantoch/beemflow/registry"
+	"github.com/awantoch/beemflow/utils"
 )
 
 // Adapter is the interface for all BeemFlow adapters. Implement this to add new tool integrations.
@@ -51,7 +52,7 @@ func appendToLocalRegistry(entry registry.RegistryEntry, path string) error {
 		if err := json.Unmarshal(data, &entries); err != nil {
 			// If existing file is corrupted, log error but continue with empty entries
 			// This allows recovery from corrupted registry files
-			fmt.Printf("Warning: corrupted registry file %s, starting fresh: %v\n", path, err)
+			utils.Warn("Corrupted registry file %s, starting fresh: %v", path, err)
 			entries = []registry.RegistryEntry{}
 		}
 	}

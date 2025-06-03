@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/awantoch/beemflow/config"
 )
 
 func writeTestRegistry(path string, entries []RegistryEntry) error {
@@ -18,8 +20,9 @@ func writeTestRegistry(path string, entries []RegistryEntry) error {
 
 func TestNewLocalRegistry_DefaultPath(t *testing.T) {
 	reg := NewLocalRegistry("")
-	if reg.Path != "registry/index.json" {
-		t.Errorf("expected default path, got %s", reg.Path)
+	expected := config.DefaultLocalRegistryFullPath()
+	if reg.Path != expected {
+		t.Errorf("expected default path %s, got %s", expected, reg.Path)
 	}
 }
 
@@ -74,9 +77,21 @@ func TestRegistryManager_ListAllServersAndGetServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAllServers failed: %v", err)
 	}
-	if len(servers) != 3 {
-		t.Errorf("expected 3 servers, got %d", len(servers))
+	if len(servers) != 2 {
+		t.Errorf("expected 2 servers (deduplicated), got %d", len(servers))
 	}
+
+	var fooEntry *RegistryEntry
+	for _, s := range servers {
+		if s.Name == "foo" {
+			fooEntry = &s
+			break
+		}
+	}
+	if fooEntry == nil || fooEntry.Registry != "r1" {
+		t.Errorf("expected foo entry from r1, got %+v", fooEntry)
+	}
+
 	entry, err := mgr.GetServer(context.Background(), "foo")
 	if err != nil {
 		t.Errorf("GetServer failed: %v", err)

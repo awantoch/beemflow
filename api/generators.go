@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/awantoch/beemflow/constants"
 	mcpserver "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/utils"
 	mcp "github.com/metoro-io/mcp-golang"
@@ -32,7 +31,7 @@ func EnableCLIExitCodes() {
 }
 
 // GenerateHTTPHandlers creates HTTP handlers for all operations
-func GenerateHTTPHandlers(mux *http.ServeMux, svc FlowService) {
+func GenerateHTTPHandlers(mux *http.ServeMux) {
 	// Group operations by HTTP path to handle multiple methods on same path
 	pathOperations := make(map[string][]*OperationDefinition)
 	for _, op := range GetAllOperations() {
@@ -49,7 +48,7 @@ func GenerateHTTPHandlers(mux *http.ServeMux, svc FlowService) {
 	// Register handlers for each unique path
 	for path, ops := range pathOperations {
 		// Create combined handler for all methods on this path
-		handler := generateCombinedHTTPHandler(ops, svc)
+		handler := generateCombinedHTTPHandler(ops)
 		mux.HandleFunc(path, handler)
 	}
 }
@@ -165,7 +164,7 @@ func setFieldValue(field reflect.Value, value string) error {
 }
 
 // GenerateMCPTools creates MCP tool registrations for all operations
-func GenerateMCPTools(svc FlowService) []mcpserver.ToolRegistration {
+func GenerateMCPTools() []mcpserver.ToolRegistration {
 	var tools []mcpserver.ToolRegistration
 
 	for _, op := range GetAllOperations() {
@@ -174,7 +173,7 @@ func GenerateMCPTools(svc FlowService) []mcpserver.ToolRegistration {
 		}
 
 		// Create tool registration with proper handler
-		handler := generateMCPHandler(op, svc)
+		handler := generateMCPHandler(op)
 
 		// Skip operations that don't have supported handlers
 		if handler == nil {
@@ -206,7 +205,7 @@ func parseJSONString(jsonStr string) map[string]any {
 }
 
 // generateMCPHandler creates an MCP handler for the given operation
-func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
+func generateMCPHandler(op *OperationDefinition) any {
 	// Use custom handler if provided
 	if op.MCPHandler != nil {
 		return op.MCPHandler
@@ -222,7 +221,7 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 	switch argsType.Name() {
 	case "StartRunArgs":
 		return func(args MCPStartRunArgs) (*mcp.ToolResponse, error) {
-			result, err := op.Handler(context.Background(), svc, &StartRunArgs{
+			result, err := op.Handler(context.Background(), &StartRunArgs{
 				FlowName: args.FlowName,
 				Event:    parseJSONString(args.Event),
 			})
@@ -234,7 +233,7 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 
 	case "PublishEventArgs":
 		return func(args MCPPublishEventArgs) (*mcp.ToolResponse, error) {
-			result, err := op.Handler(context.Background(), svc, &PublishEventArgs{
+			result, err := op.Handler(context.Background(), &PublishEventArgs{
 				Topic:   args.Topic,
 				Payload: parseJSONString(args.Payload),
 			})
@@ -246,7 +245,7 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 
 	case "ResumeRunArgs":
 		return func(args MCPResumeRunArgs) (*mcp.ToolResponse, error) {
-			result, err := op.Handler(context.Background(), svc, &ResumeRunArgs{
+			result, err := op.Handler(context.Background(), &ResumeRunArgs{
 				Token: args.Token,
 				Event: parseJSONString(args.Event),
 			})
@@ -258,7 +257,7 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 
 	case "GetFlowArgs":
 		return func(args MCPGetFlowArgs) (*mcp.ToolResponse, error) {
-			result, err := op.Handler(context.Background(), svc, &GetFlowArgs{Name: args.Name})
+			result, err := op.Handler(context.Background(), &GetFlowArgs{Name: args.Name})
 			if err != nil {
 				return nil, err
 			}
@@ -267,7 +266,7 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 
 	case "ValidateFlowArgs":
 		return func(args MCPValidateFlowArgs) (*mcp.ToolResponse, error) {
-			result, err := op.Handler(context.Background(), svc, &ValidateFlowArgs{Name: args.Name})
+			result, err := op.Handler(context.Background(), &ValidateFlowArgs{Name: args.Name})
 			if err != nil {
 				return nil, err
 			}
@@ -276,7 +275,7 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 
 	case "GraphFlowArgs":
 		return func(args MCPGraphFlowArgs) (*mcp.ToolResponse, error) {
-			result, err := op.Handler(context.Background(), svc, &GraphFlowArgs{Name: args.Name})
+			result, err := op.Handler(context.Background(), &GraphFlowArgs{Name: args.Name})
 			if err != nil {
 				return nil, err
 			}
@@ -285,7 +284,7 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 
 	case "GetRunArgs":
 		return func(args MCPGetRunArgs) (*mcp.ToolResponse, error) {
-			result, err := op.Handler(context.Background(), svc, &GetRunArgs{RunID: args.RunID})
+			result, err := op.Handler(context.Background(), &GetRunArgs{RunID: args.RunID})
 			if err != nil {
 				return nil, err
 			}
@@ -294,7 +293,7 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 
 	case "ConvertOpenAPIExtendedArgs":
 		return func(args MCPConvertOpenAPIExtendedArgs) (*mcp.ToolResponse, error) {
-			result, err := op.Handler(context.Background(), svc, &ConvertOpenAPIExtendedArgs{
+			result, err := op.Handler(context.Background(), &ConvertOpenAPIExtendedArgs{
 				OpenAPI: args.Spec,
 				APIName: "",
 				BaseURL: "",
@@ -307,7 +306,7 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 
 	case "FlowFileArgs":
 		return func(args MCPFlowFileArgs) (*mcp.ToolResponse, error) {
-			result, err := op.Handler(context.Background(), svc, &FlowFileArgs{File: args.Name})
+			result, err := op.Handler(context.Background(), &FlowFileArgs{File: args.Name})
 			if err != nil {
 				return nil, err
 			}
@@ -316,7 +315,7 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 
 	case "EmptyArgs":
 		return func(args EmptyArgs) (*mcp.ToolResponse, error) {
-			result, err := op.Handler(context.Background(), svc, &args)
+			result, err := op.Handler(context.Background(), &args)
 			if err != nil {
 				return nil, err
 			}
@@ -327,35 +326,6 @@ func generateMCPHandler(op *OperationDefinition, svc FlowService) any {
 		// Skip unsupported types
 		return nil
 	}
-}
-
-// convertMCPArgs converts MCP arguments to the expected type
-func convertMCPArgs(args any, targetType reflect.Type) (any, error) {
-	// Handle nil cases
-	if targetType == nil {
-		return args, nil
-	}
-	if args == nil {
-		return reflect.Zero(targetType).Interface(), nil
-	}
-
-	// If args is already the right type, return as-is
-	if reflect.TypeOf(args) == targetType {
-		return args, nil
-	}
-
-	// Create new instance of target type and convert via JSON
-	target := reflect.New(targetType).Interface()
-	data, err := json.Marshal(args)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(data, target); err != nil {
-		return nil, err
-	}
-
-	return target, nil
 }
 
 // convertToMCPResponse converts operation result to MCP response
@@ -379,24 +349,57 @@ func convertToMCPResponse(result any) (*mcp.ToolResponse, error) {
 }
 
 // GenerateCLICommands creates CLI commands for all operations
-func GenerateCLICommands(svc FlowService) []*cobra.Command {
-	var commands []*cobra.Command
+func GenerateCLICommands() []*cobra.Command {
+	// Group operations by parent command
+	commandGroups := make(map[string][]*OperationDefinition)
+	var standaloneOps []*OperationDefinition
 
 	for _, op := range GetAllOperations() {
 		if op.SkipCLI {
 			continue
 		}
 
-		// Create command
-		cmd := generateCLICommand(op, svc)
+		// Split CLIUse to check if it's a subcommand
+		parts := strings.Fields(op.CLIUse)
+		if len(parts) >= 2 {
+			// This is a subcommand like "flows list" or "run get"
+			parentName := parts[0]
+			commandGroups[parentName] = append(commandGroups[parentName], op)
+		} else {
+			// This is a standalone command
+			standaloneOps = append(standaloneOps, op)
+		}
+	}
+
+	var commands []*cobra.Command
+
+	// Create standalone commands
+	for _, op := range standaloneOps {
+		cmd := generateCLICommand(op)
 		commands = append(commands, cmd)
+	}
+
+	// Create parent commands with subcommands
+	for parentName, ops := range commandGroups {
+		parentCmd := &cobra.Command{
+			Use:   parentName,
+			Short: fmt.Sprintf("Commands for %s", parentName),
+		}
+
+		// Add subcommands
+		for _, op := range ops {
+			subCmd := generateCLISubcommand(op)
+			parentCmd.AddCommand(subCmd)
+		}
+
+		commands = append(commands, parentCmd)
 	}
 
 	return commands
 }
 
 // generateCLICommand creates a CLI command for the given operation
-func generateCLICommand(op *OperationDefinition, svc FlowService) *cobra.Command {
+func generateCLICommand(op *OperationDefinition) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   op.CLIUse,
 		Short: op.CLIShort,
@@ -409,7 +412,7 @@ func generateCLICommand(op *OperationDefinition, svc FlowService) *cobra.Command
 	// Set run function
 	if op.CLIHandler != nil {
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {
-			err := op.CLIHandler(cmd, args, svc)
+			err := op.CLIHandler(cmd, args)
 			if err != nil && enableCLIExitCodes {
 				// Handle specific error types for exit codes (only when not testing)
 				errStr := err.Error()
@@ -428,7 +431,56 @@ func generateCLICommand(op *OperationDefinition, svc FlowService) *cobra.Command
 		}
 	} else {
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {
-			return runGeneratedCLICommand(cmd, args, op, svc)
+			return runGeneratedCLICommand(cmd, args, op)
+		}
+	}
+
+	// Add special flags for certain operations
+	if op.ID == "graphFlow" {
+		cmd.Flags().StringP("output", "o", "", "Path to write graph output (defaults to stdout)")
+	}
+
+	return cmd
+}
+
+// generateCLISubcommand creates a CLI subcommand for the given operation
+func generateCLISubcommand(op *OperationDefinition) *cobra.Command {
+	// Extract subcommand name from CLIUse (e.g., "flows list" -> "list")
+	parts := strings.Fields(op.CLIUse)
+	subUse := strings.Join(parts[1:], " ") // Everything after the parent name
+
+	cmd := &cobra.Command{
+		Use:   subUse,
+		Short: op.CLIShort,
+		Long:  op.Description,
+	}
+
+	// Add flags based on args type
+	addCLIFlags(cmd, op.ArgsType)
+
+	// Set run function
+	if op.CLIHandler != nil {
+		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+			err := op.CLIHandler(cmd, args)
+			if err != nil && enableCLIExitCodes {
+				// Handle specific error types for exit codes (only when not testing)
+				errStr := err.Error()
+				switch {
+				case strings.Contains(errStr, "YAML parse error"):
+					os.Exit(1)
+				case strings.Contains(errStr, "schema validation error"):
+					os.Exit(2)
+				case strings.Contains(errStr, "graph export error"):
+					os.Exit(2)
+				case strings.Contains(errStr, "failed to write graph"):
+					os.Exit(3)
+				}
+			}
+			return err
+		}
+	} else {
+		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+			return runGeneratedCLICommand(cmd, args, op)
 		}
 	}
 
@@ -464,15 +516,15 @@ func addCLIFlags(cmd *cobra.Command, argsType reflect.Type) {
 			cmd.Flags().Bool(flagTag, false, descTag)
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			cmd.Flags().Int(flagTag, 0, descTag)
-		case reflect.Interface:
-			// For map[string]any fields
+		case reflect.Interface, reflect.Map:
+			// For map[string]any fields and interface{} fields
 			cmd.Flags().String(flagTag, "", descTag+" (JSON)")
 		}
 	}
 }
 
 // runGeneratedCLICommand executes a generated CLI command
-func runGeneratedCLICommand(cmd *cobra.Command, args []string, op *OperationDefinition, svc FlowService) error {
+func runGeneratedCLICommand(cmd *cobra.Command, args []string, op *OperationDefinition) error {
 	// Parse arguments from flags and positional args
 	opArgs, err := parseCLIArgs(cmd, args, op.ArgsType)
 	if err != nil {
@@ -480,7 +532,7 @@ func runGeneratedCLICommand(cmd *cobra.Command, args []string, op *OperationDefi
 	}
 
 	// Execute operation
-	result, err := op.Handler(cmd.Context(), svc, opArgs)
+	result, err := op.Handler(cmd.Context(), opArgs)
 	if err != nil {
 		return err
 	}
@@ -539,8 +591,8 @@ func parseCLIArgs(cmd *cobra.Command, args []string, argsType reflect.Type) (any
 			} else if err != nil {
 				return nil, fmt.Errorf("failed to get int flag %s: %w", flagTag, err)
 			}
-		case reflect.Interface:
-			// For map[string]any fields, parse JSON
+		case reflect.Interface, reflect.Map:
+			// For map[string]any fields and interface{} fields, parse JSON
 			if value, err := cmd.Flags().GetString(flagTag); err == nil && value != "" {
 				var data any
 				if err := json.Unmarshal([]byte(value), &data); err != nil {
@@ -601,43 +653,43 @@ func HandleCLIFileArgs(cmd *cobra.Command, args []string, flagName string) ([]by
 }
 
 // generateCombinedHTTPHandler creates a combined HTTP handler for multiple operations on the same path
-func generateCombinedHTTPHandler(ops []*OperationDefinition, svc FlowService) http.HandlerFunc {
+func generateCombinedHTTPHandler(ops []*OperationDefinition) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Find the operation that matches the HTTP method
-		var matchingOp *OperationDefinition
+		// Find matching operation by method
+		var matchedOp *OperationDefinition
 		for _, op := range ops {
 			if op.HTTPMethod == r.Method {
-				matchingOp = op
+				matchedOp = op
 				break
 			}
 		}
 
-		if matchingOp == nil {
+		if matchedOp == nil {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// Use custom handler if provided
-		if matchingOp.HTTPHandler != nil {
-			matchingOp.HTTPHandler(w, r, svc)
+		// Use custom HTTP handler if provided
+		if matchedOp.HTTPHandler != nil {
+			matchedOp.HTTPHandler(w, r)
 			return
 		}
 
-		// Parse arguments
-		args, err := parseHTTPArgs(r, matchingOp)
+		// Parse arguments from request
+		args, err := parseHTTPArgs(r, matchedOp)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Invalid arguments: %v", err), http.StatusBadRequest)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		// Execute operation
-		result, err := matchingOp.Handler(r.Context(), svc, args)
+		result, err := matchedOp.Handler(r.Context(), args)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// Return response
+		// Return JSON response
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(result); err != nil {
 			utils.Error("Failed to encode response: %v", err)
@@ -645,45 +697,6 @@ func generateCombinedHTTPHandler(ops []*OperationDefinition, svc FlowService) ht
 	}
 }
 
-// =====================================================
-// UNIFIED INTERFACE FUNCTIONS (consolidated from transport_unified.go)
-// =====================================================
-
-// UnifiedAttachHTTPHandlers is the new unified way to attach HTTP handlers
-// This replaces the old AttachHTTPHandlers function
-func UnifiedAttachHTTPHandlers(mux *http.ServeMux, svc FlowService) {
-	// Register system endpoints (health, spec) that don't follow the operation pattern
-	registerUnifiedSystemEndpoints(mux)
-
-	// Generate and register all operation handlers
-	GenerateHTTPHandlers(mux, svc)
-}
-
-// registerUnifiedSystemEndpoints registers system endpoints that are not operations
-func registerUnifiedSystemEndpoints(mux *http.ServeMux) {
-	// Health check endpoint
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
-		if _, err := w.Write([]byte(constants.HealthCheckResponse)); err != nil {
-			utils.Error(constants.LogFailedWriteHealthCheck, err)
-		}
-	})
-
-	// Note: Static file serving removed to avoid route conflicts
-	// Each application can add their own static file serving as needed
-}
-
-// UnifiedBuildMCPToolRegistrations is the new unified way to build MCP tools
-// This replaces the old BuildMCPToolRegistrations function
-func UnifiedBuildMCPToolRegistrations(svc FlowService) []mcpserver.ToolRegistration {
-	return GenerateMCPTools(svc)
-}
-
-// UnifiedAttachCLICommands is the new unified way to attach CLI commands
-// This provides a simple way to add all generated commands to a root command
-func UnifiedAttachCLICommands(root *cobra.Command, svc FlowService) {
-	commands := GenerateCLICommands(svc)
-	for _, cmd := range commands {
-		root.AddCommand(cmd)
-	}
-}
+// ============================================================================
+// END OF FILE - Simplified by removing unnecessary "Unified" wrappers
+// ============================================================================

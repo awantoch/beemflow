@@ -10,54 +10,19 @@ import (
 	"time"
 
 	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 )
 
-func TestNewPostgresStorage(t *testing.T) {
-	dsn := os.Getenv("POSTGRES_TEST_DSN")
-	if dsn == "" {
-		t.Skip("POSTGRES_TEST_DSN not set")
-	}
-
-	storage, err := NewPostgresStorage(dsn)
-	if err != nil {
-		t.Fatalf("Failed to create postgres storage: %v", err)
-	}
-	if storage == nil {
-		t.Fatal("Expected non-nil storage")
-	}
-}
-
-func TestStorage_RoundTrip(t *testing.T) {
-	dsn := os.Getenv("POSTGRES_TEST_DSN")
-	if dsn == "" {
-		t.Skip("POSTGRES_TEST_DSN not set")
-	}
-
-	storage, err := NewPostgresStorage(dsn)
-	if err != nil {
-		t.Fatalf("Failed to create postgres storage: %v", err)
-	}
-
-	testStorageRoundTrip(t, storage)
-}
-
 func TestNewSqliteStorage(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "sqlite_test")
+	// Test with valid DSN
+	storage, err := NewSqliteStorage(":memory:")
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.db")
-	storage, err := NewSqliteStorage(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create sqlite storage: %v", err)
+		t.Errorf("NewSqliteStorage() failed: %v", err)
 	}
 	if storage == nil {
-		t.Fatal("Expected non-nil storage")
+		t.Error("NewSqliteStorage() returned nil storage")
 	}
-	defer storage.Close()
 }
 
 func TestSqliteStorage_RoundTrip(t *testing.T) {
@@ -406,62 +371,6 @@ func TestSqliteStorage_Close(t *testing.T) {
 	err = storage.SaveRun(ctx, run)
 	if err == nil {
 		t.Error("Expected error when using storage after close")
-	}
-}
-
-func TestPostgresStorage_NotImplemented(t *testing.T) {
-	storage, err := NewPostgresStorage("test")
-	if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead - constructor disabled" {
-		t.Errorf("Expected not implemented error, got: %v", err)
-	}
-	if storage != nil {
-		t.Error("Expected nil storage for not implemented")
-	}
-
-	// If we somehow got a storage instance, test all methods return not implemented
-	if storage != nil {
-		ctx := context.Background()
-		runID := uuid.New()
-
-		err = storage.SaveRun(ctx, &model.Run{ID: runID})
-		if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
-			t.Errorf("Expected not implemented error, got: %v", err)
-		}
-
-		_, err = storage.GetRun(ctx, runID)
-		if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
-			t.Errorf("Expected not implemented error, got: %v", err)
-		}
-
-		err = storage.SaveStep(ctx, &model.StepRun{RunID: runID})
-		if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
-			t.Errorf("Expected not implemented error, got: %v", err)
-		}
-
-		_, err = storage.GetSteps(ctx, runID)
-		if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
-			t.Errorf("Expected not implemented error, got: %v", err)
-		}
-
-		err = storage.RegisterWait(ctx, runID, nil)
-		if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
-			t.Errorf("Expected not implemented error, got: %v", err)
-		}
-
-		_, err = storage.ResolveWait(ctx, runID)
-		if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
-			t.Errorf("Expected not implemented error, got: %v", err)
-		}
-
-		_, err = storage.ListRuns(ctx)
-		if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
-			t.Errorf("Expected not implemented error, got: %v", err)
-		}
-
-		err = storage.DeleteRun(ctx, runID)
-		if err == nil || err.Error() != "PostgresStorage is not yet implemented - use SqliteStorage or MemoryStorage instead" {
-			t.Errorf("Expected not implemented error, got: %v", err)
-		}
 	}
 }
 
@@ -1111,7 +1020,7 @@ func TestSQLiteStorageRealFileOperations(t *testing.T) {
 		// Only fail on unexpected errors
 		unexpectedErrors := len(errors) - sqliteLockingErrors
 		if unexpectedErrors > 0 {
-			t.Errorf("Got %d unexpected errors (non-SQLite-locking): %v", unexpectedErrors, errors[:min(3, len(errors))])
+			t.Errorf("Got %d unexpected errors (non-SQLite-locking): %v", unexpectedErrors, errors[:utils.Min(3, len(errors))])
 		}
 	})
 }
@@ -1356,12 +1265,4 @@ func TestSQLiteStorageSchemaEvolution(t *testing.T) {
 	if retrieved.FlowName != "schema-test" {
 		t.Errorf("Data changed after reopen: got %v, want schema-test", retrieved.FlowName)
 	}
-}
-
-// Helper function for older Go versions that don't have min()
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

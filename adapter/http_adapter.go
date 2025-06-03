@@ -88,7 +88,7 @@ func (a *HTTPAdapter) executeManifestRequest(ctx context.Context, inputs map[str
 
 // executeGenericRequest handles generic HTTP requests
 func (a *HTTPAdapter) executeGenericRequest(ctx context.Context, inputs map[string]any) (map[string]any, error) {
-	url, ok := safeStringAssert(inputs["url"])
+	url, ok := utils.SafeStringAssert(inputs["url"])
 	if !ok || url == "" {
 		return nil, utils.Errorf("missing or invalid url")
 	}
@@ -234,9 +234,9 @@ func (a *HTTPAdapter) prepareManifestHeaders(inputs map[string]any) map[string]s
 	}
 
 	// Override with input headers
-	if h, ok := safeMapAssert(inputs["headers"]); ok {
+	if h, ok := utils.SafeMapAssert(inputs["headers"]); ok {
 		for k, v := range h {
-			if s, ok := safeStringAssert(v); ok {
+			if s, ok := utils.SafeStringAssert(v); ok {
 				headers[k] = s
 			}
 		}
@@ -247,7 +247,7 @@ func (a *HTTPAdapter) prepareManifestHeaders(inputs map[string]any) map[string]s
 
 // extractMethod extracts HTTP method from inputs with safe default
 func (a *HTTPAdapter) extractMethod(inputs map[string]any) string {
-	if m, ok := safeStringAssert(inputs["method"]); ok && m != "" {
+	if m, ok := utils.SafeStringAssert(inputs["method"]); ok && m != "" {
 		return strings.ToUpper(m)
 	}
 	return constants.HTTPMethodGET
@@ -256,9 +256,9 @@ func (a *HTTPAdapter) extractMethod(inputs map[string]any) string {
 // extractHeaders extracts headers from inputs safely
 func (a *HTTPAdapter) extractHeaders(inputs map[string]any) map[string]string {
 	headers := make(map[string]string)
-	if h, ok := safeMapAssert(inputs["headers"]); ok {
+	if h, ok := utils.SafeMapAssert(inputs["headers"]); ok {
 		for k, v := range h {
-			if s, ok := safeStringAssert(v); ok {
+			if s, ok := utils.SafeStringAssert(v); ok {
 				headers[k] = s
 			}
 		}
