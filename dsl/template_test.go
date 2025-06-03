@@ -492,6 +492,14 @@ func TestEvaluateExpression(t *testing.T) {
 		"vars": map[string]any{
 			"greeting": "Hello",
 		},
+		"test_object": map[string]any{
+			"name":   "Test Object",
+			"values": []any{1, 2, 3, 4, 5},
+			"nested": map[string]any{
+				"deep_value": "found it",
+				"array":      []any{"alpha", "beta", "gamma"},
+			},
+		},
 	}
 
 	// Test simple expression
@@ -512,6 +520,32 @@ func TestEvaluateExpression(t *testing.T) {
 		t.Errorf("Expected 'Hello', got '%v'", result)
 	}
 
+	// Test array return (this is the key fix for foreach!)
+	result, err = templater.EvaluateExpression("{{ test_object.values }}", context)
+	if err != nil {
+		t.Fatalf("EvaluateExpression failed for array: %v", err)
+	}
+	resultArray, ok := result.([]any)
+	if !ok {
+		t.Fatalf("Expected []any for test_object.values, got %T", result)
+	}
+	if len(resultArray) != 5 || resultArray[0] != 1 || resultArray[4] != 5 {
+		t.Errorf("Expected [1,2,3,4,5], got %v", resultArray)
+	}
+
+	// Test deeply nested array
+	result, err = templater.EvaluateExpression("{{ test_object.nested.array }}", context)
+	if err != nil {
+		t.Fatalf("EvaluateExpression failed for nested array: %v", err)
+	}
+	resultArray, ok = result.([]any)
+	if !ok {
+		t.Fatalf("Expected []any for nested array, got %T", result)
+	}
+	if len(resultArray) != 3 || resultArray[0] != "alpha" || resultArray[2] != "gamma" {
+		t.Errorf("Expected [alpha,beta,gamma], got %v", resultArray)
+	}
+
 	// Test expression with missing key
 	result, err = templater.EvaluateExpression("{{ event.missing }}", context)
 	if err != nil {
@@ -529,6 +563,26 @@ func TestEvaluateExpression(t *testing.T) {
 	}
 	if result != "simple_string" {
 		t.Errorf("Expected 'simple_string', got '%v'", result)
+	}
+
+	// Test complex expression with filters (should fall back to render)
+	result, err = templater.EvaluateExpression("{{ test_object.values | length }}", context)
+	if err != nil {
+		t.Fatalf("EvaluateExpression failed for filtered expression: %v", err)
+	}
+	// This should be rendered as a string since it has a filter
+	if result != "5" {
+		t.Errorf("Expected '5' (string) for filtered expression, got '%v'", result)
+	}
+
+	// Test mathematical expression (should fall back to render)
+	result, err = templater.EvaluateExpression("{{ test_object.values.0 + 10 }}", context)
+	if err != nil {
+		t.Fatalf("EvaluateExpression failed for math expression: %v", err)
+	}
+	// This should be rendered as a string since it has mathematical operations
+	if result != "11" {
+		t.Errorf("Expected '11' (string) for math expression, got '%v'", result)
 	}
 }
 

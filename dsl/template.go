@@ -115,20 +115,58 @@ func (t *Templater) EvaluateExpression(tmpl string, data map[string]any) (any, e
 		return tmpl, nil
 	}
 
-	// For simple variable expressions like {{varname}}, look up directly
+	// For simple variable expressions like {{varname}} or {{obj.field}}, look up directly
 	trimmed := strings.TrimSpace(tmpl)
 	if strings.HasPrefix(trimmed, "{{") && strings.HasSuffix(trimmed, "}}") &&
-		!strings.Contains(trimmed, "|") && !strings.Contains(trimmed, " ") {
+		!strings.Contains(trimmed, "|") {
 
 		varPath := strings.TrimSpace(trimmed[2 : len(trimmed)-2])
 
-		// Simple direct lookup in flattened context
-		ctx := flattenContext(data)
-		if val, exists := ctx[varPath]; exists {
-			return val, nil
+		// Check if it's a simple variable or dot notation path
+		if !strings.Contains(varPath, " ") && !strings.Contains(varPath, "(") &&
+			!strings.Contains(varPath, "+") && !strings.Contains(varPath, "-") &&
+			!strings.Contains(varPath, "*") && !strings.Contains(varPath, "/") {
+
+			// Try to resolve the path in the flattened context
+			ctx := flattenContext(data)
+			if val, exists := ctx[varPath]; exists {
+				return val, nil
+			}
+
+			// If not found in flattened context, try dot notation lookup
+			if strings.Contains(varPath, ".") {
+				if val := lookupNestedPath(data, varPath); val != nil {
+					return val, nil
+				}
+			}
 		}
 	}
 
 	// For complex expressions, render as string (template engine handles the complexity)
 	return t.Render(tmpl, data)
+}
+
+// lookupNestedPath traverses a nested path like "obj.field.subfield" in the data
+func lookupNestedPath(data map[string]any, path string) any {
+	parts := strings.Split(path, ".")
+	current := data
+
+	for i, part := range parts {
+		if val, ok := current[part]; ok {
+			// If it's the last part, return the value
+			if i == len(parts)-1 {
+				return val
+			}
+			// If it's not the last part, it must be a map to continue
+			if nextMap, ok := val.(map[string]any); ok {
+				current = nextMap
+			} else {
+				return nil // Can't traverse further
+			}
+		} else {
+			return nil // Path not found
+		}
+	}
+
+	return nil
 }
