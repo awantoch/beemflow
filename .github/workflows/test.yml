@@ -23,10 +23,7 @@ jobs:
           go-version: '1.24.1'
           cache: true
 
-      - name: Run unit tests (no race)
-        run: make test
-
-      - name: Run unit tests (with race detector)
+      - name: Run unit tests
         run: make test-race
 
       - name: Run integration tests  
