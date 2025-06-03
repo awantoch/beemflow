@@ -33,7 +33,7 @@ steps:
       - id: http_test_3
         use: http
         with:
-          url: "https://postman-echo.com/uuid"
+          url: "https://jsonplaceholder.typicode.com/users/1"
           method: GET
 
   # Test sequential execution for comparison
