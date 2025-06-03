@@ -3,7 +3,7 @@ description: Integration test for parallel execution with real scenarios
 
 vars:
   test_data: ["apple", "banana", "cherry", "date", "elderberry"]
-  base_url: "https://httpbin.org"
+  base_url: "https://postman-echo.com"
 
 steps:
   # Test parallel HTTP requests
@@ -23,7 +23,7 @@ steps:
       - id: get_user_agent
         use: http
         with:
-          url: "{{base_url}}/user-agent"
+          url: "{{base_url}}/headers"
           method: GET
 
   # Test foreach with parallel processing

@@ -1,7 +1,7 @@
 name: http_patterns_test
 on: cli.manual
 vars:
-  test_url: "https://httpbin.org/get"
+  test_url: "https://postman-echo.com/get"
 steps:
   # Test 1: Registry-defined http.fetch tool (simple, GET-only)
   - id: test_http_fetch
@@ -41,7 +41,7 @@ steps:
   - id: test_http_post
     use: http
     with:
-      url: "https://httpbin.org/post"
+      url: "https://postman-echo.com/post"
       method: "POST"
       headers:
         Content-Type: "application/json"

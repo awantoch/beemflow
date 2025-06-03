@@ -23,17 +23,17 @@ steps:
       - id: http_test_1
         use: http
         with:
-          url: "https://httpbin.org/delay/1"
+          url: "https://postman-echo.com/delay/1"
           method: GET
       - id: http_test_2
         use: http
         with:
-          url: "https://httpbin.org/json"
+          url: "https://jsonplaceholder.typicode.com/posts/1"
           method: GET
       - id: http_test_3
         use: http
         with:
-          url: "https://httpbin.org/uuid"
+          url: "https://postman-echo.com/uuid"
           method: GET
 
   # Test sequential execution for comparison
