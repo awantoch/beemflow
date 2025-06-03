@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/spf13/cobra"
 )
@@ -737,4 +739,198 @@ func TestWriteConfigMap(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	utils.WithCleanDirs(m, ".beemflow", config.DefaultConfigDir)
+}
+
+// ============================================================================
+// TOOLS COMMAND TESTS
+// ============================================================================
+
+func TestNewToolsCmd(t *testing.T) {
+	cmd := newToolsCmd()
+	if cmd.Use != constants.CmdTools {
+		t.Errorf("expected %s, got %s", constants.CmdTools, cmd.Use)
+	}
+	if cmd.Short != constants.DescToolsCommands {
+		t.Errorf("expected %s, got %s", constants.DescToolsCommands, cmd.Short)
+	}
+
+	// Check that it has the expected subcommands
+	subcommands := []string{constants.CmdSearch, constants.CmdInstall, constants.CmdList, constants.CmdGet}
+	if len(cmd.Commands()) != len(subcommands) {
+		t.Errorf("expected %d subcommands, got %d", len(subcommands), len(cmd.Commands()))
+	}
+}
+
+func TestNewToolSearchCmd(t *testing.T) {
+	cmd := newToolSearchCmd()
+	expected := constants.CmdSearch + " [query]"
+	if cmd.Use != expected {
+		t.Errorf("expected %s, got %s", expected, cmd.Use)
+	}
+	if cmd.Short != constants.DescSearchTools {
+		t.Errorf("expected %s, got %s", constants.DescSearchTools, cmd.Short)
+	}
+}
+
+func TestNewToolInstallCmd(t *testing.T) {
+	configFile := "/tmp/test-config.json"
+	cmd := newToolInstallCmd(&configFile)
+	expected := constants.CmdInstall + " <toolName>"
+	if cmd.Use != expected {
+		t.Errorf("expected %s, got %s", expected, cmd.Use)
+	}
+	if cmd.Short != constants.DescInstallTool {
+		t.Errorf("expected %s, got %s", constants.DescInstallTool, cmd.Short)
+	}
+}
+
+func TestNewToolListCmd(t *testing.T) {
+	configFile := "/tmp/test-config.json"
+	cmd := newToolListCmd(&configFile)
+	if cmd.Use != constants.CmdList {
+		t.Errorf("expected %s, got %s", constants.CmdList, cmd.Use)
+	}
+	if cmd.Short != constants.DescListTools {
+		t.Errorf("expected %s, got %s", constants.DescListTools, cmd.Short)
+	}
+}
+
+func TestNewToolGetCmd(t *testing.T) {
+	cmd := newToolGetCmd()
+	expected := constants.CmdGet + " <toolName>"
+	if cmd.Use != expected {
+		t.Errorf("expected %s, got %s", expected, cmd.Use)
+	}
+	if cmd.Short != constants.DescGetTool {
+		t.Errorf("expected %s, got %s", constants.DescGetTool, cmd.Short)
+	}
+}
+
+// ============================================================================
+// SHARED UTILITY FUNCTION TESTS (DRY VALIDATION)
+// ============================================================================
+
+func TestRegistrySearchOptions(t *testing.T) {
+	opts := registrySearchOptions{
+		query:          "test",
+		filterKind:     "tool",
+		headerFormat:   constants.HeaderTools,
+		threeColFormat: constants.FormatThreeColumns,
+	}
+
+	if opts.query != "test" {
+		t.Errorf("expected query 'test', got %s", opts.query)
+	}
+	if opts.filterKind != "tool" {
+		t.Errorf("expected filterKind 'tool', got %s", opts.filterKind)
+	}
+}
+
+func TestRunRegistryInstall(t *testing.T) {
+	// Test that the shared install function can handle different success messages
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "test-config.json")
+
+	// This should fail gracefully without SMITHERY_API_KEY
+	err := runRegistryInstall("test-tool", configFile, "Test tool %s installed to %s")
+	if err == nil {
+		t.Error("expected error without SMITHERY_API_KEY, got nil")
+	}
+
+	// Check error message contains the expected environment variable requirement
+	expectedErr := fmt.Sprintf(constants.ErrEnvVarRequired, constants.EnvSmitheryKey)
+	if !strings.Contains(err.Error(), constants.EnvSmitheryKey) {
+		t.Errorf("expected error about %s, got %v", expectedErr, err)
+	}
+}
+
+// ============================================================================
+// INTEGRATION TESTS (SHARED FUNCTIONALITY)
+// ============================================================================
+
+func TestToolsCommandGroupIntegration(t *testing.T) {
+	// Test that tools commands are properly integrated in root command
+	rootCmd := NewRootCmd()
+	var toolsCmd *cobra.Command
+
+	for _, cmd := range rootCmd.Commands() {
+		if cmd.Use == constants.CmdTools {
+			toolsCmd = cmd
+			break
+		}
+	}
+
+	if toolsCmd == nil {
+		t.Fatal("tools command not found in root command")
+	}
+
+	// Verify subcommands
+	expectedSubcommands := []string{constants.CmdSearch, constants.CmdInstall, constants.CmdList, constants.CmdGet}
+	actualSubcommands := make([]string, len(toolsCmd.Commands()))
+	for i, cmd := range toolsCmd.Commands() {
+		actualSubcommands[i] = cmd.Use
+	}
+
+	for _, expected := range expectedSubcommands {
+		found := false
+		for _, actual := range actualSubcommands {
+			if strings.HasPrefix(actual, expected) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected subcommand %s not found in tools command", expected)
+		}
+	}
+}
+
+func TestToolsVsMCPCommandSeparation(t *testing.T) {
+	// Test that tools and MCP commands are properly separated but share underlying functionality
+	rootCmd := NewRootCmd()
+
+	var toolsCmd, mcpCmd *cobra.Command
+	for _, cmd := range rootCmd.Commands() {
+		if cmd.Use == constants.CmdTools {
+			toolsCmd = cmd
+		} else if cmd.Use == constants.CmdMCP {
+			mcpCmd = cmd
+		}
+	}
+
+	if toolsCmd == nil {
+		t.Fatal("tools command not found")
+	}
+	if mcpCmd == nil {
+		t.Fatal("mcp command not found")
+	}
+
+	// Both should have search, install, and list subcommands
+	commonSubcommands := []string{constants.CmdSearch, constants.CmdInstall, constants.CmdList}
+
+	for _, subcmd := range commonSubcommands {
+		// Check tools command has the subcommand
+		found := false
+		for _, cmd := range toolsCmd.Commands() {
+			if strings.HasPrefix(cmd.Use, subcmd) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("tools command missing %s subcommand", subcmd)
+		}
+
+		// Check MCP command has the subcommand
+		found = false
+		for _, cmd := range mcpCmd.Commands() {
+			if strings.HasPrefix(cmd.Use, subcmd) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("mcp command missing %s subcommand", subcmd)
+		}
+	}
 }

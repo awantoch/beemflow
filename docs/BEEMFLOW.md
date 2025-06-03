@@ -268,8 +268,17 @@ BeemFlow exposes a consistent interface for all operations:
 | List runs         | `flow list-runs`             | `GET /runs`                  | `beemflow_list_runs`        |
 | Resume run        | `flow resume <token>`        | `POST /resume/{token}`       | `beemflow_resume_run`       |
 | Publish event     | `flow publish <topic>`       | `POST /events`               | `beemflow_publish_event`    |
-| List tools        | `flow list-tools`            | `GET /tools`                 | `beemflow_list_tools`       |
-| Get tool manifest | `flow get-tool <name>`       | `GET /tools/{name}`          | `beemflow_get_tool_manifest` |
+| **🛠️ Tool Manifests** |                           |                              |                            |
+| Search tools      | `flow tools search [query]`  | `GET /tools/search`          | `beemflow_search_tools`     |
+| Install tool      | `flow tools install <tool>`  | `POST /tools/install`        | `beemflow_install_tool`     |
+| List tools        | `flow tools list`            | `GET /tools`                 | `beemflow_list_tools`       |
+| Get tool manifest | `flow tools get <name>`      | `GET /tools/{name}`          | `beemflow_get_tool_manifest` |
+| **🖥️ MCP Servers**   |                           |                              |                            |
+| Search servers    | `flow mcp search [query]`    | `GET /mcp/search`            | `beemflow_search_mcp`      |
+| Install server    | `flow mcp install <server>`  | `POST /mcp/install`          | `beemflow_install_mcp`     |
+| List servers      | `flow mcp list`              | `GET /mcp`                   | `beemflow_list_mcp`        |
+| Serve MCP         | `flow mcp serve`             | N/A                          | N/A                        |
+| **⚙️ General**       |                           |                              |                            |
 | Convert OpenAPI   | `flow convert <openapi_file>`| `POST /tools/convert`        | `beemflow_convert_openapi`  |
 | Show spec         | `flow spec`                  | `GET /spec`                  | `beemflow_spec`             |
 | Test flow         | `flow test`                  | `POST /flows/test`           | `beemflow_test_flow`        |
@@ -337,7 +346,7 @@ BeemFlow is configured via a JSON file. All fields in `config.Config` are suppor
 
 ## 12. Extensibility & Integration Patterns
 
-- **Add a local tool:** `flow mcp install <registry>:<tool>` or add entries to `.beemflow/registry.json`.
+- **Add a local tool:** `flow tools install <registry>:<tool>` or add entries to `.beemflow/registry.json`.
 - **Add an MCP server:** `flow mcp install <registry>:<server>` or configure in `.beemflow/registry.json`.
 - **Add a remote tool:** Reference a remote registry or GitHub manifest.
 - **Write a custom adapter:** Implement the Adapter interface in Go.

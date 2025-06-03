@@ -950,7 +950,8 @@ Tools can be qualified (`smithery:airtable`) when ambiguous.
 
 ## Extending BeemFlow
 
-- **Add a tool**: `flow mcp install registry:tool` or edit `.beemflow/registry.json`.
+- **Add a tool**: `flow tools install registry:tool` or edit `.beemflow/registry.json`.
+- **Add an MCP server**: `flow mcp install registry:server` or edit `.beemflow/registry.json`.
 - **Custom adapter**: implement the `Adapter` interface in your own code.
 - **Swap event bus**: set `"event.driver": "nats"` in `flow.config.json` or via `BEEMFLOW_EVENT_DRIVER=nats`.
 
@@ -972,8 +973,17 @@ Tools can be qualified (`smithery:airtable`) when ambiguous.
 | List runs         | `flow list-runs`         | `GET /runs`             | `beemflow_list_runs`       |
 | Resume run        | `flow resume <token>`    | `POST /resume/{token}`  | `beemflow_resume_run`      |
 | Publish event     | `flow publish <topic>`   | `POST /events`          | `beemflow_publish_event`   |
-| List tools        | `flow list-tools`        | `GET /tools`            | `beemflow_list_tools`      |
-| Get tool          | `flow get-tool <name>`   | `GET /tools/{name}`     | `beemflow_get_tool_manifest` |
+| **🛠️ Tool Manifests** |                       |                         |                            |
+| Search tools      | `flow tools search [query]`  | `GET /tools/search`     | `beemflow_search_tools`    |
+| Install tool      | `flow tools install <tool>`  | `POST /tools/install`   | `beemflow_install_tool`    |
+| List tools        | `flow tools list`        | `GET /tools`            | `beemflow_list_tools`      |
+| Get tool          | `flow tools get <name>`  | `GET /tools/{name}`     | `beemflow_get_tool_manifest` |
+| **🖥️ MCP Servers**   |                       |                         |                            |
+| Search servers    | `flow mcp search [query]`    | `GET /mcp/search`       | `beemflow_search_mcp`      |
+| Install server    | `flow mcp install <server>`  | `POST /mcp/install`     | `beemflow_install_mcp`     |
+| List servers      | `flow mcp list`          | `GET /mcp`              | `beemflow_list_mcp`        |
+| Serve MCP         | `flow mcp serve`         | N/A                     | N/A                        |
+| **⚙️ General**       |                       |                         |                            |
 | Convert OpenAPI   | `flow convert <file>`    | `POST /tools/convert`   | `beemflow_convert_openapi` |
 | Show spec         | `flow spec`              | `GET /spec`             | `beemflow_spec`            |
 
@@ -1302,3 +1312,32 @@ Commercial cloud & SLA on the way.
 ---
 
 > Docs at <https://docs.beemflow.com> • X: [@BeemFlow](https://X.com/beemflow)
+
+**🎯 Perfect Mental Models:** BeemFlow now separates **tool manifests** (simple HTTP/JSON configs) from **MCP servers** (running processes with business logic):
+
+```bash
+# 📋 Tool Manifests - Simple API integrations
+flow tools search "openai"              # Search for tool manifests
+flow tools install openai.chat_completion  # Install OpenAI as HTTP tool
+flow tools list                         # List all tool manifests
+flow tools get openai.chat_completion   # Get specific tool config
+
+# 🖥️ MCP Servers - Complex integrations with logic  
+flow mcp search "airtable"              # Search for MCP servers
+flow mcp install airtable               # Install Airtable MCP server
+flow mcp list                           # List all MCP servers
+flow mcp serve                          # Start MCP server for Claude Desktop
+
+# ⚡ Convert any OpenAPI → Tool Manifest instantly
+curl -s https://api.twitter.com/2/openapi.json | flow convert
+```
+
+**Why This Matters:**
+- **Clear UX**: Tool manifests ≠ MCP servers (different use cases, same power)
+- **Perfect for Claude Desktop**: Both accessible via MCP interface seamlessly  
+- **Backwards Compatible**: All existing `flow mcp` commands still work
+- **Same underlying registry**: Tools and servers share the same installation system
+
+---
+
+### When to Upgrade to an MCP Server

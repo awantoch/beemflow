@@ -14,6 +14,7 @@ const (
 // Configuration Schema Keys
 const (
 	MCPServersKey = "mcp_servers"
+	ToolsKey      = "tools"
 	SmitheryKey   = "smithery"
 )
 
@@ -77,18 +78,25 @@ const (
 	CmdRun     = "run"
 	CmdServe   = "serve"
 	CmdMCP     = "mcp"
+	CmdTools   = "tools"
 	CmdSearch  = "search"
 	CmdInstall = "install"
 	CmdList    = "list"
+	CmdGet     = "get"
 )
 
 // Command descriptions
 const (
 	DescRunFlow       = "Run a flow from a YAML file"
 	DescMCPCommands   = "MCP server management commands"
+	DescToolsCommands = "Tool manifest management commands"
 	DescSearchServers = "Search for MCP servers in the registry"
+	DescSearchTools   = "Search for tool manifests in the registry"
 	DescInstallServer = "Install an MCP server from the registry"
+	DescInstallTool   = "Install a tool manifest from the registry"
 	DescListServers   = "List installed MCP servers"
+	DescListTools     = "List installed tool manifests"
+	DescGetTool       = "Get a tool manifest by name"
 	DescMCPServe      = "Start MCP server for BeemFlow tools"
 )
 
@@ -98,8 +106,11 @@ const (
 	MsgFlowExecuted    = "Flow executed successfully"
 	MsgStepOutputs     = "Step outputs: %s"
 	MsgServerInstalled = "Server %s installed to %s"
+	MsgToolInstalled   = "Tool %s installed to %s"
 	HeaderServers      = "%-20s %-40s %s"
+	HeaderTools        = "%-20s %-40s %s"
 	HeaderMCPList      = "%-10s %-20s %-30s %-10s %s"
+	HeaderToolsList    = "%-10s %-20s %-30s %-10s %s"
 	FormatThreeColumns = "%-20s %-40s %s"
 	FormatFiveColumns  = "%-10s %-20s %-30s %-10s %s"
 )
