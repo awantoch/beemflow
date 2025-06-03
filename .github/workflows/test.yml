@@ -23,8 +23,14 @@ jobs:
           go-version: '1.24.1'
           cache: true
 
-      - name: Run tests
-        run: make test-race integration
+      - name: Run unit tests (no race)
+        run: make test
+
+      - name: Run unit tests (with race detector)
+        run: make test-race
+
+      - name: Run integration tests  
+        run: make integration
 
       - name: Run example workflows
         run: make e2e
