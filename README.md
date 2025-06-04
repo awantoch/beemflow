@@ -620,8 +620,11 @@ steps:
 ```
 
 ✨ **Templating:** `{{…}}` gives you outputs, vars, secrets, helper funcs.
+
 ⏳ **Durable waits:** `await_event` pauses until external approval / webhook.
+
 ⚡ **Parallelism & retries:** `parallel: true` blocks and `retry:` back-offs.
+
 🔄 **Error handling:** `catch:` block processes failures.
 
 Full grammar ➜ [SPEC.md](./docs/SPEC.md).
