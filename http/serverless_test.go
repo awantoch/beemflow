@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/awantoch/beemflow/internal/api"
+	api "github.com/awantoch/beemflow/beemapi"
 )
 
 // TestServerlessOperationsFiltering demonstrates that the serverless handler
