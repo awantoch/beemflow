@@ -14,9 +14,9 @@ import (
 	"github.com/spf13/cobra"
 
 	_ "github.com/awantoch/beemflow/adapter"
-	api "github.com/awantoch/beemflow/beemapi"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/constants"
+	api "github.com/awantoch/beemflow/core"
 	"github.com/awantoch/beemflow/dsl"
 	beemhttp "github.com/awantoch/beemflow/http"
 	mcpserver "github.com/awantoch/beemflow/mcp"

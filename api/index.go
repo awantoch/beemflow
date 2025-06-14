@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	api "github.com/awantoch/beemflow/beemapi"
 	"github.com/awantoch/beemflow/config"
+	api "github.com/awantoch/beemflow/core"
 )
 
 var (
