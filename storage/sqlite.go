@@ -51,6 +51,24 @@ func NewSqliteStorage(dsn string) (*SqliteStorage, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Configure SQLite for better concurrent access
+	_, err = db.Exec(`
+		PRAGMA journal_mode = WAL;
+		PRAGMA synchronous = NORMAL;
+		PRAGMA busy_timeout = 5000;
+		PRAGMA foreign_keys = ON;
+	`)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to configure SQLite: %w", err)
+	}
+
+	// Set connection pool settings
+	db.SetMaxOpenConns(1) // SQLite only supports one writer at a time
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(time.Hour)
+
 	// Create tables if not exist
 	sqlStmt := `
 CREATE TABLE IF NOT EXISTS runs (
@@ -86,6 +104,7 @@ CREATE TABLE IF NOT EXISTS paused_runs (
 `
 	_, err = db.Exec(sqlStmt)
 	if err != nil {
+		db.Close()
 		return nil, err
 	}
 	return &SqliteStorage{db: db}, nil

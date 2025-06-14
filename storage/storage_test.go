@@ -947,6 +947,7 @@ func TestSQLiteStorageRealFileOperations(t *testing.T) {
 	// Test concurrent access
 	t.Run("ConcurrentAccess", func(t *testing.T) {
 		const numGoroutines = 10
+		const maxRetries = 3
 		errChan := make(chan error, numGoroutines)
 		successChan := make(chan bool, numGoroutines)
 
@@ -960,21 +961,41 @@ func TestSQLiteStorageRealFileOperations(t *testing.T) {
 					StartedAt: time.Now(),
 				}
 
-				// SQLite may fail with SQLITE_BUSY under concurrent writes
-				// This is expected behavior and important to test in production scenarios
-				if err := storage.SaveRun(ctx, concurrentRun); err != nil {
-					if strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "SQLITE_BUSY") {
-						// This is expected SQLite behavior under concurrent access
-						errChan <- fmt.Errorf("worker %d hit expected SQLite concurrency limit: %w", workerID, err)
-					} else {
+				// Retry on SQLite busy errors
+				var lastErr error
+				for retry := 0; retry < maxRetries; retry++ {
+					if err := storage.SaveRun(ctx, concurrentRun); err != nil {
+						if strings.Contains(err.Error(), "database is locked") ||
+							strings.Contains(err.Error(), "SQLITE_BUSY") {
+							// Wait a bit before retrying
+							time.Sleep(time.Duration(retry*100) * time.Millisecond)
+							lastErr = err
+							continue
+						}
 						errChan <- fmt.Errorf("worker %d unexpected error: %w", workerID, err)
+						return
 					}
+					lastErr = nil
+					break
+				}
+
+				if lastErr != nil {
+					errChan <- fmt.Errorf("worker %d failed after %d retries: %w", workerID, maxRetries, lastErr)
 					return
 				}
 
-				if _, err := storage.GetRun(ctx, concurrentRunID); err != nil {
-					errChan <- fmt.Errorf("worker %d get failed: %w", workerID, err)
-					return
+				// Retry on read operations too
+				for retry := 0; retry < maxRetries; retry++ {
+					if _, err := storage.GetRun(ctx, concurrentRunID); err != nil {
+						if strings.Contains(err.Error(), "database is locked") ||
+							strings.Contains(err.Error(), "SQLITE_BUSY") {
+							time.Sleep(time.Duration(retry*100) * time.Millisecond)
+							continue
+						}
+						errChan <- fmt.Errorf("worker %d get failed: %w", workerID, err)
+						return
+					}
+					break
 				}
 
 				successChan <- true
@@ -991,7 +1012,7 @@ func TestSQLiteStorageRealFileOperations(t *testing.T) {
 			err := <-errChan
 			if err != nil {
 				errors = append(errors, err)
-				if strings.Contains(err.Error(), "expected SQLite concurrency limit") {
+				if strings.Contains(err.Error(), "failed after") {
 					sqliteLockingErrors++
 				}
 			} else {
@@ -1007,14 +1028,9 @@ func TestSQLiteStorageRealFileOperations(t *testing.T) {
 		t.Logf("Concurrent access results: %d successes, %d SQLite locking errors, %d other errors",
 			successes, sqliteLockingErrors, len(errors)-sqliteLockingErrors)
 
-		// We expect some operations to succeed and some to hit SQLite's concurrency limits
-		// This teaches us about production SQLite behavior
-		if successes == 0 {
-			t.Error("Expected at least some concurrent operations to succeed")
-		}
-
-		if sqliteLockingErrors == 0 && numGoroutines > 5 {
-			t.Logf("Surprising: No SQLite locking errors with %d concurrent workers", numGoroutines)
+		// We expect most operations to succeed with retries
+		if successes < numGoroutines/2 {
+			t.Errorf("Expected at least %d concurrent operations to succeed, got %d", numGoroutines/2, successes)
 		}
 
 		// Only fail on unexpected errors
