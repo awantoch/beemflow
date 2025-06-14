@@ -24,6 +24,7 @@ type OperationDefinition struct {
 	ID          string                                           // Unique identifier
 	Name        string                                           // Human-readable name
 	Description string                                           // Description for help/docs
+	Group       string                                           // Logical group (flows, runs, events, tools, system)
 	HTTPMethod  string                                           // HTTP method (GET, POST, etc.)
 	HTTPPath    string                                           // HTTP path pattern (/flows/{id})
 	CLIUse      string                                           // CLI usage pattern (get <name>)
@@ -109,6 +110,51 @@ func GetOperation(id string) (*OperationDefinition, bool) {
 // GetAllOperations returns all registered operations
 func GetAllOperations() map[string]*OperationDefinition {
 	return operationRegistry
+}
+
+// GetOperationsByGroups returns operations filtered by the specified groups
+func GetOperationsByGroups(groups []string) []*OperationDefinition {
+	if len(groups) == 0 {
+		// Return all operations as slice
+		result := make([]*OperationDefinition, 0, len(operationRegistry))
+		for _, op := range operationRegistry {
+			result = append(result, op)
+		}
+		return result
+	}
+
+	groupSet := make(map[string]bool)
+	for _, group := range groups {
+		groupSet[strings.TrimSpace(group)] = true
+	}
+
+	var filtered []*OperationDefinition
+	for _, op := range operationRegistry {
+		if groupSet[op.Group] {
+			filtered = append(filtered, op)
+		}
+	}
+	return filtered
+}
+
+// GetOperationsMapByGroups returns operations filtered by the specified groups as a map
+func GetOperationsMapByGroups(groups []string) map[string]*OperationDefinition {
+	if len(groups) == 0 {
+		return operationRegistry
+	}
+
+	groupSet := make(map[string]bool)
+	for _, group := range groups {
+		groupSet[strings.TrimSpace(group)] = true
+	}
+
+	filtered := make(map[string]*OperationDefinition)
+	for id, op := range operationRegistry {
+		if groupSet[op.Group] {
+			filtered[id] = op
+		}
+	}
+	return filtered
 }
 
 // looksLikeFilePath determines if a string looks like a file path vs a flow name
@@ -260,6 +306,7 @@ func init() {
 		ID:          constants.InterfaceIDListFlows,
 		Name:        "List Flows",
 		Description: constants.InterfaceDescListFlows,
+		Group:       "flows",
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/flows",
 		CLIUse:      "flows list",
@@ -276,6 +323,7 @@ func init() {
 		ID:          constants.InterfaceIDGetFlow,
 		Name:        "Get Flow",
 		Description: constants.InterfaceDescGetFlow,
+		Group:       "flows",
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/flows/{name}",
 		CLIUse:      "flows get <name>",
@@ -293,6 +341,7 @@ func init() {
 		ID:          constants.InterfaceIDValidateFlow,
 		Name:        "Validate Flow",
 		Description: "Validate a flow (from name or file)",
+		Group:       "flows",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/validate",
 		CLIUse:      "flows validate <name_or_file>",
@@ -308,6 +357,7 @@ func init() {
 		ID:          constants.InterfaceIDGraphFlow,
 		Name:        "Graph Flow",
 		Description: "Generate a Mermaid diagram for a flow (from name or file)",
+		Group:       "flows",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/flows/graph",
 		CLIUse:      "flows graph <name_or_file>",
@@ -323,6 +373,7 @@ func init() {
 		ID:          constants.InterfaceIDStartRun,
 		Name:        "Start Run",
 		Description: constants.InterfaceDescStartRun,
+		Group:       "runs",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/runs",
 		CLIUse:      "runs start <flow-name>",
@@ -340,6 +391,7 @@ func init() {
 		ID:          constants.InterfaceIDGetRun,
 		Name:        "Get Run",
 		Description: constants.InterfaceDescGetRun,
+		Group:       "runs",
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/runs/{id}",
 		CLIUse:      "runs get <run-id>",
@@ -361,6 +413,7 @@ func init() {
 		ID:          constants.InterfaceIDListRuns,
 		Name:        "List Runs",
 		Description: constants.InterfaceDescListRuns,
+		Group:       "runs",
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/runs",
 		CLIUse:      "runs list",
@@ -377,6 +430,7 @@ func init() {
 		ID:          constants.InterfaceIDPublishEvent,
 		Name:        "Publish Event",
 		Description: constants.InterfaceDescPublishEvent,
+		Group:       "events",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/events",
 		CLIUse:      "publish <topic>",
@@ -398,6 +452,7 @@ func init() {
 		ID:          constants.InterfaceIDResumeRun,
 		Name:        "Resume Run",
 		Description: constants.InterfaceDescResumeRun,
+		Group:       "runs",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/resume/{token}",
 		CLIUse:      "resume <token>",
@@ -415,6 +470,7 @@ func init() {
 		ID:          "spec",
 		Name:        "Show Specification",
 		Description: "Show the BeemFlow protocol & specification",
+		Group:       "system",
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/spec",
 		CLIUse:      "spec",
@@ -431,6 +487,7 @@ func init() {
 		ID:          "lintFlow",
 		Name:        "Lint Flow",
 		Description: "Lint a flow file (YAML parse + schema validate)",
+		Group:       "flows",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/flows/lint",
 		CLIUse:      "lint [file]",
@@ -446,6 +503,7 @@ func init() {
 		ID:          "testFlow",
 		Name:        "Test Flow",
 		Description: "Test a flow file",
+		Group:       "flows",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/flows/test",
 		CLIUse:      "test",
@@ -466,6 +524,7 @@ func init() {
 		ID:          constants.InterfaceIDConvertOpenAPI,
 		Name:        "Convert OpenAPI",
 		Description: constants.InterfaceDescConvertOpenAPI,
+		Group:       "tools",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/tools/convert",
 		CLIUse:      "convert [openapi_file]",
@@ -499,6 +558,7 @@ func init() {
 		ID:          constants.InterfaceIDListTools,
 		Name:        "List Tools",
 		Description: constants.InterfaceDescListTools,
+		Group:       "tools",
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/tools",
 		CLIUse:      "tools list",
@@ -515,6 +575,7 @@ func init() {
 		ID:          constants.InterfaceIDGetToolManifest,
 		Name:        "Get Tool Manifest",
 		Description: constants.InterfaceDescGetToolManifest,
+		Group:       "tools",
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/tools/{name}",
 		CLIUse:      "tools get <name>",
@@ -532,6 +593,7 @@ func init() {
 		ID:          "registry_index",
 		Name:        "Registry Index",
 		Description: "Get the complete registry index for federation",
+		Group:       "system",
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/registry",
 		CLIUse:      "registry",

@@ -32,9 +32,14 @@ func EnableCLIExitCodes() {
 
 // GenerateHTTPHandlers creates HTTP handlers for all operations
 func GenerateHTTPHandlers(mux *http.ServeMux) {
+	GenerateHTTPHandlersForOperations(mux, GetAllOperations())
+}
+
+// GenerateHTTPHandlersForOperations creates HTTP handlers for specified operations
+func GenerateHTTPHandlersForOperations(mux *http.ServeMux, operations map[string]*OperationDefinition) {
 	// Group operations by HTTP path to handle multiple methods on same path
 	pathOperations := make(map[string][]*OperationDefinition)
-	for _, op := range GetAllOperations() {
+	for _, op := range operations {
 		if op.SkipHTTP {
 			continue
 		}
