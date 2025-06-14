@@ -1,4 +1,4 @@
-package api
+package handler
 
 import (
 	"net/http"
@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/awantoch/beemflow/config"
+	"github.com/awantoch/beemflow/internal/api"
 )
 
 var (
@@ -38,9 +39,9 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			cfg.Storage.DSN = ":memory:"
 		}
 		if cfg.FlowsDir != "" {
-			SetFlowsDir(cfg.FlowsDir)
+			api.SetFlowsDir(cfg.FlowsDir)
 		}
-		_, initErr = InitializeDependencies(cfg)
+		_, initErr = api.InitializeDependencies(cfg)
 	})
 
 	if initErr != nil {
@@ -51,10 +52,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	// Generate handlers
 	mux := http.NewServeMux()
 	if endpoints := os.Getenv("BEEMFLOW_ENDPOINTS"); endpoints != "" {
-		filteredOps := GetOperationsMapByGroups(strings.Split(endpoints, ","))
-		GenerateHTTPHandlersForOperations(mux, filteredOps)
+		filteredOps := api.GetOperationsMapByGroups(strings.Split(endpoints, ","))
+		api.GenerateHTTPHandlersForOperations(mux, filteredOps)
 	} else {
-		GenerateHTTPHandlers(mux)
+		api.GenerateHTTPHandlers(mux)
 	}
 
 	// Health check
