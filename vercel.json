@@ -1,19 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "version": 2,
-  "name": "beemflow-api",
-  "functions": {
-    "api/handler.go": {
-      "runtime": "go"
+  "build": {
+    "env": {
+      "GO_BUILD_FLAGS": "-ldflags '-s -w'"
     }
-  },
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/api/handler.go"
-    }
-  ],
-  "env": {
-    "GO_BUILD_FLAGS": "-ldflags '-s -w'"
   }
-} 
+}
