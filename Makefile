@@ -10,7 +10,7 @@ INTEGRATION_FLOWS := $(shell find flows/integration -name "*.flow.yaml" 2>/dev/n
 E2E_FLOWS := $(shell find flows/e2e -name "*.flow.yaml" 2>/dev/null)
 
 # ────────────────────────────────────────────────────────────────────────────
-.PHONY: all clean build build-static install test test-race coverage e2e integration test-all check fmt vet lint tidy fix release
+.PHONY: all clean build build-static install test test-race coverage e2e integration test-all check fmt vet lint tidy fix release editor editor-build editor-web
 
 all: clean test build install
 
@@ -28,6 +28,26 @@ install: build
 
 serve:
 	go run $(CMD_PATH) serve
+
+# ────────────────────────────────────────────────────────────────────────────
+# Editor (WASM + Web)
+# ────────────────────────────────────────────────────────────────────────────
+
+## Build & run the in-browser editor (WASM + web)
+editor: editor/wasm/main.wasm
+	$(MAKE) -C editor/web dev
+
+## Build WASM module
+editor/wasm/main.wasm: editor/wasm/main.go editor/wasm/wasm_exec.js
+	@echo "🛠  Building BeemFlow WASM runtime..."
+	GOOS=js GOARCH=wasm go build -o $@ ./editor/wasm
+
+## Build web frontend
+editor-web:
+	$(MAKE) -C editor/web build
+
+## Build both WASM and web for production
+editor-build: editor/wasm/main.wasm editor-web
 
 # ────────────────────────────────────────────────────────────────────────────
 # Release
