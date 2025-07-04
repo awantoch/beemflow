@@ -1,0 +1,134 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Tailwind-like utility classes for basic styling */
+.h-screen { height: 100vh; }
+.h-14 { height: 3.5rem; }
+.h-10 { height: 2.5rem; }
+.w-3 { width: 0.75rem; }
+.h-3 { height: 0.75rem; }
+.w-2 { width: 0.5rem; }
+.h-2 { height: 0.5rem; }
+.w-12 { width: 3rem; }
+.h-12 { height: 3rem; }
+
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.flex-1 { flex: 1 1 0%; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+
+.bg-white { background-color: white; }
+.bg-gray-50 { background-color: #f9fafb; }
+.bg-gray-100 { background-color: #f3f4f6; }
+.bg-blue-50 { background-color: #eff6ff; }
+.bg-red-50 { background-color: #fef2f2; }
+.bg-blue-600 { background-color: #2563eb; }
+.bg-green-100 { background-color: #dcfce7; }
+.bg-red-100 { background-color: #fee2e2; }
+.bg-blue-100 { background-color: #dbeafe; }
+.bg-orange-100 { background-color: #fed7aa; }
+.bg-purple-100 { background-color: #f3e8ff; }
+.bg-pink-100 { background-color: #fce7f3; }
+.bg-yellow-200 { background-color: #fef08a; }
+.bg-green-400 { background-color: #4ade80; }
+.bg-red-400 { background-color: #f87171; }
+.bg-gray-400 { background-color: #9ca3af; }
+
+.text-white { color: white; }
+.text-gray-600 { color: #4b5563; }
+.text-gray-700 { color: #374151; }
+.text-gray-800 { color: #1f2937; }
+.text-blue-600 { color: #2563eb; }
+.text-blue-800 { color: #1e40af; }
+.text-red-600 { color: #dc2626; }
+.text-red-800 { color: #991b1b; }
+.text-green-800 { color: #166534; }
+.text-orange-800 { color: #9a3412; }
+.text-purple-800 { color: #6b21a8; }
+.text-pink-800 { color: #9d174d; }
+.text-yellow-800 { color: #854d0e; }
+
+.border { border-width: 1px; }
+.border-2 { border-width: 2px; }
+.border-gray-200 { border-color: #e5e7eb; }
+.border-gray-300 { border-color: #d1d5db; }
+.border-blue-300 { border-color: #93c5fd; }
+.border-red-300 { border-color: #fca5a5; }
+.border-green-300 { border-color: #86efac; }
+.border-orange-300 { border-color: #fdba74; }
+.border-purple-300 { border-color: #c4b5fd; }
+.border-pink-300 { border-color: #f9a8d4; }
+.border-l { border-left-width: 1px; }
+.border-b { border-bottom-width: 1px; }
+
+.rounded { border-radius: 0.25rem; }
+.rounded-lg { border-radius: 0.5rem; }
+.rounded-full { border-radius: 9999px; }
+
+.shadow-sm { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+.shadow-lg { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); }
+
+.p-8 { padding: 2rem; }
+.px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+.py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-4 { margin-bottom: 1rem; }
+.ml-auto { margin-left: auto; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.mt-1 { margin-top: 0.25rem; }
+
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 0.75rem; }
+.gap-4 { gap: 1rem; }
+
+.text-xs { font-size: 0.75rem; line-height: 1rem; }
+.text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+.text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+.text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+.text-2xl { font-size: 1.5rem; line-height: 2rem; }
+
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+.leading-tight { line-height: 1.25; }
+
+.opacity-75 { opacity: 0.75; }
+
+.overflow-hidden { overflow: hidden; }
+
+.text-center { text-align: center; }
+
+.min-w-[180px] { min-width: 180px; }
+
+.ring-2 { box-shadow: 0 0 0 2px; }
+.ring-blue-500 { --tw-ring-color: #3b82f6; }
+.ring-offset-2 { --tw-ring-offset-width: 2px; }
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+button:hover {
+  background-color: #f9fafb;
+}
