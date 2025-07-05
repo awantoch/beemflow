@@ -51,6 +51,7 @@ func InitializeDependencies(cfg *config.Config) (func(), error) {
 	// Create engine with new simplified constructor
 	adapters := adapter.NewRegistry()
 	adapters.Register(&adapter.CoreAdapter{})
+	adapters.Register(&adapter.HTTPAdapter{AdapterID: "http"})
 	engine := beemengine.NewEngine(adapters, bus, blobStore, store, cfg)
 
 	// Return cleanup function

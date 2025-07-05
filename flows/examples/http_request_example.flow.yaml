@@ -11,4 +11,5 @@ steps:
     use: core.echo
     with:
       text: |
-        Fetched {{ fetch.status }} from {{ vars.URL }}
+        Fetched from {{ vars.URL }}
+        Response URL: {{ fetch.url }}

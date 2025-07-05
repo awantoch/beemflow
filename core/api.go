@@ -134,6 +134,7 @@ func createEngineFromConfig(ctx context.Context) (*engine.Engine, error) {
 	// Create registry and register core adapters
 	registry := adapter.NewRegistry()
 	registry.Register(&adapter.CoreAdapter{})
+	registry.Register(&adapter.HTTPAdapter{AdapterID: "http"})
 
 	return engine.NewEngine(
 		registry,

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,7 @@ func NewDefaultEngine() *Engine {
 	// Create registry and register core adapters
 	registry := adapter.NewRegistry()
 	registry.Register(&adapter.CoreAdapter{})
+	registry.Register(&adapter.HTTPAdapter{AdapterID: "http"})
 	
 	return &Engine{
 		AdapterRegistry: registry,
@@ -168,10 +170,10 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		return fmt.Errorf("adapter not found: %s", step.Use)
 	}
 
-	// Prepare inputs (no templating, just copy the values)
+	// Prepare inputs with basic template processing
 	inputs := make(map[string]any)
 	for k, v := range step.With {
-		inputs[k] = v
+		inputs[k] = e.processTemplates(v, stepCtx)
 	}
 	
 	// For core adapter, add the __use field to specify the specific tool
@@ -270,4 +272,102 @@ func (e *Engine) ListRuns(ctx context.Context) ([]*model.Run, error) {
 // GetRunByID returns a run by ID from storage
 func (e *Engine) GetRunByID(ctx context.Context, id uuid.UUID) (*model.Run, error) {
 	return e.Storage.GetRun(ctx, id)
+}
+
+// processTemplates applies basic template processing to a value
+func (e *Engine) processTemplates(value any, stepCtx *StepContext) any {
+	switch v := value.(type) {
+	case string:
+		return e.processStringTemplate(v, stepCtx)
+	case map[string]any:
+		return e.processMapTemplate(v, stepCtx)
+	case []any:
+		return e.processSliceTemplate(v, stepCtx)
+	default:
+		return value
+	}
+}
+
+// processStringTemplate applies basic template processing to a string
+func (e *Engine) processStringTemplate(value string, stepCtx *StepContext) string {
+	re := regexp.MustCompile(`\{\{\s*([^}]+)\s*\}\}`)
+	return re.ReplaceAllStringFunc(value, func(match string) string {
+		expr := strings.TrimSpace(re.FindStringSubmatch(match)[1])
+		resolved := e.resolveExpression(expr, stepCtx)
+		return fmt.Sprintf("%v", resolved)
+	})
+}
+
+// processMapTemplate applies basic template processing to a map[string]any
+func (e *Engine) processMapTemplate(value map[string]any, stepCtx *StepContext) map[string]any {
+	out := make(map[string]any)
+	for k, v := range value {
+		out[k] = e.processTemplates(v, stepCtx)
+	}
+	return out
+}
+
+// processSliceTemplate applies basic template processing to a slice
+func (e *Engine) processSliceTemplate(value []any, stepCtx *StepContext) []any {
+	out := make([]any, len(value))
+	for i, v := range value {
+		out[i] = e.processTemplates(v, stepCtx)
+	}
+	return out
+}
+
+// resolveExpression resolves template expressions like vars.URL or step.field
+func (e *Engine) resolveExpression(expr string, stepCtx *StepContext) any {
+	parts := strings.Split(expr, ".")
+
+	switch parts[0] {
+	case "vars":
+		// Explicit vars.field reference
+		if len(parts) < 2 {
+			return expr
+		}
+		return e.lookupNested(stepCtx.Vars, parts[1:])
+	case "event":
+		// Explicit event.field reference
+		if len(parts) < 2 {
+			return expr
+		}
+		return e.lookupNested(stepCtx.Event, parts[1:])
+	default:
+		// Could be a step output reference or a vars field
+		if len(parts) == 1 {
+			// Single field - check vars first, then step outputs
+			if stepCtx.Vars != nil {
+				if value, exists := stepCtx.Vars[parts[0]]; exists {
+					return value
+				}
+			}
+			// Check step outputs
+			if stepOutput, ok := stepCtx.GetOutput(parts[0]); ok {
+				return stepOutput
+			}
+			return expr // Return as-is if not found
+		} else {
+			// Multi-part - assume it's a step output reference
+			stepOutput, ok := stepCtx.GetOutput(parts[0])
+			if !ok {
+				return expr // Return as-is if step not found
+			}
+			return e.lookupNested(stepOutput, parts[1:])
+		}
+	}
+}
+
+// lookupNested performs nested field lookup in a map or value
+func (e *Engine) lookupNested(value any, path []string) any {
+	current := value
+	for _, key := range path {
+		switch v := current.(type) {
+		case map[string]any:
+			current = v[key]
+		default:
+			return fmt.Sprintf("{{%s}}", strings.Join(path, ".")) // Return template if can't resolve
+		}
+	}
+	return current
 }
