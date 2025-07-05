@@ -609,6 +609,33 @@ func init() {
 
 	// NOTE: Some management APIs have been simplified to avoid CLI duplication.
 	// Tools search/install and registry stats can be added later if needed.
+
+	// Root Greeting
+	RegisterOperation(&OperationDefinition{
+		ID:          "root",
+		Name:        "Root Greeting",
+		Description: "Simple greeting at the API root path",
+		Group:       "system",
+		HTTPMethod:  http.MethodGet,
+		HTTPPath:    "/",
+		CLIUse:      "",
+		CLIShort:    "",
+		SkipCLI:     true,
+		SkipMCP:     true,
+		ArgsType:    reflect.TypeOf(EmptyArgs{}),
+		Handler: func(ctx context.Context, args any) (any, error) {
+			return "Hi, I'm BeemBeem! :D", nil
+		},
+		HTTPHandler: func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/" {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Hi, I'm BeemBeem! :D"))
+		},
+	})
 }
 
 // ConvertOpenAPIExtendedArgs includes the output flag for CLI
