@@ -34,27 +34,44 @@ export const useBeemFlow = () => {
   useEffect(() => {
     const loadWasm = async () => {
       try {
+        // Check if WASM is supported
+        if (!WebAssembly) {
+          setWasmError('WebAssembly not supported in this browser')
+          return
+        }
+
         // Load the Go WASM runtime
         const script = document.createElement('script')
         script.src = '/wasm_exec.js'
+        script.async = true
         document.head.appendChild(script)
 
         script.onload = async () => {
-          const go = new Go()
-          
-          // Load and instantiate the WASM module
-          const result = await WebAssembly.instantiateStreaming(
-            fetch('/main.wasm'),
-            go.importObject
-          )
-          
-          // Run the Go program
-          go.run(result.instance)
-          setWasmLoaded(true)
+          try {
+            const go = new Go()
+            
+            // Load and instantiate the WASM module with timeout
+            const wasmPromise = WebAssembly.instantiateStreaming(
+              fetch('/main.wasm'),
+              go.importObject
+            )
+            
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('WASM load timeout')), 30000)
+            )
+            
+            const result = await Promise.race([wasmPromise, timeoutPromise]) as WebAssembly.WebAssemblyInstantiatedSource
+            
+            // Run the Go program
+            go.run(result.instance)
+            setWasmLoaded(true)
+          } catch (error) {
+            setWasmError(`Failed to load WASM module: ${error}`)
+          }
         }
 
         script.onerror = () => {
-          setWasmError('Failed to load WASM runtime')
+          setWasmError('Failed to load WASM runtime script')
         }
       } catch (error) {
         setWasmError(`Failed to initialize WASM: ${error}`)

@@ -63,7 +63,7 @@ function App() {
   }, [wasmLoaded, nodes, edges, visualToYaml, yaml])
   
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
+    (params: Connection) => setEdges((eds: any[]) => addEdge(params, eds)),
     [setEdges]
   )
   
