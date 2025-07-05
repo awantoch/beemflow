@@ -16,6 +16,7 @@ import (
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
+	"github.com/awantoch/beemflow/secrets"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
@@ -64,6 +65,7 @@ type Engine struct {
 	EventBus  event.EventBus
 	BlobStore blob.BlobStore
 	Storage   storage.Storage
+	SecretsProvider secrets.SecretsProvider
 	// In-memory state for waiting runs: token -> *PausedRun
 	waiting map[string]*PausedRun
 	mu      sync.Mutex
@@ -161,6 +163,7 @@ func NewEngine(
 		EventBus:         eventBus,
 		BlobStore:        blobStore,
 		Storage:          storage,
+		SecretsProvider:  nil, // Will be set via SetSecretsProvider if needed
 		waiting:          make(map[string]*PausedRun),
 		completedOutputs: make(map[string]map[string]any),
 	}
@@ -270,14 +273,14 @@ func (e *Engine) executeCatchBlocks(ctx context.Context, flow *model.Flow, event
 func (e *Engine) collectSecrets(event map[string]any) SecretsData {
 	secretsMap := make(SecretsData)
 
-	// Extract secrets from event using new constant
+	// Extract secrets from event using new constant (backward compatibility)
 	if eventSecrets, ok := utils.SafeMapAssert(event[constants.SecretsKey]); ok {
 		for k, v := range eventSecrets {
 			secretsMap[k] = v
 		}
 	}
 
-	// Collect environment variables starting with $env prefix
+	// Collect environment variables starting with $env prefix (backward compatibility)
 	for k, v := range event {
 		if strings.HasPrefix(k, constants.EnvVarPrefix) {
 			envVar := strings.TrimPrefix(k, constants.EnvVarPrefix)
@@ -1127,12 +1130,23 @@ func NewCronScheduler() *CronScheduler {
 	return &CronScheduler{}
 }
 
+// SetSecretsProvider sets the secrets provider for the engine
+func (e *Engine) SetSecretsProvider(provider secrets.SecretsProvider) {
+	e.SecretsProvider = provider
+}
+
 // Close cleans up all adapters and resources managed by the Engine.
 func (e *Engine) Close() error {
+	var err error
 	if e.Adapters != nil {
-		return e.Adapters.CloseAll()
+		err = e.Adapters.CloseAll()
 	}
-	return nil
+	if e.SecretsProvider != nil {
+		if closeErr := e.SecretsProvider.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}
+	return err
 }
 
 // Helper to convert PausedRun to map[string]any for storage.
@@ -1269,13 +1283,23 @@ func NewDefaultEngine(ctx context.Context) *Engine {
 		utils.WarnCtx(ctx, "Failed to create default blob store: %v, using nil fallback", "error", err)
 		bs = nil
 	}
-	return NewEngine(
+	
+	engine := NewEngine(
 		NewDefaultAdapterRegistry(ctx),
 		dsl.NewTemplater(),
 		event.NewInProcEventBus(),
 		bs,
 		storage.NewMemoryStorage(),
 	)
+	
+	// Set default secrets provider (environment variables)
+	if secretsProvider, err := secrets.NewSecretsProvider(ctx, nil); err == nil {
+		engine.SetSecretsProvider(secretsProvider)
+	} else {
+		utils.WarnCtx(ctx, "Failed to create default secrets provider: %v", "error", err)
+	}
+	
+	return engine
 }
 
 // copyMap creates a shallow copy of a map[string]any.

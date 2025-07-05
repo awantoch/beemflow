@@ -1,0 +1,17 @@
+{
+  "storage": {
+    "driver": "sqlite",
+    "dsn": ".beemflow/flow.db"
+  },
+  "secrets": {
+    "driver": "env",
+    "prefix": "BEEMFLOW_"
+  },
+  "http": {
+    "host": "localhost",
+    "port": 8080
+  },
+  "log": {
+    "level": "info"
+  }
+}

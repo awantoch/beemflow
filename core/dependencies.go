@@ -9,6 +9,7 @@ import (
 	"github.com/awantoch/beemflow/dsl"
 	beemengine "github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
+	"github.com/awantoch/beemflow/secrets"
 	"github.com/awantoch/beemflow/utils"
 )
 
@@ -52,6 +53,13 @@ func InitializeDependencies(cfg *config.Config) (func(), error) {
 	adapters := beemengine.NewDefaultAdapterRegistry(context.Background())
 	templ := dsl.NewTemplater()
 	engine := beemengine.NewEngine(adapters, templ, bus, blobStore, store)
+	
+	// Initialize secrets provider
+	if secretsProvider, err := secrets.NewSecretsProvider(context.Background(), cfg.Secrets); err == nil {
+		engine.SetSecretsProvider(secretsProvider)
+	} else {
+		utils.WarnCtx(context.Background(), "Failed to create secrets provider: %v, using default", "error", err)
+	}
 
 	// Return cleanup function
 	cleanup := func() {
