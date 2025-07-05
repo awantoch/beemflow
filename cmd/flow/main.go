@@ -22,6 +22,7 @@ import (
 	mcpserver "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/utils"
+	"github.com/awantoch/beemflow/loader"
 )
 
 var (
@@ -189,10 +190,10 @@ func runFlowExecution(cmd *cobra.Command, args []string, eventPath, eventJSON st
 		return
 	}
 
-	// Parse the flow file
-	flow, err := dsl.Parse(args[0])
+	// Load the flow file (supports YAML, JSON, Jsonnet)
+	flow, err := loader.Load(args[0], map[string]any{})
 	if err != nil {
-		utils.Error("YAML parse error: %v", err)
+		utils.Error("Failed to load flow: %v", err)
 		exit(1)
 	}
 

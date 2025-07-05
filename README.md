@@ -2,6 +2,8 @@
 
 > **GitHub Actions for every business process — text-first, AI-native, open-source.**
 
+🆕 **Now with first-class Jsonnet support!**  Write your flows in either classic YAML **or** powerful [Jsonnet](https://jsonnet.org/) (`.flow.jsonnet`).  The BeemFlow loader automatically understands both formats, and the CLI offers `flow convert` and `flow fmt` commands for seamless round-tripping and formatting.
+
 BeemFlow is a **workflow protocol, runtime, and global tool registry** for the age of LLM co-workers.
 
 Define workflows with YAML, JSON, or native code → execute anywhere through CLI, HTTP, or Model Context Protocol (MCP).
