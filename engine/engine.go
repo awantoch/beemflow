@@ -332,26 +332,23 @@ func (e *Engine) collectSecrets(event map[string]any) SecretsData {
 
 // collectSecretsWithProvider dynamically resolves secrets using the configured SecretsProvider
 func (e *Engine) collectSecretsWithProvider(ctx context.Context, event map[string]any, secretKeys []string) SecretsData {
-	secretsMap := e.collectSecrets(event) // Start with existing secrets from event
+	secretsMap := make(SecretsData)
 
-	// If no SecretsProvider is configured, return what we have
-	if e.SecretsProvider == nil {
-		return secretsMap
+	// Start with event-based secrets (lowest priority)
+	eventSecrets := e.collectSecrets(event)
+	for k, v := range eventSecrets {
+		secretsMap[k] = v
 	}
 
-	// Resolve each requested secret using the provider
-	for _, key := range secretKeys {
-		// Skip if we already have this secret from the event
-		if _, exists := secretsMap[key]; exists {
-			continue
+	// If SecretsProvider is configured, let it override event secrets
+	// This ensures .env files and other providers take precedence
+	if e.SecretsProvider != nil {
+		for _, key := range secretKeys {
+			// Always try the provider - it takes precedence over event data
+			if value, err := e.SecretsProvider.GetSecret(ctx, key); err == nil {
+				secretsMap[key] = value
+			}
 		}
-
-		// Attempt to resolve the secret
-		if value, err := e.SecretsProvider.GetSecret(ctx, key); err == nil {
-			secretsMap[key] = value
-		}
-		// Note: We don't error here if a secret is missing - the template engine
-		// will handle missing secrets appropriately (usually by rendering empty string)
 	}
 
 	return secretsMap
@@ -1506,7 +1503,13 @@ func flattenTemplateDataToMap(templateData TemplateData) map[string]any {
 		data[k] = v
 	}
 	for k, v := range templateData.Event {
-		data[k] = v // For foreach expressions like {{list}}
+		// Don't flatten event keys that conflict with template field names
+		// This ensures secrets from providers take precedence over event data
+		if k != constants.TemplateFieldSecrets && k != constants.TemplateFieldEvent && 
+		   k != constants.TemplateFieldVars && k != constants.TemplateFieldOutputs && 
+		   k != constants.TemplateFieldSteps {
+			data[k] = v // For foreach expressions like {{list}}
+		}
 	}
 
 	// Only flatten outputs that have valid identifier names (no template syntax)
