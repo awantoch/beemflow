@@ -10,6 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.4
 	github.com/flosch/pongo2/v6 v6.0.0
 	github.com/google/uuid v1.6.0
+	github.com/google/go-jsonnet v0.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/metoro-io/mcp-golang v0.13.0
 	github.com/nats-io/stan.go v0.10.4
