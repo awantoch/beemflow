@@ -131,8 +131,12 @@ func createEngineFromConfig(ctx context.Context) (*engine.Engine, error) {
 		return nil, err
 	}
 
+	// Create registry and register core adapters
+	registry := adapter.NewRegistry()
+	registry.Register(&adapter.CoreAdapter{})
+
 	return engine.NewEngine(
-		adapter.NewRegistry(),
+		registry,
 		event.NewInProcEventBus(),
 		nil, // blob store not needed here
 		store,
@@ -271,9 +275,15 @@ func PublishEvent(ctx context.Context, topic string, payload map[string]any) err
 
 // ResumeRun resumes a paused run with the given token and event, returning outputs if available.
 func ResumeRun(ctx context.Context, token string, eventData map[string]any) (map[string]any, error) {
-	// For now, return empty outputs since we removed the resume functionality
+	// Check if we can create an engine (this will validate config including storage driver)
+	_, err := createEngineFromConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
+	// For now, return nil outputs since we removed the resume functionality
 	// This can be re-implemented later if needed
-	return make(map[string]any), nil
+	return nil, nil
 }
 
 // ParseFlowFromString parses a flow YAML string into a Flow struct.
@@ -309,7 +319,10 @@ func RunSpec(ctx context.Context, flow *model.Flow, eventData map[string]any) (u
 
 // ListTools returns all registered tool manifests (name, description, kind, etc).
 func ListTools(ctx context.Context) ([]map[string]any, error) {
-	eng := engine.NewDefaultEngine()
+	eng, err := createEngineFromConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
 	adapters := eng.AdapterRegistry.All()
 	var tools []map[string]any
 	for _, a := range adapters {

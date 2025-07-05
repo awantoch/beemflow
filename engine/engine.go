@@ -3,7 +3,9 @@ package engine
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/blob"
@@ -56,8 +58,13 @@ func NewEngine(
 // NewDefaultEngine creates a new Engine with default dependencies.
 func NewDefaultEngine() *Engine {
 	blobStore, _ := blob.NewDefaultBlobStore(context.Background(), nil)
+	
+	// Create registry and register core adapters
+	registry := adapter.NewRegistry()
+	registry.Register(&adapter.CoreAdapter{})
+	
 	return &Engine{
-		AdapterRegistry: adapter.NewRegistry(),
+		AdapterRegistry: registry,
 		EventBus:        event.NewInProcEventBus(),
 		BlobStore:       blobStore,
 		Storage:         storage.NewMemoryStorage(),
@@ -74,9 +81,29 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 		event = make(map[string]any)
 	}
 
+	// Create a new run record
+	run := &model.Run{
+		ID:        uuid.New(),
+		FlowName:  flow.Name,
+		Status:    model.RunRunning,
+		Event:     event,
+		Vars:      flow.Vars,
+		StartedAt: time.Now(),
+	}
+
+	// Save the run to storage
+	if err := e.Storage.SaveRun(ctx, run); err != nil {
+		return nil, fmt.Errorf("failed to save run: %w", err)
+	}
+
 	// Initialize outputs
 	outputs := make(map[string]any)
 	if len(flow.Steps) == 0 {
+		// Update run status to completed
+		run.Status = model.RunSucceeded
+		endedAt := time.Now()
+		run.EndedAt = &endedAt
+		e.Storage.SaveRun(ctx, run)
 		return outputs, nil
 	}
 
@@ -84,10 +111,29 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	stepCtx := e.setupExecutionContext(ctx, flow, event)
 
 	// Execute the flow steps
+	var execErr error
 	for _, step := range flow.Steps {
 		if err := e.executeStep(ctx, &step, stepCtx); err != nil {
-			return stepCtx.Outputs, err
+			execErr = err
+			break
 		}
+	}
+
+	// Update run with final status
+	if execErr != nil {
+		run.Status = model.RunFailed
+	} else {
+		run.Status = model.RunSucceeded
+	}
+	
+	endedAt := time.Now()
+	run.EndedAt = &endedAt
+	
+	// Save final run state
+	e.Storage.SaveRun(ctx, run)
+
+	if execErr != nil {
+		return stepCtx.Outputs, execErr
 	}
 
 	return stepCtx.Outputs, nil
@@ -113,8 +159,11 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		return nil
 	}
 
+	// Determine adapter ID and tool from step.Use
+	adapterID, toolName := parseStepUse(step.Use)
+	
 	// Get the adapter for this tool
-	adapterInst, ok := e.AdapterRegistry.Get(step.Use)
+	adapterInst, ok := e.AdapterRegistry.Get(adapterID)
 	if !ok {
 		return fmt.Errorf("adapter not found: %s", step.Use)
 	}
@@ -123,6 +172,11 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	inputs := make(map[string]any)
 	for k, v := range step.With {
 		inputs[k] = v
+	}
+	
+	// For core adapter, add the __use field to specify the specific tool
+	if adapterID == "core" && toolName != "" {
+		inputs["__use"] = toolName
 	}
 
 	// Execute the tool
@@ -135,6 +189,32 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 	// Store outputs
 	stepCtx.SetOutput(step.ID, outputs)
 	return nil
+}
+
+// parseStepUse extracts adapter ID and tool name from a step.Use value
+// Examples:
+//   "core.echo" -> ("core", "core.echo")
+//   "http.fetch" -> ("http", "http.fetch") 
+//   "mcp://server/tool" -> ("mcp", "mcp://server/tool")
+//   "some-adapter" -> ("some-adapter", "")
+func parseStepUse(stepUse string) (adapterID, toolName string) {
+	// Handle MCP protocol
+	if strings.HasPrefix(stepUse, "mcp://") {
+		return "mcp", stepUse
+	}
+	
+	// Handle core tools
+	if strings.HasPrefix(stepUse, "core.") {
+		return "core", stepUse
+	}
+	
+	// Handle HTTP tools  
+	if strings.HasPrefix(stepUse, "http.") {
+		return "http", stepUse
+	}
+	
+	// Default: assume the whole string is the adapter ID
+	return stepUse, ""
 }
 
 // NewStepContext creates a new StepContext with the provided data
