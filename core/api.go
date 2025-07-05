@@ -15,6 +15,7 @@ import (
 	"github.com/awantoch/beemflow/graph"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
+	"github.com/awantoch/beemflow/secrets"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
@@ -130,13 +131,26 @@ func createEngineFromConfig(ctx context.Context) (*engine.Engine, error) {
 		return nil, err
 	}
 
-	return engine.NewEngine(
+	eng := engine.NewEngine(
 		engine.NewDefaultAdapterRegistry(ctx),
 		dsl.NewTemplater(),
 		event.NewInProcEventBus(),
 		nil, // blob store not needed here
 		store,
-	), nil
+	)
+
+	// Set up secrets provider
+	var secretsConfig *config.SecretsConfig
+	if cfg != nil {
+		secretsConfig = cfg.Secrets
+	}
+	if secretsProvider, err := secrets.NewSecretsProvider(ctx, secretsConfig); err == nil {
+		eng.SetSecretsProvider(secretsProvider)
+	} else {
+		utils.WarnCtx(ctx, "Failed to create secrets provider: %v, using default", "error", err)
+	}
+
+	return eng, nil
 }
 
 // buildFlowPath constructs the full path to a flow file
