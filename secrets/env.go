@@ -34,7 +34,7 @@ func (e *EnvSecretsProvider) GetSecret(ctx context.Context, key string) (string,
 			value = os.Getenv(key)
 		}
 		if value == "" {
-			return "", fmt.Errorf("secret not found: %s", key)
+			return "", fmt.Errorf("secret not found in environment variables: %s", key)
 		}
 	}
 	

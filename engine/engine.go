@@ -193,8 +193,11 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 
 // setupExecutionContext prepares the execution environment
 func (e *Engine) setupExecutionContext(ctx context.Context, flow *model.Flow, event map[string]any) (*StepContext, uuid.UUID) {
-	// Collect env secrets and merge with event-supplied secrets
-	secretsMap := e.collectSecrets(event)
+	// Extract secret references from the flow
+	secretKeys := e.extractSecretReferences(flow)
+	
+	// Collect secrets for template rendering (including dynamic resolution)
+	secretsMap := e.collectSecretsWithProvider(ctx, event, secretKeys)
 
 	// Create step context using the new constructor
 	stepCtx := NewStepContext(event, flow.Vars, secretsMap)
@@ -253,8 +256,44 @@ func (e *Engine) finalizeExecution(ctx context.Context, flow *model.Flow, event 
 
 // executeCatchBlocks runs catch steps when an error occurs
 func (e *Engine) executeCatchBlocks(ctx context.Context, flow *model.Flow, event map[string]any, originalErr error) (map[string]any, error) {
-	// Recreate step context for catch blocks
-	secretsMap := e.collectSecrets(event)
+	// Extract secret references from catch blocks
+	var catchSecretKeys []string
+	secretKeySet := make(map[string]bool)
+	
+	for _, step := range flow.Catch {
+		if step.With != nil {
+			// Extract secrets from catch step templates
+			var extractFromValue func(interface{})
+			extractFromValue = func(value interface{}) {
+				switch v := value.(type) {
+				case string:
+					secretPattern := regexp.MustCompile(`\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}`)
+					matches := secretPattern.FindAllStringSubmatch(v, -1)
+					for _, match := range matches {
+						if len(match) > 1 {
+							key := match[1]
+							if !secretKeySet[key] {
+								secretKeySet[key] = true
+								catchSecretKeys = append(catchSecretKeys, key)
+							}
+						}
+					}
+				case map[string]interface{}:
+					for _, val := range v {
+						extractFromValue(val)
+					}
+				case []interface{}:
+					for _, val := range v {
+						extractFromValue(val)
+					}
+				}
+			}
+			extractFromValue(step.With)
+		}
+	}
+	
+	// Recreate step context for catch blocks with dynamic secret resolution
+	secretsMap := e.collectSecretsWithProvider(ctx, event, catchSecretKeys)
 	stepCtx := NewStepContext(event, flow.Vars, secretsMap)
 
 	// Run catch steps in defined order
@@ -289,6 +328,118 @@ func (e *Engine) collectSecrets(event map[string]any) SecretsData {
 	}
 
 	return secretsMap
+}
+
+// collectSecretsWithProvider dynamically resolves secrets using the configured SecretsProvider
+func (e *Engine) collectSecretsWithProvider(ctx context.Context, event map[string]any, secretKeys []string) SecretsData {
+	secretsMap := e.collectSecrets(event) // Start with existing secrets from event
+
+	// If no SecretsProvider is configured, return what we have
+	if e.SecretsProvider == nil {
+		return secretsMap
+	}
+
+	// Resolve each requested secret using the provider
+	for _, key := range secretKeys {
+		// Skip if we already have this secret from the event
+		if _, exists := secretsMap[key]; exists {
+			continue
+		}
+
+		// Attempt to resolve the secret
+		if value, err := e.SecretsProvider.GetSecret(ctx, key); err == nil {
+			secretsMap[key] = value
+		}
+		// Note: We don't error here if a secret is missing - the template engine
+		// will handle missing secrets appropriately (usually by rendering empty string)
+	}
+
+	return secretsMap
+}
+
+// extractSecretReferences finds all {{ secrets.KEY }} references in templates
+func (e *Engine) extractSecretReferences(flow *model.Flow) []string {
+	var secretKeys []string
+	secretKeySet := make(map[string]bool)
+
+	// Helper function to extract secrets from a string template
+	extractFromTemplate := func(template string) {
+		// Simple regex to find {{ secrets.KEY }} patterns
+		// This is a basic implementation - could be enhanced for more complex cases
+		secretPattern := regexp.MustCompile(`\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}`)
+		matches := secretPattern.FindAllStringSubmatch(template, -1)
+		for _, match := range matches {
+			if len(match) > 1 {
+				key := match[1]
+				if !secretKeySet[key] {
+					secretKeySet[key] = true
+					secretKeys = append(secretKeys, key)
+				}
+			}
+		}
+	}
+
+	// Helper function to recursively extract from any value
+	var extractFromValue func(interface{})
+	extractFromValue = func(value interface{}) {
+		switch v := value.(type) {
+		case string:
+			extractFromTemplate(v)
+		case map[string]interface{}:
+			for _, val := range v {
+				extractFromValue(val)
+			}
+		case []interface{}:
+			for _, val := range v {
+				extractFromValue(val)
+			}
+		}
+	}
+
+	// Extract from flow variables
+	if flow.Vars != nil {
+		extractFromValue(flow.Vars)
+	}
+
+	// Extract from all steps
+	for _, step := range flow.Steps {
+		// Extract from step.With
+		if step.With != nil {
+			extractFromValue(step.With)
+		}
+		
+		// Extract from step.If
+		if step.If != "" {
+			extractFromTemplate(step.If)
+		}
+		
+		// Extract from step.Foreach
+		if step.Foreach != "" {
+			extractFromTemplate(step.Foreach)
+		}
+		
+		// Extract from nested steps
+		for _, nestedStep := range step.Steps {
+			if nestedStep.With != nil {
+				extractFromValue(nestedStep.With)
+			}
+			if nestedStep.If != "" {
+				extractFromTemplate(nestedStep.If)
+			}
+		}
+		
+		// Extract from Do steps (foreach)
+		for _, doStep := range step.Do {
+			if doStep.With != nil {
+				extractFromValue(doStep.With)
+			}
+			if doStep.If != "" {
+				extractFromTemplate(doStep.If)
+			}
+		}
+	}
+
+	return secretKeys
 }
 
 // Helper to get pointer to time.Time.

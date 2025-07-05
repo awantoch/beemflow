@@ -20,6 +20,11 @@ var _ SecretsProvider = (*AWSSecretsProvider)(nil)
 
 // NewAWSSecretsProvider creates a new AWS Secrets Manager provider
 func NewAWSSecretsProvider(ctx context.Context, region, prefix string) (*AWSSecretsProvider, error) {
+	region = strings.TrimSpace(region)
+	if region == "" {
+		return nil, fmt.Errorf("region is required for AWS Secrets Manager")
+	}
+	
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
@@ -46,11 +51,11 @@ func (a *AWSSecretsProvider) GetSecret(ctx context.Context, key string) (string,
 
 	result, err := a.client.GetSecretValue(ctx, input)
 	if err != nil {
-		// Try without prefix as fallback
-		if a.prefix != "" && !strings.Contains(err.Error(), "ResourceNotFoundException") {
+		// Try without prefix as fallback only for ResourceNotFoundException
+		if a.prefix != "" && strings.Contains(err.Error(), "ResourceNotFoundException") {
 			return a.getSecretWithoutPrefix(ctx, key)
 		}
-		return "", fmt.Errorf("failed to get secret %s: %w", key, err)
+		return "", fmt.Errorf("failed to get secret %s from AWS Secrets Manager: %w", key, err)
 	}
 
 	if result.SecretString == nil {
@@ -68,7 +73,7 @@ func (a *AWSSecretsProvider) getSecretWithoutPrefix(ctx context.Context, key str
 
 	result, err := a.client.GetSecretValue(ctx, input)
 	if err != nil {
-		return "", fmt.Errorf("failed to get secret %s: %w", key, err)
+		return "", fmt.Errorf("failed to get secret %s (fallback without prefix): %w", key, err)
 	}
 
 	if result.SecretString == nil {
