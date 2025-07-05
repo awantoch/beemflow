@@ -14,7 +14,6 @@ import (
     "time"
 
     api "github.com/awantoch/beemflow/core"
-    "github.com/awantoch/beemflow/event"
     "github.com/awantoch/beemflow/utils"
 )
 
@@ -95,9 +94,9 @@ func SlackEventsHandler() http.HandlerFunc {
 
         // Publish to BeemFlow event bus (topic slack.message)
         if err := api.PublishEvent(r.Context(), "slack.message", beemPayload); err != nil {
-            // fallback to in-process event bus so dev mode still works
-            utils.Warn("PublishEvent failed – falling back to in-proc bus: %v", err)
-            event.NewInProcEventBus().Publish("slack.message", beemPayload)
+            utils.Error("failed to publish slack event: %v", err)
+            http.Error(w, "Internal server error", http.StatusInternalServerError)
+            return
         }
 
         w.WriteHeader(http.StatusOK)

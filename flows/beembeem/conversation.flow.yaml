@@ -3,7 +3,7 @@ on:
   - event: slack.message
 steps:
   - id: check_mention
-    if: "{{ event.text | toLower | contains 'beembeem' }}"
+    if: "{{ 'beembeem' in event.text|lower }}"
     use: core.echo
     with:
       text: "BeemBeem invoked"
@@ -22,11 +22,11 @@ steps:
     with:
       channel: "{{ event.channel }}"
       text: "{{ understand.choices.0.message.content }}"
-      thread_ts: "{{ event.thread_ts | default event.timestamp }}"
+      thread_ts: "{{ event.thread_ts or event.timestamp }}"
   - id: await_response
     await_event:
       source: slack
       match:
         channel: "{{ event.channel }}"
-        token: "{{ event.thread_ts | default event.timestamp }}"
+        token: "{{ event.thread_ts or event.timestamp }}"
       timeout: 30m
