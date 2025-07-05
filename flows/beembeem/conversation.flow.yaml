@@ -1,0 +1,32 @@
+name: beembeem_conversation
+on:
+  - event: slack.message
+steps:
+  - id: check_mention
+    if: "{{ event.text | toLower | contains 'beembeem' }}"
+    use: core.echo
+    with:
+      text: "BeemBeem invoked"
+  - id: understand
+    use: openai.chat_completion
+    with:
+      model: "gpt-4o"
+      messages:
+        - role: system
+          content: |
+            You are BeemBeem, a helpful AI assistant that creates BeemFlow workflows. Ask clarifying questions.
+        - role: user
+          content: "{{ event.text }}"
+  - id: reply
+    use: slack.chat.postMessage
+    with:
+      channel: "{{ event.channel }}"
+      text: "{{ understand.choices.0.message.content }}"
+      thread_ts: "{{ event.thread_ts | default event.timestamp }}"
+  - id: await_response
+    await_event:
+      source: slack
+      match:
+        channel: "{{ event.channel }}"
+        token: "{{ event.thread_ts | default event.timestamp }}"
+      timeout: 30m
