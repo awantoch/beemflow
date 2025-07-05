@@ -16,6 +16,7 @@ import (
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
+	"github.com/awantoch/beemflow/secrets"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
@@ -64,6 +65,7 @@ type Engine struct {
 	EventBus  event.EventBus
 	BlobStore blob.BlobStore
 	Storage   storage.Storage
+	SecretsProvider secrets.SecretsProvider
 	// In-memory state for waiting runs: token -> *PausedRun
 	waiting map[string]*PausedRun
 	mu      sync.Mutex
@@ -161,6 +163,7 @@ func NewEngine(
 		EventBus:         eventBus,
 		BlobStore:        blobStore,
 		Storage:          storage,
+		SecretsProvider:  nil, // Will be set via SetSecretsProvider if needed
 		waiting:          make(map[string]*PausedRun),
 		completedOutputs: make(map[string]map[string]any),
 	}
@@ -190,8 +193,11 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 
 // setupExecutionContext prepares the execution environment
 func (e *Engine) setupExecutionContext(ctx context.Context, flow *model.Flow, event map[string]any) (*StepContext, uuid.UUID) {
-	// Collect env secrets and merge with event-supplied secrets
-	secretsMap := e.collectSecrets(event)
+	// Extract secret references from the flow
+	secretKeys := e.extractSecretReferences(flow)
+	
+	// Collect secrets for template rendering (including dynamic resolution)
+	secretsMap := e.collectSecretsWithProvider(ctx, event, secretKeys)
 
 	// Create step context using the new constructor
 	stepCtx := NewStepContext(event, flow.Vars, secretsMap)
@@ -250,8 +256,44 @@ func (e *Engine) finalizeExecution(ctx context.Context, flow *model.Flow, event 
 
 // executeCatchBlocks runs catch steps when an error occurs
 func (e *Engine) executeCatchBlocks(ctx context.Context, flow *model.Flow, event map[string]any, originalErr error) (map[string]any, error) {
-	// Recreate step context for catch blocks
-	secretsMap := e.collectSecrets(event)
+	// Extract secret references from catch blocks
+	var catchSecretKeys []string
+	secretKeySet := make(map[string]bool)
+	
+	for _, step := range flow.Catch {
+		if step.With != nil {
+			// Extract secrets from catch step templates
+			var extractFromValue func(interface{})
+			extractFromValue = func(value interface{}) {
+				switch v := value.(type) {
+				case string:
+					secretPattern := regexp.MustCompile(`\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}`)
+					matches := secretPattern.FindAllStringSubmatch(v, -1)
+					for _, match := range matches {
+						if len(match) > 1 {
+							key := match[1]
+							if !secretKeySet[key] {
+								secretKeySet[key] = true
+								catchSecretKeys = append(catchSecretKeys, key)
+							}
+						}
+					}
+				case map[string]interface{}:
+					for _, val := range v {
+						extractFromValue(val)
+					}
+				case []interface{}:
+					for _, val := range v {
+						extractFromValue(val)
+					}
+				}
+			}
+			extractFromValue(step.With)
+		}
+	}
+	
+	// Recreate step context for catch blocks with dynamic secret resolution
+	secretsMap := e.collectSecretsWithProvider(ctx, event, catchSecretKeys)
 	stepCtx := NewStepContext(event, flow.Vars, secretsMap)
 
 	// Run catch steps in defined order
@@ -270,14 +312,14 @@ func (e *Engine) executeCatchBlocks(ctx context.Context, flow *model.Flow, event
 func (e *Engine) collectSecrets(event map[string]any) SecretsData {
 	secretsMap := make(SecretsData)
 
-	// Extract secrets from event using new constant
+	// Extract secrets from event using new constant (backward compatibility)
 	if eventSecrets, ok := utils.SafeMapAssert(event[constants.SecretsKey]); ok {
 		for k, v := range eventSecrets {
 			secretsMap[k] = v
 		}
 	}
 
-	// Collect environment variables starting with $env prefix
+	// Collect environment variables starting with $env prefix (backward compatibility)
 	for k, v := range event {
 		if strings.HasPrefix(k, constants.EnvVarPrefix) {
 			envVar := strings.TrimPrefix(k, constants.EnvVarPrefix)
@@ -286,6 +328,127 @@ func (e *Engine) collectSecrets(event map[string]any) SecretsData {
 	}
 
 	return secretsMap
+}
+
+// collectSecretsWithProvider dynamically resolves secrets using the configured SecretsProvider
+// Precedence order (highest to lowest):
+// 1. Event data secrets (explicit runtime override)
+// 2. Environment variables (always available as fallback)
+// 3. Configured secret store (AWS, Vault, etc.)
+func (e *Engine) collectSecretsWithProvider(ctx context.Context, event map[string]any, secretKeys []string) SecretsData {
+	secretsMap := make(SecretsData)
+
+	// Start with configured secret store (lowest priority)
+	if e.SecretsProvider != nil {
+		for _, key := range secretKeys {
+			if value, err := e.SecretsProvider.GetSecret(ctx, key); err == nil {
+				secretsMap[key] = value
+			}
+		}
+	}
+
+	// Always try environment variables as fallback (higher priority than stores)
+	// This ensures .env files and environment variables work even with AWS/Vault configured
+	envProvider := secrets.NewEnvSecretsProvider("")
+	for _, key := range secretKeys {
+		if value, err := envProvider.GetSecret(ctx, key); err == nil {
+			secretsMap[key] = value
+		}
+	}
+
+	// Finally, event-based secrets take highest priority (explicit runtime override)
+	// This includes both direct event.secrets and $env: prefixed values
+	eventSecrets := e.collectSecrets(event)
+	for k, v := range eventSecrets {
+		secretsMap[k] = v
+	}
+
+	return secretsMap
+}
+
+// extractSecretReferences finds all {{ secrets.KEY }} references in templates
+func (e *Engine) extractSecretReferences(flow *model.Flow) []string {
+	var secretKeys []string
+	secretKeySet := make(map[string]bool)
+
+	// Helper function to extract secrets from a string template
+	extractFromTemplate := func(template string) {
+		// Simple regex to find {{ secrets.KEY }} patterns
+		// This is a basic implementation - could be enhanced for more complex cases
+		secretPattern := regexp.MustCompile(`\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}`)
+		matches := secretPattern.FindAllStringSubmatch(template, -1)
+		for _, match := range matches {
+			if len(match) > 1 {
+				key := match[1]
+				if !secretKeySet[key] {
+					secretKeySet[key] = true
+					secretKeys = append(secretKeys, key)
+				}
+			}
+		}
+	}
+
+	// Helper function to recursively extract from any value
+	var extractFromValue func(interface{})
+	extractFromValue = func(value interface{}) {
+		switch v := value.(type) {
+		case string:
+			extractFromTemplate(v)
+		case map[string]interface{}:
+			for _, val := range v {
+				extractFromValue(val)
+			}
+		case []interface{}:
+			for _, val := range v {
+				extractFromValue(val)
+			}
+		}
+	}
+
+	// Extract from flow variables
+	if flow.Vars != nil {
+		extractFromValue(flow.Vars)
+	}
+
+	// Extract from all steps
+	for _, step := range flow.Steps {
+		// Extract from step.With
+		if step.With != nil {
+			extractFromValue(step.With)
+		}
+		
+		// Extract from step.If
+		if step.If != "" {
+			extractFromTemplate(step.If)
+		}
+		
+		// Extract from step.Foreach
+		if step.Foreach != "" {
+			extractFromTemplate(step.Foreach)
+		}
+		
+		// Extract from nested steps
+		for _, nestedStep := range step.Steps {
+			if nestedStep.With != nil {
+				extractFromValue(nestedStep.With)
+			}
+			if nestedStep.If != "" {
+				extractFromTemplate(nestedStep.If)
+			}
+		}
+		
+		// Extract from Do steps (foreach)
+		for _, doStep := range step.Do {
+			if doStep.With != nil {
+				extractFromValue(doStep.With)
+			}
+			if doStep.If != "" {
+				extractFromTemplate(doStep.If)
+			}
+		}
+	}
+
+	return secretKeys
 }
 
 // Helper to get pointer to time.Time.
@@ -1127,12 +1290,23 @@ func NewCronScheduler() *CronScheduler {
 	return &CronScheduler{}
 }
 
+// SetSecretsProvider sets the secrets provider for the engine
+func (e *Engine) SetSecretsProvider(provider secrets.SecretsProvider) {
+	e.SecretsProvider = provider
+}
+
 // Close cleans up all adapters and resources managed by the Engine.
 func (e *Engine) Close() error {
+	var err error
 	if e.Adapters != nil {
-		return e.Adapters.CloseAll()
+		err = e.Adapters.CloseAll()
 	}
-	return nil
+	if e.SecretsProvider != nil {
+		if closeErr := e.SecretsProvider.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}
+	return err
 }
 
 // Helper to convert PausedRun to map[string]any for storage.
@@ -1269,13 +1443,23 @@ func NewDefaultEngine(ctx context.Context) *Engine {
 		utils.WarnCtx(ctx, "Failed to create default blob store: %v, using nil fallback", "error", err)
 		bs = nil
 	}
-	return NewEngine(
+	
+	engine := NewEngine(
 		NewDefaultAdapterRegistry(ctx),
 		dsl.NewTemplater(),
 		event.NewInProcEventBus(),
 		bs,
 		storage.NewMemoryStorage(),
 	)
+	
+	// Set default secrets provider (environment variables)
+	if secretsProvider, err := secrets.NewSecretsProvider(ctx, nil); err == nil {
+		engine.SetSecretsProvider(secretsProvider)
+	} else {
+		utils.WarnCtx(ctx, "Failed to create default secrets provider: %v", "error", err)
+	}
+	
+	return engine
 }
 
 // copyMap creates a shallow copy of a map[string]any.
@@ -1331,7 +1515,13 @@ func flattenTemplateDataToMap(templateData TemplateData) map[string]any {
 		data[k] = v
 	}
 	for k, v := range templateData.Event {
-		data[k] = v // For foreach expressions like {{list}}
+		// Don't flatten event keys that conflict with template field names
+		// This ensures secrets from providers take precedence over event data
+		if k != constants.TemplateFieldSecrets && k != constants.TemplateFieldEvent && 
+		   k != constants.TemplateFieldVars && k != constants.TemplateFieldOutputs && 
+		   k != constants.TemplateFieldSteps {
+			data[k] = v // For foreach expressions like {{list}}
+		}
 	}
 
 	// Only flatten outputs that have valid identifier names (no template syntax)
