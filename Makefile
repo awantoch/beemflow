@@ -10,7 +10,7 @@ INTEGRATION_FLOWS := $(shell find flows/integration -name "*.flow.yaml" 2>/dev/n
 E2E_FLOWS := $(shell find flows/e2e -name "*.flow.yaml" 2>/dev/null)
 
 # ────────────────────────────────────────────────────────────────────────────
-.PHONY: all clean build build-static install test test-race coverage e2e integration test-all check fmt vet lint tidy fix release proto
+.PHONY: all clean build build-static install test test-race coverage e2e integration test-all check fmt vet lint tidy fix release
 
 all: clean test build install
 
@@ -94,8 +94,8 @@ fix:
 # Protobuf
 # ────────────────────────────────────────────────────────────────────────────
 
-PROTO_FILES := proto/flow.proto
+# PROTO_FILES := proto/flow.proto
 
-## Generates Go code from protobuf definitions
-proto:
-	protoc --go_out=. --go_opt=paths=source_relative $(PROTO_FILES) 
+# ## Generates Go code from protobuf definitions
+# proto:
+# 	protoc --go_out=. --go_opt=paths=source_relative $(PROTO_FILES) 
