@@ -429,12 +429,3 @@ const (
 	DefaultKeyRequired   = "required"
 	DefaultKeyDefault    = "default"
 )
-
-// ============================================================================
-// COMMON CONSTANTS
-// ============================================================================
-
-// Common empty values to reduce duplication
-var (
-	EmptyStringMap = map[string]any{}
-)

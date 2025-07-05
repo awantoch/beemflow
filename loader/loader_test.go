@@ -4,16 +4,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	
-	"github.com/awantoch/beemflow/constants"
 )
 
 // Helper function to reduce test duplication
 func loadExampleFlow(t *testing.T, filename string, vars map[string]any) {
 	t.Helper()
-	if vars == nil {
-		vars = constants.EmptyStringMap
-	}
 	
 	path := filepath.Join("..", "flows", "examples", filename)
 	flow, err := Load(path, vars)
@@ -45,7 +40,7 @@ func TestLoadInvalidYAML(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "invalid.flow.yaml")
 	os.WriteFile(p, []byte("name: invalid\n:\terror"), 0o644)
-	if _, err := Load(p, constants.EmptyStringMap); err == nil {
+	if _, err := Load(p, map[string]any{}); err == nil {
 		t.Fatal("expected error for invalid YAML, got nil")
 	}
 }
@@ -54,7 +49,7 @@ func TestLoadInvalidJsonnet(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "invalid.flow.jsonnet")
 	os.WriteFile(p, []byte("{ name: \"bad"), 0o644)
-	if _, err := Load(p, constants.EmptyStringMap); err == nil {
+	if _, err := Load(p, map[string]any{}); err == nil {
 		t.Fatal("expected error for invalid Jsonnet, got nil")
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"os"
 
-	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/model"
 	jsonnet "github.com/google/go-jsonnet"
@@ -17,7 +16,7 @@ import (
 // YAML renderer and as Jsonnet external variables when possible.
 func Load(path string, vars map[string]any) (*model.Flow, error) {
 	if vars == nil {
-		vars = constants.EmptyStringMap
+		vars = map[string]any{}
 	}
 	
 	ext := strings.ToLower(filepath.Ext(path))

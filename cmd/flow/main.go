@@ -191,7 +191,7 @@ func runFlowExecution(cmd *cobra.Command, args []string, eventPath, eventJSON st
 	}
 
 	// Load the flow file (supports YAML, JSON, Jsonnet)
-	flow, err := loader.Load(args[0], constants.EmptyStringMap)
+	flow, err := loader.Load(args[0], map[string]any{})
 	if err != nil {
 		utils.Error("Failed to load flow: %v", err)
 		exit(1)
@@ -421,7 +421,7 @@ func loadEvent(path, inline string) (map[string]any, error) {
 		return event, nil
 	}
 	// No event provided: return empty event for flows that don't use event data
-	return constants.EmptyStringMap, nil
+	return map[string]any{}, nil
 }
 
 // ============================================================================
@@ -525,7 +525,7 @@ func loadConfigAsMap(configFile string) (map[string]any, error) {
 func ensureMCPServersMap(doc map[string]any) map[string]any {
 	mcpMap, ok := doc[constants.MCPServersKey].(map[string]any)
 	if !ok {
-		mcpMap = constants.EmptyStringMap
+		mcpMap = map[string]any{}
 	}
 	return mcpMap
 }

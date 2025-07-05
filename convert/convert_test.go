@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	
-	"github.com/awantoch/beemflow/constants"
 )
 
 func TestYAMLToJsonnetRoundTrip(t *testing.T) {
