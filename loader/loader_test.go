@@ -51,3 +51,17 @@ func TestLoadInvalidJsonnet(t *testing.T) {
 		t.Fatal("expected error for invalid Jsonnet, got nil")
 	}
 }
+
+func TestLoadJsonnetWithImport(t *testing.T) {
+	path := filepath.Join("..", "flows", "examples", "jsonnet_fanout.flow.jsonnet")
+	flow, err := Load(path, map[string]any{"BASE": "https://example.com"})
+	if err != nil {
+		t.Fatalf("failed to load jsonnet with import: %v", err)
+	}
+	if flow == nil || flow.Name != "jsonnet_fanout" {
+		t.Fatalf("unexpected flow name: %v", flow)
+	}
+	if len(flow.Steps) == 0 {
+		t.Fatal("expected steps from Jsonnet fanout flow")
+	}
+}
