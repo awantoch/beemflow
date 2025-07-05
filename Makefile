@@ -10,7 +10,7 @@ INTEGRATION_FLOWS := $(shell find flows/integration -name "*.flow.yaml" 2>/dev/n
 E2E_FLOWS := $(shell find flows/e2e -name "*.flow.yaml" 2>/dev/null)
 
 # ────────────────────────────────────────────────────────────────────────────
-.PHONY: all clean build build-static install test test-race coverage e2e integration test-all check fmt vet lint tidy fix release
+.PHONY: all clean build build-static install test test-race coverage e2e integration test-all check fmt vet lint tidy fix release proto
 
 all: clean test build install
 
@@ -88,4 +88,14 @@ tidy:
 
 fix:
 	golangci-lint run --fix -c .golangci.yml ./...
-	go fmt ./... 
+	go fmt ./...
+
+# ────────────────────────────────────────────────────────────────────────────
+# Protobuf
+# ────────────────────────────────────────────────────────────────────────────
+
+PROTO_FILES := proto/flow.proto
+
+## Generates Go code from protobuf definitions
+proto:
+	protoc --go_out=. --go_opt=paths=source_relative $(PROTO_FILES) 

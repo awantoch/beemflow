@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package beemflow;
+
+option go_package = "github.com/awantoch/beemflow/proto;pb";
+
+import "google/protobuf/struct.proto";
+
+// Flow represents a top-level workflow definition.
+message Flow {
+  string name = 1;
+  string version = 2;
+  google.protobuf.Struct on = 3; // event triggers or schedules (loosely typed)
+  map<string, google.protobuf.Value> vars = 4;
+  repeated Step steps = 5;
+  repeated Step catch = 6;
+}
+
+// Step represents a single unit of work within a Flow.
+message Step {
+  string id = 1;
+  string use = 2;
+  map<string, google.protobuf.Value> with = 3;
+  repeated string depends_on = 4;
+  bool parallel = 5;
+  string if_expr = 6 [json_name = "if"]; // reserved word "if" in proto
+  string foreach = 7;
+  string as = 8;
+  repeated Step do = 9;
+  repeated Step steps = 10;
+  RetrySpec retry = 11;
+  AwaitEventSpec await_event = 12;
+  WaitSpec wait = 13;
+}
+
+// RetrySpec controls retry behaviour for a step.
+message RetrySpec {
+  int32 attempts = 1;
+  int32 delay_sec = 2;
+}
+
+// AwaitEventSpec describes an event the step should wait for.
+message AwaitEventSpec {
+  string source = 1;
+  map<string, google.protobuf.Value> match = 2;
+  string timeout = 3;
+}
+
+// WaitSpec describes a static wait/pause.
+message WaitSpec {
+  int32 seconds = 1;
+  string until = 2;
+}
+
+// Runtime execution messages (optional future use)
+
+message Run {
+  string id = 1;
+  string flow_name = 2;
+  google.protobuf.Struct event = 3;
+  map<string, google.protobuf.Value> vars = 4;
+  RunStatus status = 5;
+  int64 started_at = 6; // unix nano
+  int64 ended_at = 7;   // optional, unix nano
+  repeated StepRun steps = 8;
+}
+
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_PENDING = 1;
+  RUN_RUNNING = 2;
+  RUN_SUCCEEDED = 3;
+  RUN_FAILED = 4;
+  RUN_WAITING = 5;
+  RUN_SKIPPED = 6;
+}
+
+message StepRun {
+  string id = 1;
+  string run_id = 2;
+  string step_name = 3;
+  StepStatus status = 4;
+  int64 started_at = 5;
+  int64 ended_at = 6;
+  string error = 7;
+  map<string, google.protobuf.Value> outputs = 8;
+}
+
+enum StepStatus {
+  STEP_STATUS_UNSPECIFIED = 0;
+  STEP_PENDING = 1;
+  STEP_RUNNING = 2;
+  STEP_SUCCEEDED = 3;
+  STEP_FAILED = 4;
+  STEP_WAITING = 5;
+}
