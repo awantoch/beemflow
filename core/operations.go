@@ -185,7 +185,7 @@ func validateFlowCLIHandler(cmd *cobra.Command, args []string) error {
 	var err error
 	if looksLikeFilePath(nameOrFile) {
 		// Parse and validate file directly
-		flow, parseErr := loader.Load(nameOrFile, map[string]any{})
+		flow, parseErr := loader.Load(nameOrFile, constants.EmptyStringMap)
 		if parseErr != nil {
 			utils.Error("YAML parse error: %v\n", parseErr)
 			return fmt.Errorf("YAML parse error: %w", parseErr)
@@ -231,7 +231,7 @@ func graphFlowCLIHandler(cmd *cobra.Command, args []string) error {
 
 	if looksLikeFilePath(nameOrFile) {
 		// Parse file directly and generate diagram
-		flow, parseErr := loader.Load(nameOrFile, map[string]any{})
+		flow, parseErr := loader.Load(nameOrFile, constants.EmptyStringMap)
 		if parseErr != nil {
 			utils.Error("YAML parse error: %v\n", parseErr)
 			return fmt.Errorf("YAML parse error: %w", parseErr)
@@ -273,7 +273,7 @@ func lintFlowCLIHandler(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("exactly one file argument required")
 	}
 	file := args[0]
-	flow, err := loader.Load(file, map[string]any{})
+	flow, err := loader.Load(file, constants.EmptyStringMap)
 	if err != nil {
 		utils.Error("YAML parse error: %v\n", err)
 		return fmt.Errorf("YAML parse error: %w", err)
@@ -289,7 +289,7 @@ func lintFlowCLIHandler(cmd *cobra.Command, args []string) error {
 
 func lintFlowHandler(ctx context.Context, args any) (any, error) {
 	a := args.(*FlowFileArgs)
-	flow, err := loader.Load(a.File, map[string]any{})
+	flow, err := loader.Load(a.File, constants.EmptyStringMap)
 	if err != nil {
 		return nil, fmt.Errorf("YAML parse error: %w", err)
 	}

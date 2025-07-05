@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	
+	"github.com/awantoch/beemflow/constants"
 )
 
 func TestYAMLToJsonnetRoundTrip(t *testing.T) {
@@ -48,5 +50,19 @@ func TestJsonnetToYAMLRoundTrip(t *testing.T) {
 
 	if len(bytes.TrimSpace([]byte(jsonnetBack))) == 0 {
 		t.Fatal("round-tripped Jsonnet is empty")
+	}
+}
+
+func TestInvalidInputs(t *testing.T) {
+	// Test invalid YAML
+	_, err := YAMLToJsonnet([]byte("invalid: yaml: content"))
+	if err == nil {
+		t.Error("expected error for invalid YAML")
+	}
+
+	// Test invalid Jsonnet
+	_, err = JsonnetToYAML([]byte("{ invalid jsonnet"))
+	if err == nil {
+		t.Error("expected error for invalid Jsonnet")
 	}
 }

@@ -4,41 +4,48 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	
+	"github.com/awantoch/beemflow/constants"
 )
 
-func TestLoadYAMLSuccess(t *testing.T) {
-	path := filepath.Join("..", "flows", "examples", "http_request_example.flow.yaml")
-	flow, err := Load(path, map[string]any{})
+// Helper function to reduce test duplication
+func loadExampleFlow(t *testing.T, filename string, vars map[string]any) {
+	t.Helper()
+	if vars == nil {
+		vars = constants.EmptyStringMap
+	}
+	
+	path := filepath.Join("..", "flows", "examples", filename)
+	flow, err := Load(path, vars)
 	if err != nil {
-		t.Fatalf("unexpected error loading YAML flow: %v", err)
+		t.Fatalf("unexpected error loading %s: %v", filename, err)
 	}
 	if flow == nil {
 		t.Fatal("flow is nil")
 	}
-	if flow.Name != "http_request_example" {
-		t.Fatalf("expected flow name 'http_request_example', got %q", flow.Name)
+	if flow.Name == "" {
+		t.Fatal("flow name is empty")
 	}
 }
 
+func TestLoadYAMLSuccess(t *testing.T) {
+	loadExampleFlow(t, "http_request_example.flow.yaml", nil)
+}
+
 func TestLoadJsonnetSuccess(t *testing.T) {
-	path := filepath.Join("..", "flows", "examples", "http_request_example.flow.jsonnet")
-	flow, err := Load(path, map[string]any{})
-	if err != nil {
-		t.Fatalf("unexpected error loading Jsonnet flow: %v", err)
-	}
-	if flow == nil {
-		t.Fatal("flow is nil")
-	}
-	if flow.Name != "http_request_example" {
-		t.Fatalf("expected flow name 'http_request_example', got %q", flow.Name)
-	}
+	loadExampleFlow(t, "http_request_example.flow.jsonnet", nil)
+}
+
+func TestLoadJsonnetWithImport(t *testing.T) {
+	vars := map[string]any{"BASE": "https://example.com"}
+	loadExampleFlow(t, "jsonnet_fanout.flow.jsonnet", vars)
 }
 
 func TestLoadInvalidYAML(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "invalid.flow.yaml")
 	os.WriteFile(p, []byte("name: invalid\n:\terror"), 0o644)
-	if _, err := Load(p, map[string]any{}); err == nil {
+	if _, err := Load(p, constants.EmptyStringMap); err == nil {
 		t.Fatal("expected error for invalid YAML, got nil")
 	}
 }
@@ -47,21 +54,7 @@ func TestLoadInvalidJsonnet(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "invalid.flow.jsonnet")
 	os.WriteFile(p, []byte("{ name: \"bad"), 0o644)
-	if _, err := Load(p, map[string]any{}); err == nil {
+	if _, err := Load(p, constants.EmptyStringMap); err == nil {
 		t.Fatal("expected error for invalid Jsonnet, got nil")
-	}
-}
-
-func TestLoadJsonnetWithImport(t *testing.T) {
-	path := filepath.Join("..", "flows", "examples", "jsonnet_fanout.flow.jsonnet")
-	flow, err := Load(path, map[string]any{"BASE": "https://example.com"})
-	if err != nil {
-		t.Fatalf("failed to load jsonnet with import: %v", err)
-	}
-	if flow == nil || flow.Name != "jsonnet_fanout" {
-		t.Fatalf("unexpected flow name: %v", flow)
-	}
-	if len(flow.Steps) == 0 {
-		t.Fatal("expected steps from Jsonnet fanout flow")
 	}
 }

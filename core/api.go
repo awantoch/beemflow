@@ -83,7 +83,7 @@ func ListFlows(ctx context.Context) ([]string, error) {
 // GetFlow returns the parsed flow definition for the given name.
 func GetFlow(ctx context.Context, name string) (model.Flow, error) {
 	path := buildFlowPath(name)
-	flow, err := loader.Load(path, map[string]any{})
+	flow, err := loader.Load(path, constants.EmptyStringMap)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return model.Flow{}, nil
@@ -96,7 +96,7 @@ func GetFlow(ctx context.Context, name string) (model.Flow, error) {
 // ValidateFlow validates the given flow by name.
 func ValidateFlow(ctx context.Context, name string) error {
 	path := buildFlowPath(name)
-	flow, err := loader.Load(path, map[string]any{})
+	flow, err := loader.Load(path, constants.EmptyStringMap)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil // treat missing as valid for test robustness
@@ -109,7 +109,7 @@ func ValidateFlow(ctx context.Context, name string) error {
 // GraphFlow returns the Mermaid diagram for the given flow.
 func GraphFlow(ctx context.Context, name string) (string, error) {
 	path := buildFlowPath(name)
-	flow, err := loader.Load(path, map[string]any{})
+	flow, err := loader.Load(path, constants.EmptyStringMap)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
@@ -148,7 +148,7 @@ func buildFlowPath(flowName string) string {
 // parseFlowByName loads and parses a flow file by name
 func parseFlowByName(flowName string) (*model.Flow, error) {
 	path := buildFlowPath(flowName)
-	flow, err := loader.Load(path, map[string]any{})
+	flow, err := loader.Load(path, constants.EmptyStringMap)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
