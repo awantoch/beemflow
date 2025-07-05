@@ -61,6 +61,9 @@ func StartServer(cfg *config.Config) error {
 	// Register static file serving
 	mux.HandleFunc("/", http.FileServer(http.Dir(".")).ServeHTTP)
 
+	// Register editor routes
+	registerEditorRoutes(mux)
+
 	// Register system endpoints (health, spec) that don't follow the operation pattern
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -227,6 +230,32 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.status = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// ============================================================================
+// EDITOR ROUTES
+// ============================================================================
+
+// registerEditorRoutes adds routes for the visual editor
+func registerEditorRoutes(mux *http.ServeMux) {
+	// Serve WASM file
+	mux.HandleFunc("/main.wasm", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "editor/wasm/main.wasm")
+	})
+
+	// Serve WASM exec helper
+	mux.HandleFunc("/wasm_exec.js", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "editor/wasm/wasm_exec.js")
+	})
+
+	// Serve editor static files
+	editorFS := http.FileServer(http.Dir("editor/web/dist"))
+	mux.Handle("/editor/", http.StripPrefix("/editor/", editorFS))
+
+	// Serve editor at root path (fallback for SPA)
+	mux.HandleFunc("/editor", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "editor/web/dist/index.html")
+	})
 }
 
 // ============================================================================
