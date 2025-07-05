@@ -605,6 +605,23 @@ func init() {
 		},
 	})
 
+	// Root Endpoint
+	RegisterOperation(&OperationDefinition{
+		ID:          "root",
+		Name:        "Root Endpoint",
+		Description: "BeemFlow root endpoint greeting",
+		Group:       "system",
+		HTTPMethod:  http.MethodGet,
+		HTTPPath:    "/",
+		CLIUse:      "root",
+		CLIShort:    "Show BeemFlow greeting",
+		MCPName:     "beemflow_root",
+		ArgsType:    reflect.TypeOf(EmptyArgs{}),
+		Handler: func(ctx context.Context, args any) (any, error) {
+			return "Hi, I'm BeemBeem! :D", nil
+		},
+	})
+
 	// === MANAGEMENT APIS (Simplified - no custom CLI handlers needed) ===
 
 	// NOTE: Some management APIs have been simplified to avoid CLI duplication.
