@@ -2,6 +2,8 @@
 
 > **GitHub Actions for every business process — text-first, AI-native, open-source.**
 
+🆕 **Now with first-class Jsonnet support!**  Write your flows in either classic YAML **or** powerful [Jsonnet](https://jsonnet.org/) (`.flow.jsonnet`).  The BeemFlow loader automatically understands both formats, and the CLI offers `flow convert` and `flow fmt` commands for seamless round-tripping and formatting.
+
 BeemFlow is a **workflow protocol, runtime, and global tool registry** for the age of LLM co-workers.
 
 Define workflows with YAML, JSON, or native code → execute anywhere through CLI, HTTP, or Model Context Protocol (MCP).
@@ -1315,3 +1317,68 @@ Commercial cloud & SLA on the way.
 ---
 
 > Docs at <https://docs.beemflow.com> • X: [@BeemFlow](https://X.com/beemflow)
+
+## ✨ Jsonnet Quick Start
+
+Besides traditional **YAML**, BeemFlow also understands [Jsonnet](https://jsonnet.org/) – a JSON-superset that adds variables, functions, imports, and conditional logic while remaining fully declarative.
+
+### Creating a `.flow.jsonnet`
+
+```jsonnet
+local helpers = import "helpers.libsonnet";
+
+{
+  // Standard top-level fields are identical
+  name: "jsonnet_fanout",
+  on: "cli.manual",
+
+  // You can compute vars dynamically
+  vars: {
+    items: ["Moon", "Ocean", "Mountain"],
+    base_url: std.extVar("BASE") + "/get",  // access CLI-provided ext vars
+  },
+
+  // Functions, list comprehensions, and imports – all native Jsonnet
+  steps: [
+    {
+      id: "fanout",
+      parallel: true,
+      steps: [
+        helpers.mkEcho("echo_" + item, "Hello " + item)
+        for item in $.vars.items
+      ],
+    },
+  ],
+}
+```
+
+`helpers.libsonnet` lives next to the flow and provides reusable snippets:
+
+```jsonnet
+local mkEcho(id, text) = {
+  id: id,
+  use: "core.echo",
+  with: { text: text },
+};
+
+// Export anything you want
+{ mkEcho: mkEcho }
+```
+
+Run it exactly the same way:
+
+```bash
+flow run jsonnet_fanout.flow.jsonnet --ext BASE=https://httpbin.org
+```
+
+### Converting & Formatting
+
+• `flow convert my.flow.yaml` → `my.flow.jsonnet`  
+• `flow convert foo.jsonnet -o foo.yaml`            
+• `flow fmt my.flow.jsonnet` (or `.yaml`) – auto-format in-place
+
+### Validation & Linting
+
+Jsonnet flows are evaluated to plain JSON, then validated against the same `beemflow.schema.json`. All CLI commands (`flow lint`, `flow graph`, `flow validate`) work transparently with either format.
+
+---

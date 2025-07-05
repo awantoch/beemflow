@@ -264,16 +264,24 @@ steps:
 }
 
 func TestRunFlowExecution_InvalidFile(t *testing.T) {
+	// Create a temporary file with invalid YAML content
+	tmpDir := t.TempDir()
+	invalidPath := filepath.Join(tmpDir, "invalid.flow.yaml")
+	invalidContent := "not: [valid: yaml"
+	if err := os.WriteFile(invalidPath, []byte(invalidContent), 0644); err != nil {
+		t.Fatalf("Failed to write invalid YAML file: %v", err)
+	}
+
 	stderr, code := captureStderrExit(func() {
-		runFlowExecution(&cobra.Command{}, []string{"/nonexistent/file.yaml"}, "", "")
+		runFlowExecution(&cobra.Command{}, []string{invalidPath}, "", "")
 	})
 
 	if code != 1 {
 		t.Errorf("Expected exit code 1, got %d", code)
 	}
 
-	if !strings.Contains(stderr, "YAML parse error") {
-		t.Errorf("Expected YAML parse error, got: %s", stderr)
+	if !strings.Contains(stderr, "Failed to load flow") {
+		t.Errorf("Expected flow load error, got: %s", stderr)
 	}
 }
 

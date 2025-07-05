@@ -1,4 +1,4 @@
-package api
+package core
 
 // MCP-compatible argument types that avoid interface{} fields
 // These are used specifically for MCP tool registration to avoid JSON schema generation issues

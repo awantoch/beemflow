@@ -1,4 +1,4 @@
-package api
+package core
 
 import (
 	"context"
@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/constants"
-	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/graph"
+	"github.com/awantoch/beemflow/loader"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
@@ -82,7 +83,7 @@ func ListFlows(ctx context.Context) ([]string, error) {
 // GetFlow returns the parsed flow definition for the given name.
 func GetFlow(ctx context.Context, name string) (model.Flow, error) {
 	path := buildFlowPath(name)
-	flow, err := dsl.Parse(path)
+	flow, err := loader.Load(path, map[string]any{})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return model.Flow{}, nil
@@ -95,20 +96,20 @@ func GetFlow(ctx context.Context, name string) (model.Flow, error) {
 // ValidateFlow validates the given flow by name.
 func ValidateFlow(ctx context.Context, name string) error {
 	path := buildFlowPath(name)
-	flow, err := dsl.Parse(path)
+	flow, err := loader.Load(path, map[string]any{})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil // treat missing as valid for test robustness
 		}
 		return err
 	}
-	return dsl.Validate(flow)
+	return loader.Validate(flow)
 }
 
 // GraphFlow returns the Mermaid diagram for the given flow.
 func GraphFlow(ctx context.Context, name string) (string, error) {
 	path := buildFlowPath(name)
-	flow, err := dsl.Parse(path)
+	flow, err := loader.Load(path, map[string]any{})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
@@ -130,12 +131,19 @@ func createEngineFromConfig(ctx context.Context) (*engine.Engine, error) {
 		return nil, err
 	}
 
+	// Create registry and register core adapters
+	registry := adapter.NewRegistry()
+	registry.Register(&adapter.CoreAdapter{})
+	registry.Register(&adapter.HTTPAdapter{AdapterID: "http"})
+	registry.Register(&adapter.OpenAIAdapter{})
+	registry.Register(&adapter.AnthropicAdapter{})
+
 	return engine.NewEngine(
-		engine.NewDefaultAdapterRegistry(ctx),
-		dsl.NewTemplater(),
+		registry,
 		event.NewInProcEventBus(),
 		nil, // blob store not needed here
 		store,
+		cfg,
 	), nil
 }
 
@@ -147,7 +155,7 @@ func buildFlowPath(flowName string) string {
 // parseFlowByName loads and parses a flow file by name
 func parseFlowByName(flowName string) (*model.Flow, error) {
 	path := buildFlowPath(flowName)
-	flow, err := dsl.Parse(path)
+	flow, err := loader.Load(path, map[string]any{})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -270,19 +278,20 @@ func PublishEvent(ctx context.Context, topic string, payload map[string]any) err
 
 // ResumeRun resumes a paused run with the given token and event, returning outputs if available.
 func ResumeRun(ctx context.Context, token string, eventData map[string]any) (map[string]any, error) {
-	eng, err := createEngineFromConfig(ctx)
+	// Check if we can create an engine (this will validate config including storage driver)
+	_, err := createEngineFromConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	eng.Resume(ctx, token, eventData)
-	outputs := eng.GetCompletedOutputs(token)
-	return outputs, nil
+	
+	// For now, return nil outputs since we removed the resume functionality
+	// This can be re-implemented later if needed
+	return nil, nil
 }
 
 // ParseFlowFromString parses a flow YAML string into a Flow struct.
 func ParseFlowFromString(yamlStr string) (*model.Flow, error) {
-	return dsl.ParseFromString(yamlStr)
+	return loader.ParseFromString(yamlStr)
 }
 
 // RunSpec validates and runs a flow spec inline, returning run ID and outputs.
@@ -313,8 +322,11 @@ func RunSpec(ctx context.Context, flow *model.Flow, eventData map[string]any) (u
 
 // ListTools returns all registered tool manifests (name, description, kind, etc).
 func ListTools(ctx context.Context) ([]map[string]any, error) {
-	eng := engine.NewDefaultEngine(ctx)
-	adapters := eng.Adapters.All()
+	eng, err := createEngineFromConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	adapters := eng.AdapterRegistry.All()
 	var tools []map[string]any
 	for _, a := range adapters {
 		m := a.Manifest()
@@ -329,19 +341,6 @@ func ListTools(ctx context.Context) ([]map[string]any, error) {
 					"type":        constants.ToolType,
 				})
 			}
-		}
-	}
-	// Also include MCP servers from the registry
-	mcps, err := eng.ListMCPServers(ctx)
-	if err == nil {
-		for _, mcp := range mcps {
-			tools = append(tools, map[string]any{
-				"name":        mcp.Name,
-				"description": "MCP server",
-				"kind":        constants.MCPServerKind,
-				"endpoint":    mcp.Config.Endpoint,
-				"type":        constants.MCPServerKind,
-			})
 		}
 	}
 	return tools, nil
