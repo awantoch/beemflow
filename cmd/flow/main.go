@@ -74,6 +74,8 @@ func NewRootCmd() *cobra.Command {
 		newServeCmd(),
 		newRunCmd(),
 		newMCPCmd(),
+		newConvertCmd(),
+		newFmtCmd(),
 	)
 
 	// Add auto-generated commands from the unified system
