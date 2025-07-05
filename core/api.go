@@ -135,6 +135,8 @@ func createEngineFromConfig(ctx context.Context) (*engine.Engine, error) {
 	registry := adapter.NewRegistry()
 	registry.Register(&adapter.CoreAdapter{})
 	registry.Register(&adapter.HTTPAdapter{AdapterID: "http"})
+	registry.Register(&adapter.OpenAIAdapter{})
+	registry.Register(&adapter.AnthropicAdapter{})
 
 	return engine.NewEngine(
 		registry,

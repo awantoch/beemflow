@@ -64,6 +64,8 @@ func NewDefaultEngine() *Engine {
 	registry := adapter.NewRegistry()
 	registry.Register(&adapter.CoreAdapter{})
 	registry.Register(&adapter.HTTPAdapter{AdapterID: "http"})
+	registry.Register(&adapter.OpenAIAdapter{})
+	registry.Register(&adapter.AnthropicAdapter{})
 	
 	return &Engine{
 		AdapterRegistry: registry,
@@ -112,13 +114,10 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	// Setup execution context
 	stepCtx := e.setupExecutionContext(ctx, flow, event)
 
-	// Execute the flow steps
+	// Execute the flow steps with parallel support
 	var execErr error
-	for _, step := range flow.Steps {
-		if err := e.executeStep(ctx, &step, stepCtx); err != nil {
-			execErr = err
-			break
-		}
+	if err := e.executeSteps(ctx, flow.Steps, stepCtx); err != nil {
+		execErr = err
 	}
 
 	// Update run with final status
@@ -155,6 +154,63 @@ func (e *Engine) setupExecutionContext(ctx context.Context, flow *model.Flow, ev
 	return NewStepContext(event, flow.Vars, secretsMap)
 }
 
+// executeSteps executes a list of steps, handling parallel execution and dependencies
+func (e *Engine) executeSteps(ctx context.Context, steps []model.Step, stepCtx *StepContext) error {
+	for _, step := range steps {
+		if err := e.executeStepWithDependencies(ctx, &step, stepCtx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// executeStepWithDependencies executes a step, handling parallel execution and dependencies
+func (e *Engine) executeStepWithDependencies(ctx context.Context, step *model.Step, stepCtx *StepContext) error {
+	// Handle parallel steps
+	if step.Parallel && len(step.Steps) > 0 {
+		return e.executeParallelSteps(ctx, step.Steps, stepCtx)
+	}
+	
+	// Handle nested steps (sequential)
+	if len(step.Steps) > 0 {
+		return e.executeSteps(ctx, step.Steps, stepCtx)
+	}
+	
+	// Execute single step
+	return e.executeStep(ctx, step, stepCtx)
+}
+
+// executeParallelSteps executes multiple steps in parallel
+func (e *Engine) executeParallelSteps(ctx context.Context, steps []model.Step, stepCtx *StepContext) error {
+	// Create a context that can be cancelled if any step fails
+	parallelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	
+	// Channel to collect errors
+	errChan := make(chan error, len(steps))
+	
+	// Execute all steps in parallel
+	for i := range steps {
+		go func(step *model.Step) {
+			if err := e.executeStep(parallelCtx, step, stepCtx); err != nil {
+				errChan <- fmt.Errorf("parallel step %s failed: %w", step.ID, err)
+			} else {
+				errChan <- nil
+			}
+		}(&steps[i])
+	}
+	
+	// Wait for all steps to complete
+	for i := 0; i < len(steps); i++ {
+		if err := <-errChan; err != nil {
+			cancel() // Cancel remaining steps
+			return err
+		}
+	}
+	
+	return nil
+}
+
 // executeStep runs a single step and stores output.
 func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *StepContext) error {
 	if step.Use == "" {
@@ -176,8 +232,8 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 		inputs[k] = e.processTemplates(v, stepCtx)
 	}
 	
-	// For core adapter, add the __use field to specify the specific tool
-	if adapterID == "core" && toolName != "" {
+	// Add the __use field to specify the specific tool
+	if toolName != "" {
 		inputs["__use"] = toolName
 	}
 
@@ -197,6 +253,8 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 // Examples:
 //   "core.echo" -> ("core", "core.echo")
 //   "http.fetch" -> ("http", "http.fetch") 
+//   "openai.chat_completion" -> ("openai", "openai.chat_completion")
+//   "anthropic.chat_completion" -> ("anthropic", "anthropic.chat_completion")
 //   "mcp://server/tool" -> ("mcp", "mcp://server/tool")
 //   "some-adapter" -> ("some-adapter", "")
 func parseStepUse(stepUse string) (adapterID, toolName string) {
@@ -205,14 +263,10 @@ func parseStepUse(stepUse string) (adapterID, toolName string) {
 		return "mcp", stepUse
 	}
 	
-	// Handle core tools
-	if strings.HasPrefix(stepUse, "core.") {
-		return "core", stepUse
-	}
-	
-	// Handle HTTP tools  
-	if strings.HasPrefix(stepUse, "http.") {
-		return "http", stepUse
+	// Handle adapter.tool format
+	if dotIndex := strings.Index(stepUse, "."); dotIndex > 0 {
+		adapterID = stepUse[:dotIndex]
+		return adapterID, stepUse
 	}
 	
 	// Default: assume the whole string is the adapter ID
