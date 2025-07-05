@@ -605,7 +605,7 @@ func init() {
 		},
 	})
 
-	// Root Endpoint
+	// Root Endpoint (HTTP-only greeting)
 	RegisterOperation(&OperationDefinition{
 		ID:          "root",
 		Name:        "Root Endpoint",
@@ -613,10 +613,9 @@ func init() {
 		Group:       "system",
 		HTTPMethod:  http.MethodGet,
 		HTTPPath:    "/",
-		CLIUse:      "root",
-		CLIShort:    "Show BeemFlow greeting",
-		MCPName:     "beemflow_root",
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
+		SkipCLI:     true, // Not needed for CLI
+		SkipMCP:     true, // Not needed for MCP
 		Handler: func(ctx context.Context, args any) (any, error) {
 			return "Hi, I'm BeemBeem! :D", nil
 		},

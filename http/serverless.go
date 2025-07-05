@@ -73,10 +73,21 @@ func createServerlessMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	
 	// Generate handlers based on environment filtering
-	endpoints := os.Getenv("BEEMFLOW_ENDPOINTS")
+	endpoints := strings.TrimSpace(os.Getenv("BEEMFLOW_ENDPOINTS"))
 	if endpoints != "" {
-		filteredOps := api.GetOperationsMapByGroups(strings.Split(endpoints, ","))
-		api.GenerateHTTPHandlersForOperations(mux, filteredOps)
+		// Split by comma and trim spaces
+		groups := make([]string, 0)
+		for _, group := range strings.Split(endpoints, ",") {
+			if trimmed := strings.TrimSpace(group); trimmed != "" {
+				groups = append(groups, trimmed)
+			}
+		}
+		if len(groups) > 0 {
+			filteredOps := api.GetOperationsMapByGroups(groups)
+			api.GenerateHTTPHandlersForOperations(mux, filteredOps)
+		} else {
+			api.GenerateHTTPHandlers(mux)
+		}
 	} else {
 		api.GenerateHTTPHandlers(mux)
 	}

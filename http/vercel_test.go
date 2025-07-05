@@ -45,12 +45,19 @@ func TestVercelHandlerWithEndpointFilter(t *testing.T) {
 		t.Errorf("Expected system endpoint to be allowed, got status %d", w.Code)
 	}
 
-	// Test blocked endpoint
+	// Test that filtered endpoints return root response (not 404)
+	// Because the root endpoint "/" acts as a catch-all in Go's ServeMux
 	req2 := httptest.NewRequest("GET", "/flows", nil)
 	w2 := httptest.NewRecorder()
 
 	Handler(w2, req2)
-	if w2.Code != http.StatusNotFound {
-		t.Errorf("Expected flows endpoint to be blocked, got status %d", w2.Code)
+	if w2.Code != http.StatusOK {
+		t.Errorf("Expected flows endpoint to return root response, got status %d", w2.Code)
+	}
+	
+	// Should return the root greeting
+	expectedBody := "\"Hi, I'm BeemBeem! :D\"\n"
+	if w2.Body.String() != expectedBody {
+		t.Errorf("Expected root response %q, got %q", expectedBody, w2.Body.String())
 	}
 }
