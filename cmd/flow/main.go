@@ -17,7 +17,6 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/constants"
 	api "github.com/awantoch/beemflow/core"
-	"github.com/awantoch/beemflow/dsl"
 	beemhttp "github.com/awantoch/beemflow/http"
 	mcpserver "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"

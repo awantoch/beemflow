@@ -1,4 +1,4 @@
-package api
+package core
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/docs"
-	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/graph"
 	"github.com/awantoch/beemflow/loader"
 	"github.com/awantoch/beemflow/utils"
@@ -190,7 +189,7 @@ func validateFlowCLIHandler(cmd *cobra.Command, args []string) error {
 			utils.Error("Flow parse error: %v\n", parseErr)
 			return fmt.Errorf("flow parse error: %w", parseErr)
 		}
-		err = dsl.Validate(flow)
+		err = loader.Validate(flow)
 		if err != nil {
 			utils.Error("Schema validation error: %v\n", err)
 			return fmt.Errorf("schema validation error: %w", err)
@@ -278,7 +277,7 @@ func lintFlowCLIHandler(cmd *cobra.Command, args []string) error {
 		utils.Error("Flow parse error: %v\n", err)
 		return fmt.Errorf("flow parse error: %w", err)
 	}
-	err = dsl.Validate(flow)
+	err = loader.Validate(flow)
 	if err != nil {
 		utils.Error("Schema validation error: %v\n", err)
 		return fmt.Errorf("schema validation error: %w", err)
@@ -293,7 +292,7 @@ func lintFlowHandler(ctx context.Context, args any) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("flow parse error: %w", err)
 	}
-	err = dsl.Validate(flow)
+	err = loader.Validate(flow)
 	if err != nil {
 		return nil, fmt.Errorf("schema validation error: %w", err)
 	}
