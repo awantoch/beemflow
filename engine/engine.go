@@ -331,24 +331,36 @@ func (e *Engine) collectSecrets(event map[string]any) SecretsData {
 }
 
 // collectSecretsWithProvider dynamically resolves secrets using the configured SecretsProvider
+// Precedence order (highest to lowest):
+// 1. Event data secrets (explicit runtime override)
+// 2. Environment variables (always available as fallback)
+// 3. Configured secret store (AWS, Vault, etc.)
 func (e *Engine) collectSecretsWithProvider(ctx context.Context, event map[string]any, secretKeys []string) SecretsData {
 	secretsMap := make(SecretsData)
 
-	// Start with event-based secrets (lowest priority)
-	eventSecrets := e.collectSecrets(event)
-	for k, v := range eventSecrets {
-		secretsMap[k] = v
-	}
-
-	// If SecretsProvider is configured, let it override event secrets
-	// This ensures .env files and other providers take precedence
+	// Start with configured secret store (lowest priority)
 	if e.SecretsProvider != nil {
 		for _, key := range secretKeys {
-			// Always try the provider - it takes precedence over event data
 			if value, err := e.SecretsProvider.GetSecret(ctx, key); err == nil {
 				secretsMap[key] = value
 			}
 		}
+	}
+
+	// Always try environment variables as fallback (higher priority than stores)
+	// This ensures .env files and environment variables work even with AWS/Vault configured
+	envProvider := secrets.NewEnvSecretsProvider("")
+	for _, key := range secretKeys {
+		if value, err := envProvider.GetSecret(ctx, key); err == nil {
+			secretsMap[key] = value
+		}
+	}
+
+	// Finally, event-based secrets take highest priority (explicit runtime override)
+	// This includes both direct event.secrets and $env: prefixed values
+	eventSecrets := e.collectSecrets(event)
+	for k, v := range eventSecrets {
+		secretsMap[k] = v
 	}
 
 	return secretsMap
