@@ -1,8 +1,10 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	api "github.com/awantoch/beemflow/core"
@@ -44,7 +46,7 @@ func TestServerlessOperationsFiltering(t *testing.T) {
 		{
 			name:            "system only",
 			endpointsEnvVar: "system",
-			expectedAllowed: []string{"/healthz", "/spec"},
+			expectedAllowed: []string{"/healthz", "/spec", "/registry", "/"},
 			expectedBlocked: []string{"/flows", "/runs", "/tools", "/validate"},
 		},
 	}
@@ -54,7 +56,13 @@ func TestServerlessOperationsFiltering(t *testing.T) {
 			// Set environment variable for this test
 			if tt.endpointsEnvVar != "" {
 				t.Setenv("BEEMFLOW_ENDPOINTS", tt.endpointsEnvVar)
+			} else {
+				// Clear the environment variable
+				os.Unsetenv("BEEMFLOW_ENDPOINTS")
 			}
+
+			// Reset the serverless mux to pick up the new environment variable
+			ResetServerlessMux()
 
 			// Test allowed endpoints
 			for _, endpoint := range tt.expectedAllowed {
@@ -126,4 +134,53 @@ func TestOperationsAbstraction(t *testing.T) {
 	t.Logf("✅ Future-proof: New operations with group='flows' would automatically be included")
 	t.Logf("✅ No hardcoded paths: Filtering happens at the operations level")
 	t.Logf("✅ Consistent: Same grouping logic works for CLI, HTTP, and MCP")
+}
+
+// TestRootEndpoint tests that the root endpoint returns the BeemBeem greeting
+func TestRootEndpoint(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+
+	ServerlessHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	
+	// The response should be JSON-encoded string with newline
+	expected := "\"Hi, I'm BeemBeem! :D\"\n"
+	if body != expected {
+		t.Errorf("Expected body %q, got %q", expected, body)
+	}
+
+	// Check that content type is JSON
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "application/json" {
+		t.Errorf("Expected Content-Type application/json, got %s", contentType)
+	}
+}
+
+// TestRootOperationHandler tests the root operation handler directly
+func TestRootOperationHandler(t *testing.T) {
+	// Get the root operation
+	allOps := api.GetAllOperations()
+	rootOp, exists := allOps["root"]
+	if !exists {
+		t.Fatal("Root operation not found")
+	}
+	
+	// Test the handler directly
+	result, err := rootOp.Handler(context.Background(), &api.EmptyArgs{})
+	if err != nil {
+		t.Fatalf("Root handler returned error: %v", err)
+	}
+	
+	expected := "Hi, I'm BeemBeem! :D"
+	if result != expected {
+		t.Errorf("Expected root handler to return %q, got %q", expected, result)
+	}
+	
+	t.Logf("✅ Root handler correctly returns: %q", result)
 }

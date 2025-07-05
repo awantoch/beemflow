@@ -13,6 +13,8 @@ import (
 var (
 	initServerless sync.Once
 	initErr        error
+	serverlessMux  *http.ServeMux
+	muxMutex       sync.RWMutex
 )
 
 // ServerlessHandler is the minimal Vercel function for BeemFlow
@@ -42,6 +44,10 @@ func ServerlessHandler(w http.ResponseWriter, r *http.Request) {
 			api.SetFlowsDir(cfg.FlowsDir)
 		}
 		_, initErr = api.InitializeDependencies(cfg)
+		
+		if initErr == nil {
+			serverlessMux = createServerlessMux()
+		}
 	})
 
 	if initErr != nil {
@@ -49,9 +55,26 @@ func ServerlessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate handlers
+	// Use the cached mux
+	muxMutex.RLock()
+	mux := serverlessMux
+	muxMutex.RUnlock()
+
+	if mux == nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	mux.ServeHTTP(w, r)
+}
+
+// createServerlessMux creates the HTTP multiplexer with all routes
+func createServerlessMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	if endpoints := os.Getenv("BEEMFLOW_ENDPOINTS"); endpoints != "" {
+	
+	// Generate handlers based on environment filtering
+	endpoints := os.Getenv("BEEMFLOW_ENDPOINTS")
+	if endpoints != "" {
 		filteredOps := api.GetOperationsMapByGroups(strings.Split(endpoints, ","))
 		api.GenerateHTTPHandlersForOperations(mux, filteredOps)
 	} else {
@@ -64,5 +87,16 @@ func ServerlessHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"healthy"}`))
 	})
 
-	mux.ServeHTTP(w, r)
+	return mux
+}
+
+// ResetServerlessMux resets the serverless mux (for testing)
+func ResetServerlessMux() {
+	muxMutex.Lock()
+	defer muxMutex.Unlock()
+	
+	// Reset the Once so initialization can happen again
+	initServerless = sync.Once{}
+	initErr = nil
+	serverlessMux = nil
 }
