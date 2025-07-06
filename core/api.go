@@ -1,4 +1,4 @@
-package api
+package core
 
 import (
 	"context"
@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/constants"
-	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/graph"
+	"github.com/awantoch/beemflow/loader"
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
@@ -82,7 +83,7 @@ func ListFlows(ctx context.Context) ([]string, error) {
 // GetFlow returns the parsed flow definition for the given name.
 func GetFlow(ctx context.Context, name string) (model.Flow, error) {
 	path := buildFlowPath(name)
-	flow, err := dsl.Parse(path)
+	flow, err := loader.Load(path, map[string]any{})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return model.Flow{}, nil
@@ -95,20 +96,20 @@ func GetFlow(ctx context.Context, name string) (model.Flow, error) {
 // ValidateFlow validates the given flow by name.
 func ValidateFlow(ctx context.Context, name string) error {
 	path := buildFlowPath(name)
-	flow, err := dsl.Parse(path)
+	flow, err := loader.Load(path, map[string]any{})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil // treat missing as valid for test robustness
 		}
 		return err
 	}
-	return dsl.Validate(flow)
+	return loader.Validate(flow)
 }
 
 // GraphFlow returns the Mermaid diagram for the given flow.
 func GraphFlow(ctx context.Context, name string) (string, error) {
 	path := buildFlowPath(name)
-	flow, err := dsl.Parse(path)
+	flow, err := loader.Load(path, map[string]any{})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
@@ -130,12 +131,20 @@ func createEngineFromConfig(ctx context.Context) (*engine.Engine, error) {
 		return nil, err
 	}
 
+	// Create registry and register core adapters
+	registry := adapter.NewRegistry()
+	registry.Register(&adapter.CoreAdapter{})
+	registry.Register(&adapter.HTTPAdapter{AdapterID: "http"})
+	
+	// Load and register tools from default registry
+	loadDefaultRegistryTools(registry)
+
 	return engine.NewEngine(
-		engine.NewDefaultAdapterRegistry(ctx),
-		dsl.NewTemplater(),
+		registry,
 		event.NewInProcEventBus(),
 		nil, // blob store not needed here
 		store,
+		cfg,
 	), nil
 }
 
@@ -147,7 +156,7 @@ func buildFlowPath(flowName string) string {
 // parseFlowByName loads and parses a flow file by name
 func parseFlowByName(flowName string) (*model.Flow, error) {
 	path := buildFlowPath(flowName)
-	flow, err := dsl.Parse(path)
+	flow, err := loader.Load(path, map[string]any{})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -270,19 +279,20 @@ func PublishEvent(ctx context.Context, topic string, payload map[string]any) err
 
 // ResumeRun resumes a paused run with the given token and event, returning outputs if available.
 func ResumeRun(ctx context.Context, token string, eventData map[string]any) (map[string]any, error) {
-	eng, err := createEngineFromConfig(ctx)
+	// Check if we can create an engine (this will validate config including storage driver)
+	_, err := createEngineFromConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	eng.Resume(ctx, token, eventData)
-	outputs := eng.GetCompletedOutputs(token)
-	return outputs, nil
+	
+	// For now, return nil outputs since we removed the resume functionality
+	// This can be re-implemented later if needed
+	return nil, nil
 }
 
 // ParseFlowFromString parses a flow YAML string into a Flow struct.
 func ParseFlowFromString(yamlStr string) (*model.Flow, error) {
-	return dsl.ParseFromString(yamlStr)
+	return loader.ParseFromString(yamlStr)
 }
 
 // RunSpec validates and runs a flow spec inline, returning run ID and outputs.
@@ -313,8 +323,11 @@ func RunSpec(ctx context.Context, flow *model.Flow, eventData map[string]any) (u
 
 // ListTools returns all registered tool manifests (name, description, kind, etc).
 func ListTools(ctx context.Context) ([]map[string]any, error) {
-	eng := engine.NewDefaultEngine(ctx)
-	adapters := eng.Adapters.All()
+	eng, err := createEngineFromConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	adapters := eng.AdapterRegistry.All()
 	var tools []map[string]any
 	for _, a := range adapters {
 		m := a.Manifest()
@@ -329,19 +342,6 @@ func ListTools(ctx context.Context) ([]map[string]any, error) {
 					"type":        constants.ToolType,
 				})
 			}
-		}
-	}
-	// Also include MCP servers from the registry
-	mcps, err := eng.ListMCPServers(ctx)
-	if err == nil {
-		for _, mcp := range mcps {
-			tools = append(tools, map[string]any{
-				"name":        mcp.Name,
-				"description": "MCP server",
-				"kind":        constants.MCPServerKind,
-				"endpoint":    mcp.Config.Endpoint,
-				"type":        constants.MCPServerKind,
-			})
 		}
 	}
 	return tools, nil
@@ -434,23 +434,20 @@ func createRegistryResponse(ctx context.Context, mgr *registry.RegistryManager) 
 
 // GetToolManifest returns a specific tool manifest by name
 func GetToolManifest(ctx context.Context, name string) (*registry.ToolManifest, error) {
-	// Load tool manifests from the local registry index
-	local := registry.NewLocalRegistry("")
-	entries, err := local.ListServers(ctx, registry.ListOptions{})
+	// Create engine to get registered adapters
+	eng, err := createEngineFromConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, entry := range entries {
-		if entry.Name == name {
-			return &registry.ToolManifest{
-				Name:        entry.Name,
-				Description: entry.Description,
-				Kind:        entry.Kind,
-				Parameters:  entry.Parameters,
-				Endpoint:    entry.Endpoint,
-				Headers:     entry.Headers,
-			}, nil
+	adapters := eng.AdapterRegistry.All()
+	for _, a := range adapters {
+		m := a.Manifest()
+		if m != nil && m.Name == name {
+			// Only include if not an MCP server
+			if m.Kind != constants.MCPServerKind {
+				return m, nil
+			}
 		}
 	}
 	return nil, nil
@@ -458,22 +455,56 @@ func GetToolManifest(ctx context.Context, name string) (*registry.ToolManifest, 
 
 // ListToolManifests returns all tool manifests from the local registry
 func ListToolManifests(ctx context.Context) ([]registry.ToolManifest, error) {
-	// Load tool manifests from the local registry index
-	local := registry.NewLocalRegistry("")
-	entries, err := local.ListServers(ctx, registry.ListOptions{})
+	// Create engine to get registered adapters
+	eng, err := createEngineFromConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
+	
+	adapters := eng.AdapterRegistry.All()
 	var manifests []registry.ToolManifest
-	for _, entry := range entries {
-		manifests = append(manifests, registry.ToolManifest{
-			Name:        entry.Name,
-			Description: entry.Description,
-			Kind:        entry.Kind,
-			Parameters:  entry.Parameters,
-			Endpoint:    entry.Endpoint,
-			Headers:     entry.Headers,
-		})
+	for _, a := range adapters {
+		m := a.Manifest()
+		if m != nil {
+			// Only include if not an MCP server
+			if m.Kind != constants.MCPServerKind {
+				manifests = append(manifests, *m)
+			}
+		}
 	}
 	return manifests, nil
+}
+
+// loadDefaultRegistryTools loads tool manifests from the default registry and registers them as HTTP adapters
+func loadDefaultRegistryTools(adapterRegistry *adapter.Registry) {
+	ctx := context.Background()
+	
+	// Get the default registry
+	defaultReg := registry.NewDefaultRegistry()
+	entries, err := defaultReg.ListServers(ctx, registry.ListOptions{})
+	if err != nil {
+		// Log error but don't fail - core functionality should still work
+		return
+	}
+	
+	// Register each tool as an HTTP adapter with manifest
+	for _, entry := range entries {
+		if entry.Type == "tool" {
+			manifest := &registry.ToolManifest{
+				Name:        entry.Name,
+				Description: entry.Description,
+				Kind:        entry.Kind,
+				Parameters:  entry.Parameters,
+				Endpoint:    entry.Endpoint,
+				Headers:     entry.Headers,
+			}
+			
+			httpAdapter := &adapter.HTTPAdapter{
+				AdapterID:    entry.Name,
+				ToolManifest: manifest,
+			}
+			
+			adapterRegistry.Register(httpAdapter)
+		}
+	}
 }

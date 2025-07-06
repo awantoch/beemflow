@@ -1,4 +1,4 @@
-package api
+package core
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/docs"
-	"github.com/awantoch/beemflow/dsl"
 	"github.com/awantoch/beemflow/graph"
+	"github.com/awantoch/beemflow/loader"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -184,12 +184,12 @@ func validateFlowCLIHandler(cmd *cobra.Command, args []string) error {
 	var err error
 	if looksLikeFilePath(nameOrFile) {
 		// Parse and validate file directly
-		flow, parseErr := dsl.Parse(nameOrFile)
+		flow, parseErr := loader.Load(nameOrFile, map[string]any{})
 		if parseErr != nil {
-			utils.Error("YAML parse error: %v\n", parseErr)
-			return fmt.Errorf("YAML parse error: %w", parseErr)
+			utils.Error("Flow parse error: %v\n", parseErr)
+			return fmt.Errorf("flow parse error: %w", parseErr)
 		}
-		err = dsl.Validate(flow)
+		err = loader.Validate(flow)
 		if err != nil {
 			utils.Error("Schema validation error: %v\n", err)
 			return fmt.Errorf("schema validation error: %w", err)
@@ -230,10 +230,10 @@ func graphFlowCLIHandler(cmd *cobra.Command, args []string) error {
 
 	if looksLikeFilePath(nameOrFile) {
 		// Parse file directly and generate diagram
-		flow, parseErr := dsl.Parse(nameOrFile)
+		flow, parseErr := loader.Load(nameOrFile, map[string]any{})
 		if parseErr != nil {
-			utils.Error("YAML parse error: %v\n", parseErr)
-			return fmt.Errorf("YAML parse error: %w", parseErr)
+			utils.Error("Flow parse error: %v\n", parseErr)
+			return fmt.Errorf("flow parse error: %w", parseErr)
 		}
 		diagram, err = graph.ExportMermaid(flow)
 	} else {
@@ -272,12 +272,12 @@ func lintFlowCLIHandler(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("exactly one file argument required")
 	}
 	file := args[0]
-	flow, err := dsl.Parse(file)
+	flow, err := loader.Load(file, map[string]any{})
 	if err != nil {
-		utils.Error("YAML parse error: %v\n", err)
-		return fmt.Errorf("YAML parse error: %w", err)
+		utils.Error("Flow parse error: %v\n", err)
+		return fmt.Errorf("flow parse error: %w", err)
 	}
-	err = dsl.Validate(flow)
+	err = loader.Validate(flow)
 	if err != nil {
 		utils.Error("Schema validation error: %v\n", err)
 		return fmt.Errorf("schema validation error: %w", err)
@@ -288,11 +288,11 @@ func lintFlowCLIHandler(cmd *cobra.Command, args []string) error {
 
 func lintFlowHandler(ctx context.Context, args any) (any, error) {
 	a := args.(*FlowFileArgs)
-	flow, err := dsl.Parse(a.File)
+	flow, err := loader.Load(a.File, map[string]any{})
 	if err != nil {
-		return nil, fmt.Errorf("YAML parse error: %w", err)
+		return nil, fmt.Errorf("flow parse error: %w", err)
 	}
-	err = dsl.Validate(flow)
+	err = loader.Validate(flow)
 	if err != nil {
 		return nil, fmt.Errorf("schema validation error: %w", err)
 	}

@@ -1,12 +1,12 @@
-package api
+package core
 
 import (
 	"context"
 	"io"
 
+	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/blob"
 	"github.com/awantoch/beemflow/config"
-	"github.com/awantoch/beemflow/dsl"
 	beemengine "github.com/awantoch/beemflow/engine"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/utils"
@@ -48,10 +48,15 @@ func InitializeDependencies(cfg *config.Config) (func(), error) {
 		blobStore = nil
 	}
 
-	// Create engine
-	adapters := beemengine.NewDefaultAdapterRegistry(context.Background())
-	templ := dsl.NewTemplater()
-	engine := beemengine.NewEngine(adapters, templ, bus, blobStore, store)
+	// Create engine with new simplified constructor
+	adapters := adapter.NewRegistry()
+	adapters.Register(&adapter.CoreAdapter{})
+	adapters.Register(&adapter.HTTPAdapter{AdapterID: "http"})
+	
+	// Load and register tools from default registry
+	loadDefaultRegistryTools(adapters)
+	
+	engine := beemengine.NewEngine(adapters, bus, blobStore, store, cfg)
 
 	// Return cleanup function
 	cleanup := func() {

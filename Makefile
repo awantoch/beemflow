@@ -88,4 +88,14 @@ tidy:
 
 fix:
 	golangci-lint run --fix -c .golangci.yml ./...
-	go fmt ./... 
+	go fmt ./...
+
+# ────────────────────────────────────────────────────────────────────────────
+# Protobuf
+# ────────────────────────────────────────────────────────────────────────────
+
+# PROTO_FILES := proto/flow.proto
+
+# ## Generates Go code from protobuf definitions
+# proto:
+# 	protoc --go_out=. --go_opt=paths=source_relative $(PROTO_FILES) 

@@ -17,11 +17,11 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/constants"
 	api "github.com/awantoch/beemflow/core"
-	"github.com/awantoch/beemflow/dsl"
 	beemhttp "github.com/awantoch/beemflow/http"
 	mcpserver "github.com/awantoch/beemflow/mcp"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/utils"
+	"github.com/awantoch/beemflow/loader"
 )
 
 var (
@@ -74,6 +74,8 @@ func NewRootCmd() *cobra.Command {
 		newServeCmd(),
 		newRunCmd(),
 		newMCPCmd(),
+		newConvertCmd(),
+		newFmtCmd(),
 	)
 
 	// Add auto-generated commands from the unified system
@@ -187,10 +189,10 @@ func runFlowExecution(cmd *cobra.Command, args []string, eventPath, eventJSON st
 		return
 	}
 
-	// Parse the flow file
-	flow, err := dsl.Parse(args[0])
+	// Load the flow file (supports YAML, JSON, Jsonnet)
+	flow, err := loader.Load(args[0], map[string]any{})
 	if err != nil {
-		utils.Error("YAML parse error: %v", err)
+		utils.Error("Failed to load flow: %v", err)
 		exit(1)
 	}
 
