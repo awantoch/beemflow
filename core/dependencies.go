@@ -52,8 +52,10 @@ func InitializeDependencies(cfg *config.Config) (func(), error) {
 	adapters := adapter.NewRegistry()
 	adapters.Register(&adapter.CoreAdapter{})
 	adapters.Register(&adapter.HTTPAdapter{AdapterID: "http"})
-	adapters.Register(&adapter.OpenAIAdapter{})
-	adapters.Register(&adapter.AnthropicAdapter{})
+	
+	// Load and register tools from default registry
+	loadDefaultRegistryTools(adapters)
+	
 	engine := beemengine.NewEngine(adapters, bus, blobStore, store, cfg)
 
 	// Return cleanup function

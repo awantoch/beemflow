@@ -135,8 +135,9 @@ func createEngineFromConfig(ctx context.Context) (*engine.Engine, error) {
 	registry := adapter.NewRegistry()
 	registry.Register(&adapter.CoreAdapter{})
 	registry.Register(&adapter.HTTPAdapter{AdapterID: "http"})
-	registry.Register(&adapter.OpenAIAdapter{})
-	registry.Register(&adapter.AnthropicAdapter{})
+	
+	// Load and register tools from default registry
+	loadDefaultRegistryTools(registry)
 
 	return engine.NewEngine(
 		registry,
@@ -433,23 +434,20 @@ func createRegistryResponse(ctx context.Context, mgr *registry.RegistryManager) 
 
 // GetToolManifest returns a specific tool manifest by name
 func GetToolManifest(ctx context.Context, name string) (*registry.ToolManifest, error) {
-	// Load tool manifests from the local registry index
-	local := registry.NewLocalRegistry("")
-	entries, err := local.ListServers(ctx, registry.ListOptions{})
+	// Create engine to get registered adapters
+	eng, err := createEngineFromConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, entry := range entries {
-		if entry.Name == name {
-			return &registry.ToolManifest{
-				Name:        entry.Name,
-				Description: entry.Description,
-				Kind:        entry.Kind,
-				Parameters:  entry.Parameters,
-				Endpoint:    entry.Endpoint,
-				Headers:     entry.Headers,
-			}, nil
+	adapters := eng.AdapterRegistry.All()
+	for _, a := range adapters {
+		m := a.Manifest()
+		if m != nil && m.Name == name {
+			// Only include if not an MCP server
+			if m.Kind != constants.MCPServerKind {
+				return m, nil
+			}
 		}
 	}
 	return nil, nil
@@ -457,22 +455,56 @@ func GetToolManifest(ctx context.Context, name string) (*registry.ToolManifest, 
 
 // ListToolManifests returns all tool manifests from the local registry
 func ListToolManifests(ctx context.Context) ([]registry.ToolManifest, error) {
-	// Load tool manifests from the local registry index
-	local := registry.NewLocalRegistry("")
-	entries, err := local.ListServers(ctx, registry.ListOptions{})
+	// Create engine to get registered adapters
+	eng, err := createEngineFromConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
+	
+	adapters := eng.AdapterRegistry.All()
 	var manifests []registry.ToolManifest
-	for _, entry := range entries {
-		manifests = append(manifests, registry.ToolManifest{
-			Name:        entry.Name,
-			Description: entry.Description,
-			Kind:        entry.Kind,
-			Parameters:  entry.Parameters,
-			Endpoint:    entry.Endpoint,
-			Headers:     entry.Headers,
-		})
+	for _, a := range adapters {
+		m := a.Manifest()
+		if m != nil {
+			// Only include if not an MCP server
+			if m.Kind != constants.MCPServerKind {
+				manifests = append(manifests, *m)
+			}
+		}
 	}
 	return manifests, nil
+}
+
+// loadDefaultRegistryTools loads tool manifests from the default registry and registers them as HTTP adapters
+func loadDefaultRegistryTools(adapterRegistry *adapter.Registry) {
+	ctx := context.Background()
+	
+	// Get the default registry
+	defaultReg := registry.NewDefaultRegistry()
+	entries, err := defaultReg.ListServers(ctx, registry.ListOptions{})
+	if err != nil {
+		// Log error but don't fail - core functionality should still work
+		return
+	}
+	
+	// Register each tool as an HTTP adapter with manifest
+	for _, entry := range entries {
+		if entry.Type == "tool" {
+			manifest := &registry.ToolManifest{
+				Name:        entry.Name,
+				Description: entry.Description,
+				Kind:        entry.Kind,
+				Parameters:  entry.Parameters,
+				Endpoint:    entry.Endpoint,
+				Headers:     entry.Headers,
+			}
+			
+			httpAdapter := &adapter.HTTPAdapter{
+				AdapterID:    entry.Name,
+				ToolManifest: manifest,
+			}
+			
+			adapterRegistry.Register(httpAdapter)
+		}
+	}
 }

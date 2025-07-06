@@ -13,6 +13,7 @@ import (
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/event"
 	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/storage"
 	"github.com/google/uuid"
 )
@@ -64,8 +65,9 @@ func NewDefaultEngine() *Engine {
 	registry := adapter.NewRegistry()
 	registry.Register(&adapter.CoreAdapter{})
 	registry.Register(&adapter.HTTPAdapter{AdapterID: "http"})
-	registry.Register(&adapter.OpenAIAdapter{})
-	registry.Register(&adapter.AnthropicAdapter{})
+	
+	// Load and register tools from default registry
+	loadDefaultRegistryTools(registry)
 	
 	return &Engine{
 		AdapterRegistry: registry,
@@ -73,6 +75,40 @@ func NewDefaultEngine() *Engine {
 		BlobStore:       blobStore,
 		Storage:         storage.NewMemoryStorage(),
 		Config:          &config.Config{},
+	}
+}
+
+// loadDefaultRegistryTools loads tool manifests from the default registry and registers them as HTTP adapters
+func loadDefaultRegistryTools(adapterRegistry *adapter.Registry) {
+	ctx := context.Background()
+	
+	// Get the default registry
+	defaultReg := registry.NewDefaultRegistry()
+	entries, err := defaultReg.ListServers(ctx, registry.ListOptions{})
+	if err != nil {
+		// Log error but don't fail - core functionality should still work
+		return
+	}
+	
+	// Register each tool as an HTTP adapter with manifest
+	for _, entry := range entries {
+		if entry.Type == "tool" {
+			manifest := &registry.ToolManifest{
+				Name:        entry.Name,
+				Description: entry.Description,
+				Kind:        entry.Kind,
+				Parameters:  entry.Parameters,
+				Endpoint:    entry.Endpoint,
+				Headers:     entry.Headers,
+			}
+			
+			httpAdapter := &adapter.HTTPAdapter{
+				AdapterID:    entry.Name,
+				ToolManifest: manifest,
+			}
+			
+			adapterRegistry.Register(httpAdapter)
+		}
 	}
 }
 
@@ -252,11 +288,11 @@ func (e *Engine) executeStep(ctx context.Context, step *model.Step, stepCtx *Ste
 // parseStepUse extracts adapter ID and tool name from a step.Use value
 // Examples:
 //   "core.echo" -> ("core", "core.echo")
-//   "http.fetch" -> ("http", "http.fetch") 
-//   "openai.chat_completion" -> ("openai", "openai.chat_completion")
-//   "anthropic.chat_completion" -> ("anthropic", "anthropic.chat_completion")
+//   "http.fetch" -> ("http.fetch", "http.fetch") 
+//   "openai.chat_completion" -> ("openai.chat_completion", "openai.chat_completion")
+//   "anthropic.chat_completion" -> ("anthropic.chat_completion", "anthropic.chat_completion")
 //   "mcp://server/tool" -> ("mcp", "mcp://server/tool")
-//   "some-adapter" -> ("some-adapter", "")
+//   "http" -> ("http", "")
 func parseStepUse(stepUse string) (adapterID, toolName string) {
 	// Handle MCP protocol
 	if strings.HasPrefix(stepUse, "mcp://") {
@@ -265,8 +301,15 @@ func parseStepUse(stepUse string) (adapterID, toolName string) {
 	
 	// Handle adapter.tool format
 	if dotIndex := strings.Index(stepUse, "."); dotIndex > 0 {
-		adapterID = stepUse[:dotIndex]
-		return adapterID, stepUse
+		prefix := stepUse[:dotIndex]
+		
+		// For core tools, use the prefix as adapter ID (CoreAdapter handles multiple tools)
+		if prefix == "core" {
+			return prefix, stepUse
+		}
+		
+		// For all other tools with dots, use full name as adapter ID (each tool is a separate HTTPAdapter)
+		return stepUse, stepUse
 	}
 	
 	// Default: assume the whole string is the adapter ID
