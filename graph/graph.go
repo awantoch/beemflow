@@ -112,25 +112,36 @@ func (r *ReactFlowRenderer) Render(g *Graph) (string, error) {
 // ExportReactFlow is a helper to create React Flow data from a Flow.
 func ExportReactFlow(flow *model.Flow) (map[string]interface{}, error) {
 	g := NewGraph(flow)
+	stepMap := createStepMap(flow.Steps)
 	
-	// Convert nodes to React Flow format
-	reactNodes := make([]map[string]interface{}, len(g.Nodes))
-	stepMap := make(map[string]model.Step)
-	
-	// Create step lookup map
-	for _, step := range flow.Steps {
+	return map[string]interface{}{
+		"nodes": convertNodesToReactFlow(g.Nodes, stepMap),
+		"edges": convertEdgesToReactFlow(g.Edges),
+		"flow":  flow,
+	}, nil
+}
+
+// Helper: Create step lookup map
+func createStepMap(steps []model.Step) map[string]model.Step {
+	stepMap := make(map[string]model.Step, len(steps))
+	for _, step := range steps {
 		stepMap[step.ID] = step
 	}
+	return stepMap
+}
+
+// Helper: Convert graph nodes to React Flow format
+func convertNodesToReactFlow(nodes []*Node, stepMap map[string]model.Step) []map[string]interface{} {
+	reactNodes := make([]map[string]interface{}, len(nodes))
 	
-	for i, node := range g.Nodes {
-		step, exists := stepMap[node.ID]
+	for i, node := range nodes {
 		nodeData := map[string]interface{}{
 			"id":    node.ID,
 			"label": node.Label,
 		}
 		
 		// Add step data if it exists
-		if exists {
+		if step, exists := stepMap[node.ID]; exists {
 			nodeData["use"] = step.Use
 			if step.With != nil {
 				nodeData["with"] = step.With
@@ -151,9 +162,14 @@ func ExportReactFlow(flow *model.Flow) (map[string]interface{}, error) {
 		}
 	}
 	
-	// Convert edges to React Flow format
-	reactEdges := make([]map[string]interface{}, len(g.Edges))
-	for i, edge := range g.Edges {
+	return reactNodes
+}
+
+// Helper: Convert graph edges to React Flow format
+func convertEdgesToReactFlow(edges []*Edge) []map[string]interface{} {
+	reactEdges := make([]map[string]interface{}, len(edges))
+	
+	for i, edge := range edges {
 		reactEdges[i] = map[string]interface{}{
 			"id":     fmt.Sprintf("%s-%s", edge.From, edge.To),
 			"source": edge.From,
@@ -162,11 +178,7 @@ func ExportReactFlow(flow *model.Flow) (map[string]interface{}, error) {
 		}
 	}
 	
-	return map[string]interface{}{
-		"nodes": reactNodes,
-		"edges": reactEdges,
-		"flow":  flow,
-	}, nil
+	return reactEdges
 }
 
 // ExportMermaid is a helper to create a Mermaid diagram from a Flow.

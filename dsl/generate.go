@@ -23,75 +23,84 @@ func FlowToYAMLString(flow *model.Flow) (string, error) {
 	return string(bytes), nil
 }
 
-// FlowToVisual converts a Flow to visual editor format using React Flow
+// FlowToVisual converts a Flow to React Flow format for the visual editor
 func FlowToVisual(flow *model.Flow) (map[string]interface{}, error) {
 	return graph.ExportReactFlow(flow)
 }
 
-// VisualToFlow converts visual editor data back to a Flow
+// VisualToFlow converts React Flow visual data back to a Flow
 func VisualToFlow(visualData map[string]interface{}) (*model.Flow, error) {
-	// Extract nodes from visual data
 	nodesData, ok := visualData["nodes"]
 	if !ok {
 		return nil, fmt.Errorf("no nodes data provided")
 	}
 	
-	// Handle both []interface{} and []map[string]interface{} formats
-	var nodes []interface{}
-	switch v := nodesData.(type) {
-	case []interface{}:
-		nodes = v
-	case []map[string]interface{}:
-		nodes = make([]interface{}, len(v))
-		for i, node := range v {
-			nodes[i] = node
-		}
-	default:
+	nodes := extractNodes(nodesData)
+	if nodes == nil {
 		return nil, fmt.Errorf("invalid nodes data format")
 	}
 	
-	// Convert nodes to steps
-	var steps []model.Step
+	steps := make([]model.Step, 0, len(nodes))
 	for _, nodeData := range nodes {
-		node, ok := nodeData.(map[string]interface{})
-		if !ok {
-			continue
+		if step := extractStep(nodeData); step != nil {
+			steps = append(steps, *step)
 		}
-		
-		data, ok := node["data"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		
-		step := model.Step{
-			ID:  getString(data, "id"),
-			Use: getString(data, "use"),
-		}
-		
-		// Handle 'with' parameters
-		if withData, exists := data["with"]; exists {
-			step.With = withData.(map[string]interface{})
-		}
-		
-		// Handle 'if' condition
-		if ifCondition := getString(data, "if"); ifCondition != "" {
-			step.If = ifCondition
-		}
-		
-		steps = append(steps, step)
 	}
 	
-	// Create flow with minimal structure
-	flow := &model.Flow{
+	return &model.Flow{
 		Name:  "editor_flow",
 		On:    "cli.manual",
 		Steps: steps,
-	}
-	
-	return flow, nil
+	}, nil
 }
 
-// Helper function to safely get string from map
+// Helper: Extract nodes from various formats
+func extractNodes(nodesData interface{}) []interface{} {
+	switch v := nodesData.(type) {
+	case []interface{}:
+		return v
+	case []map[string]interface{}:
+		nodes := make([]interface{}, len(v))
+		for i, node := range v {
+			nodes[i] = node
+		}
+		return nodes
+	default:
+		return nil
+	}
+}
+
+// Helper: Extract step from node data
+func extractStep(nodeData interface{}) *model.Step {
+	node, ok := nodeData.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	
+	data, ok := node["data"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	
+	step := &model.Step{
+		ID:  getString(data, "id"),
+		Use: getString(data, "use"),
+	}
+	
+	if withData, exists := data["with"]; exists {
+		if withMap, ok := withData.(map[string]interface{}); ok {
+			step.With = withMap
+		}
+	}
+	
+	if ifCondition := getString(data, "if"); ifCondition != "" {
+		step.If = ifCondition
+	}
+	
+	return step
+}
+
+// Helper: Safely get string from map
 func getString(data map[string]interface{}, key string) string {
 	if value, exists := data[key]; exists {
 		if str, ok := value.(string); ok {
