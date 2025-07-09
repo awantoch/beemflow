@@ -97,7 +97,7 @@ type ParseYamlArgs struct {
 
 // VisualToYamlArgs represents arguments for converting visual data to YAML
 type VisualToYamlArgs struct {
-	VisualData map[string]interface{} `json:"visualData" flag:"visual-data" description:"Visual editor data"`
+	VisualData *dsl.VisualData `json:"visualData" flag:"visual-data" description:"Visual editor data"`
 }
 
 // Global operation registry

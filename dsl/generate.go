@@ -9,6 +9,36 @@ import (
 	"github.com/awantoch/beemflow/model"
 )
 
+// VisualData represents the structure for visual editor data
+type VisualData struct {
+	Nodes []VisualNode `json:"nodes"`
+	Edges []VisualEdge `json:"edges"`
+	Flow  *model.Flow  `json:"flow,omitempty"`
+}
+
+// VisualNode represents a node in the visual editor
+type VisualNode struct {
+	ID   string        `json:"id"`
+	Type string        `json:"type"`
+	Data VisualNodeData `json:"data"`
+}
+
+// VisualEdge represents an edge in the visual editor
+type VisualEdge struct {
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+// VisualNodeData represents the data payload of a visual node
+type VisualNodeData struct {
+	ID    string                 `json:"id"`
+	Label string                 `json:"label"`
+	Use   string                 `json:"use,omitempty"`
+	With  map[string]interface{} `json:"with,omitempty"`
+	If    string                 `json:"if,omitempty"`
+}
+
 // FlowToYAML converts a Flow struct to YAML bytes
 func FlowToYAML(flow *model.Flow) ([]byte, error) {
 	return yaml.Marshal(flow)
@@ -24,27 +54,36 @@ func FlowToYAMLString(flow *model.Flow) (string, error) {
 }
 
 // FlowToVisual converts a Flow to React Flow format for the visual editor
-func FlowToVisual(flow *model.Flow) (map[string]interface{}, error) {
+func FlowToVisual(flow *model.Flow) (*graph.ReactFlowData, error) {
 	return graph.ExportReactFlow(flow)
 }
 
-// VisualToFlow converts React Flow visual data back to a Flow
-func VisualToFlow(visualData map[string]interface{}) (*model.Flow, error) {
-	nodesData, ok := visualData["nodes"]
-	if !ok {
+// VisualToFlow converts visual editor data back to a Flow
+func VisualToFlow(visualData *VisualData) (*model.Flow, error) {
+	if visualData == nil {
+		return nil, fmt.Errorf("no visual data provided")
+	}
+	
+	if len(visualData.Nodes) == 0 {
 		return nil, fmt.Errorf("no nodes data provided")
 	}
 	
-	nodes := extractNodes(nodesData)
-	if nodes == nil {
-		return nil, fmt.Errorf("invalid nodes data format")
-	}
-	
-	steps := make([]model.Step, 0, len(nodes))
-	for _, nodeData := range nodes {
-		if step := extractStep(nodeData); step != nil {
-			steps = append(steps, *step)
+	steps := make([]model.Step, 0, len(visualData.Nodes))
+	for _, node := range visualData.Nodes {
+		step := model.Step{
+			ID:  node.Data.ID,
+			Use: node.Data.Use,
 		}
+		
+		if node.Data.With != nil {
+			step.With = node.Data.With
+		}
+		
+		if node.Data.If != "" {
+			step.If = node.Data.If
+		}
+		
+		steps = append(steps, step)
 	}
 	
 	return &model.Flow{
@@ -52,60 +91,4 @@ func VisualToFlow(visualData map[string]interface{}) (*model.Flow, error) {
 		On:    "cli.manual",
 		Steps: steps,
 	}, nil
-}
-
-// Helper: Extract nodes from various formats
-func extractNodes(nodesData interface{}) []interface{} {
-	switch v := nodesData.(type) {
-	case []interface{}:
-		return v
-	case []map[string]interface{}:
-		nodes := make([]interface{}, len(v))
-		for i, node := range v {
-			nodes[i] = node
-		}
-		return nodes
-	default:
-		return nil
-	}
-}
-
-// Helper: Extract step from node data
-func extractStep(nodeData interface{}) *model.Step {
-	node, ok := nodeData.(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	
-	data, ok := node["data"].(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	
-	step := &model.Step{
-		ID:  getString(data, "id"),
-		Use: getString(data, "use"),
-	}
-	
-	if withData, exists := data["with"]; exists {
-		if withMap, ok := withData.(map[string]interface{}); ok {
-			step.With = withMap
-		}
-	}
-	
-	if ifCondition := getString(data, "if"); ifCondition != "" {
-		step.If = ifCondition
-	}
-	
-	return step
-}
-
-// Helper: Safely get string from map
-func getString(data map[string]interface{}, key string) string {
-	if value, exists := data[key]; exists {
-		if str, ok := value.(string); ok {
-			return str
-		}
-	}
-	return ""
 }

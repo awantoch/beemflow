@@ -21,44 +21,37 @@ func TestFlowToVisual(t *testing.T) {
 		t.Fatalf("FlowToVisual failed: %v", err)
 	}
 
-	// Check that we have nodes and edges
-	if nodes, ok := visualData["nodes"]; !ok {
-		t.Error("Expected 'nodes' in visual data")
-	} else if nodesList, ok := nodes.([]map[string]interface{}); !ok {
-		t.Error("Expected nodes to be []map[string]interface{}")
-	} else if len(nodesList) != 2 {
-		t.Errorf("Expected 2 nodes, got %d", len(nodesList))
+	if len(visualData.Nodes) != 2 {
+		t.Errorf("Expected 2 nodes, got %d", len(visualData.Nodes))
 	}
 
-	if edges, ok := visualData["edges"]; !ok {
-		t.Error("Expected 'edges' in visual data")
-	} else if edgesList, ok := edges.([]map[string]interface{}); !ok {
-		t.Error("Expected edges to be []map[string]interface{}")
-	} else if len(edgesList) != 1 {
-		t.Errorf("Expected 1 edge, got %d", len(edgesList))
+	if len(visualData.Edges) != 1 {
+		t.Errorf("Expected 1 edge, got %d", len(visualData.Edges))
 	}
 
-	if _, ok := visualData["flow"]; !ok {
-		t.Error("Expected 'flow' in visual data")
+	if visualData.Flow == nil {
+		t.Error("Expected flow data to be present")
 	}
 }
 
 func TestVisualToFlow(t *testing.T) {
-	visualData := map[string]interface{}{
-		"nodes": []interface{}{
-			map[string]interface{}{
-				"id": "node1",
-				"data": map[string]interface{}{
-					"id":  "step1",
-					"use": "test.action1",
+	visualData := &VisualData{
+		Nodes: []VisualNode{
+			{
+				ID:   "node1",
+				Type: "stepNode",
+				Data: VisualNodeData{
+					ID:  "step1",
+					Use: "test.action1",
 				},
 			},
-			map[string]interface{}{
-				"id": "node2",
-				"data": map[string]interface{}{
-					"id":  "step2",
-					"use": "test.action2",
-					"if":  "condition",
+			{
+				ID:   "node2",
+				Type: "stepNode",
+				Data: VisualNodeData{
+					ID: "step2",
+					Use: "test.action2",
+					If:  "condition",
 				},
 			},
 		},
@@ -103,7 +96,27 @@ func TestVisualToFlowRoundTrip(t *testing.T) {
 	}
 
 	// Convert back to flow
-	convertedFlow, err := VisualToFlow(visualData)
+	convertedFlow, err := VisualToFlow(&VisualData{
+		Nodes: []VisualNode{
+			{
+				ID:   visualData.Nodes[0].ID,
+				Type: visualData.Nodes[0].Type,
+				Data: VisualNodeData{
+					ID:  visualData.Nodes[0].Data.ID,
+					Use: visualData.Nodes[0].Data.Use,
+				},
+			},
+			{
+				ID:   visualData.Nodes[1].ID,
+				Type: visualData.Nodes[1].Type,
+				Data: VisualNodeData{
+					ID: visualData.Nodes[1].Data.ID,
+					Use: visualData.Nodes[1].Data.Use,
+					If:  visualData.Nodes[1].Data.If,
+				},
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("VisualToFlow failed: %v", err)
 	}

@@ -11,7 +11,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import { Editor } from '@monaco-editor/react'
 import { StepNode } from './components/StepNode'
-import { useBeemFlow } from './hooks/useBeemFlow'
+import { useBeemFlow, type VisualData, type ValidationResult } from './hooks/useBeemFlow'
 
 const nodeTypes = { stepNode: StepNode }
 
@@ -32,7 +32,7 @@ function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [editMode, setEditMode] = useState<'visual' | 'yaml' | 'split'>('split')
-  const [validation, setValidation] = useState<{ success: boolean; error?: string } | null>(null)
+  const [validation, setValidation] = useState<ValidationResult | null>(null)
   const [syncing, setSyncing] = useState(false)
   
   const { wasmError, yamlToVisual, visualToYaml, validateYaml, loading } = useBeemFlow()
@@ -61,7 +61,18 @@ function App() {
     
     setSyncing(true)
     try {
-      const visual = { nodes, edges, flow: null }
+      const visual: VisualData = { 
+        nodes: nodes.map(node => ({
+          id: node.id,
+          type: node.type || 'stepNode',
+          data: node.data as any // React Flow node data
+        })),
+        edges: edges.map(edge => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target
+        }))
+      }
       const newYaml = await visualToYaml(visual)
       if (newYaml && newYaml !== yaml) {
         setYaml(newYaml)
@@ -82,7 +93,7 @@ function App() {
     
     try {
       const result = await validateYaml(yamlContent)
-      setValidation(result as { success: boolean; error?: string })
+      setValidation(result)
     } catch (error) {
       setValidation({ success: false, error: String(error) })
     }

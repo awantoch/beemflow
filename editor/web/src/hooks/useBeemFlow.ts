@@ -1,11 +1,68 @@
 import { useCallback, useState } from 'react'
 
-
-
+// Proper TypeScript interfaces matching backend types
 export interface VisualData {
-  nodes: any[]
-  edges: any[]
-  flow: any
+  nodes: VisualNode[]
+  edges: VisualEdge[]
+  flow?: Flow
+}
+
+export interface VisualNode {
+  id: string
+  type: string
+  data: VisualNodeData
+}
+
+export interface VisualEdge {
+  id: string
+  source: string
+  target: string
+}
+
+export interface VisualNodeData {
+  id: string
+  label: string
+  use?: string
+  with?: Record<string, any>
+  if?: string
+}
+
+export interface Flow {
+  name: string
+  on: string
+  steps: Step[]
+}
+
+export interface Step {
+  id: string
+  use: string
+  with?: Record<string, any>
+  if?: string
+}
+
+export interface ReactFlowData {
+  nodes: ReactFlowNode[]
+  edges: ReactFlowEdge[]
+  flow: Flow
+}
+
+export interface ReactFlowNode {
+  id: string
+  type: string
+  position: { x: number; y: number }
+  data: VisualNodeData
+}
+
+export interface ReactFlowEdge {
+  id: string
+  source: string
+  target: string
+  label?: string
+}
+
+export interface ValidationResult {
+  success: boolean
+  error?: string
 }
 
 // HTTP API client for BeemFlow operations
@@ -32,36 +89,36 @@ class BeemFlowAPI {
     return response.json()
   }
 
-  async parseYaml(yaml: string) {
-    return this.request('/editor/parse', {
+  async parseYaml(yaml: string): Promise<Flow> {
+    return this.request<Flow>('/editor/parse', {
       method: 'POST',
       body: JSON.stringify({ yaml }),
     })
   }
 
-  async validateYaml(yaml: string) {
-    return this.request('/validate', {
+  async validateYaml(yaml: string): Promise<ValidationResult> {
+    return this.request<ValidationResult>('/validate', {
       method: 'POST',
       body: JSON.stringify({ name: yaml }),
     })
   }
 
-  async generateMermaid(yaml: string) {
-    return this.request('/flows/graph', {
+  async generateMermaid(yaml: string): Promise<{ diagram: string }> {
+    return this.request<{ diagram: string }>('/flows/graph', {
       method: 'POST',
       body: JSON.stringify({ name: yaml }),
     })
   }
 
-  async yamlToVisual(yaml: string) {
-    return this.request('/editor/visual', {
+  async yamlToVisual(yaml: string): Promise<ReactFlowData> {
+    return this.request<ReactFlowData>('/editor/visual', {
       method: 'POST',
       body: JSON.stringify({ yaml }),
     })
   }
 
-  async visualToYaml(visualData: VisualData) {
-    return this.request('/editor/yaml', {
+  async visualToYaml(visualData: VisualData): Promise<string> {
+    return this.request<string>('/editor/yaml', {
       method: 'POST',
       body: JSON.stringify({ visualData }),
     })
@@ -92,36 +149,34 @@ export const useBeemFlow = () => {
     }
   }, [])
 
-  const parseYaml = useCallback(async (yaml: string) => {
+  const parseYaml = useCallback(async (yaml: string): Promise<Flow | null> => {
     return handleRequest(() => api.parseYaml(yaml), null)
   }, [api, handleRequest])
 
-  const validateYaml = useCallback(async (yaml: string) => {
+  const validateYaml = useCallback(async (yaml: string): Promise<ValidationResult> => {
     return handleRequest(
       () => api.validateYaml(yaml),
       { success: false, error: 'Validation failed' }
     )
   }, [api, handleRequest])
 
-  const generateMermaid = useCallback(async (yaml: string) => {
+  const generateMermaid = useCallback(async (yaml: string): Promise<string> => {
     const result = await handleRequest(
       () => api.generateMermaid(yaml),
       { diagram: '' }
     )
-    return (result as { diagram: string }).diagram || ''
+    return result.diagram || ''
   }, [api, handleRequest])
 
-  const yamlToVisual = useCallback(async (yaml: string): Promise<VisualData> => {
-    const result = await handleRequest(
+  const yamlToVisual = useCallback(async (yaml: string): Promise<ReactFlowData> => {
+    return handleRequest(
       () => api.yamlToVisual(yaml),
-      { nodes: [], edges: [], flow: null }
+      { nodes: [], edges: [], flow: { name: '', on: '', steps: [] } }
     )
-    return result as VisualData
   }, [api, handleRequest])
 
-  const visualToYaml = useCallback(async (visual: VisualData) => {
-    const result = await handleRequest(() => api.visualToYaml(visual), '')
-    return result as string
+  const visualToYaml = useCallback(async (visual: VisualData): Promise<string> => {
+    return handleRequest(() => api.visualToYaml(visual), '')
   }, [api, handleRequest])
 
   return {
@@ -131,7 +186,7 @@ export const useBeemFlow = () => {
     loading,
     error,
     
-    // API methods (now async)
+    // API methods (now async with proper types)
     parseYaml,
     validateYaml,
     generateMermaid,

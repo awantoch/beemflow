@@ -34,8 +34,43 @@ type Renderer interface {
 // MermaidRenderer outputs Graphs in Mermaid flowchart syntax.
 type MermaidRenderer struct{}
 
-// ReactFlowRenderer outputs Graphs in React Flow format for the visual editor.
-type ReactFlowRenderer struct{}
+// ReactFlowData represents the data structure for React Flow visual editor
+type ReactFlowData struct {
+	Nodes []ReactFlowNode `json:"nodes"`
+	Edges []ReactFlowEdge `json:"edges"`
+	Flow  *model.Flow     `json:"flow"`
+}
+
+// ReactFlowNode represents a node in React Flow format
+type ReactFlowNode struct {
+	ID       string               `json:"id"`
+	Type     string               `json:"type"`
+	Position ReactFlowPosition    `json:"position"`
+	Data     ReactFlowNodeData    `json:"data"`
+}
+
+// ReactFlowEdge represents an edge in React Flow format
+type ReactFlowEdge struct {
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Label  string `json:"label,omitempty"`
+}
+
+// ReactFlowPosition represents position coordinates
+type ReactFlowPosition struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// ReactFlowNodeData represents the data payload of a React Flow node
+type ReactFlowNodeData struct {
+	ID    string                 `json:"id"`
+	Label string                 `json:"label"`
+	Use   string                 `json:"use,omitempty"`
+	With  map[string]interface{} `json:"with,omitempty"`
+	If    string                 `json:"if,omitempty"`
+}
 
 // NewGraph creates a Graph representation of the given Flow.
 func NewGraph(flow *model.Flow) *Graph {
@@ -102,26 +137,19 @@ func (r *MermaidRenderer) Render(g *Graph) (string, error) {
 	return sb.String(), nil
 }
 
-// Render renders the graph in React Flow format.
-func (r *ReactFlowRenderer) Render(g *Graph) (string, error) {
-	// This will be implemented to return JSON for React Flow
-	// For now, return empty to maintain interface
-	return "", nil
-}
-
-// ExportReactFlow is a helper to create React Flow data from a Flow.
-func ExportReactFlow(flow *model.Flow) (map[string]interface{}, error) {
+// ExportReactFlow creates React Flow data from a Flow with proper typing
+func ExportReactFlow(flow *model.Flow) (*ReactFlowData, error) {
 	g := NewGraph(flow)
 	stepMap := createStepMap(flow.Steps)
 	
-	return map[string]interface{}{
-		"nodes": convertNodesToReactFlow(g.Nodes, stepMap),
-		"edges": convertEdgesToReactFlow(g.Edges),
-		"flow":  flow,
+	return &ReactFlowData{
+		Nodes: convertNodesToReactFlow(g.Nodes, stepMap),
+		Edges: convertEdgesToReactFlow(g.Edges),
+		Flow:  flow,
 	}, nil
 }
 
-// Helper: Create step lookup map
+// createStepMap creates a lookup map for steps
 func createStepMap(steps []model.Step) map[string]model.Step {
 	stepMap := make(map[string]model.Step, len(steps))
 	for _, step := range steps {
@@ -130,51 +158,51 @@ func createStepMap(steps []model.Step) map[string]model.Step {
 	return stepMap
 }
 
-// Helper: Convert graph nodes to React Flow format
-func convertNodesToReactFlow(nodes []*Node, stepMap map[string]model.Step) []map[string]interface{} {
-	reactNodes := make([]map[string]interface{}, len(nodes))
+// convertNodesToReactFlow converts graph nodes to React Flow format with proper typing
+func convertNodesToReactFlow(nodes []*Node, stepMap map[string]model.Step) []ReactFlowNode {
+	reactNodes := make([]ReactFlowNode, len(nodes))
 	
 	for i, node := range nodes {
-		nodeData := map[string]interface{}{
-			"id":    node.ID,
-			"label": node.Label,
+		nodeData := ReactFlowNodeData{
+			ID:    node.ID,
+			Label: node.Label,
 		}
 		
 		// Add step data if it exists
 		if step, exists := stepMap[node.ID]; exists {
-			nodeData["use"] = step.Use
+			nodeData.Use = step.Use
 			if step.With != nil {
-				nodeData["with"] = step.With
+				nodeData.With = step.With
 			}
 			if step.If != "" {
-				nodeData["if"] = step.If
+				nodeData.If = step.If
 			}
 		}
 		
-		reactNodes[i] = map[string]interface{}{
-			"id":   node.ID,
-			"type": "stepNode",
-			"position": map[string]interface{}{
-				"x": float64(i * 300), // Simple horizontal layout
-				"y": 100.0,
+		reactNodes[i] = ReactFlowNode{
+			ID:   node.ID,
+			Type: "stepNode",
+			Position: ReactFlowPosition{
+				X: float64(i * 300), // Simple horizontal layout
+				Y: 100.0,
 			},
-			"data": nodeData,
+			Data: nodeData,
 		}
 	}
 	
 	return reactNodes
 }
 
-// Helper: Convert graph edges to React Flow format
-func convertEdgesToReactFlow(edges []*Edge) []map[string]interface{} {
-	reactEdges := make([]map[string]interface{}, len(edges))
+// convertEdgesToReactFlow converts graph edges to React Flow format with proper typing
+func convertEdgesToReactFlow(edges []*Edge) []ReactFlowEdge {
+	reactEdges := make([]ReactFlowEdge, len(edges))
 	
 	for i, edge := range edges {
-		reactEdges[i] = map[string]interface{}{
-			"id":     fmt.Sprintf("%s-%s", edge.From, edge.To),
-			"source": edge.From,
-			"target": edge.To,
-			"label":  edge.Label,
+		reactEdges[i] = ReactFlowEdge{
+			ID:     fmt.Sprintf("%s-%s", edge.From, edge.To),
+			Source: edge.From,
+			Target: edge.To,
+			Label:  edge.Label,
 		}
 	}
 	

@@ -133,7 +133,7 @@ steps:
 		t.Errorf("expected Validation OK, got %q", out)
 	}
 
-	// TODO: Error case tests temporarily disabled due to CLI structure changes
+	// Error case tests disabled - CLI structure changed
 	// These tests were failing due to changes in command structure and error handling
 	// They can be re-enabled and updated once the CLI structure is stabilized
 }

@@ -14,11 +14,11 @@ import (
 //go:embed wasm_exec.js
 var WasmExecJS []byte
 
-// Result standardizes all WASM function returns
+// Result standardizes all WASM function returns with proper typing
 type Result struct {
-	Success bool        `json:"success"`
-	Data    interface{} `json:"data,omitempty"`
-	Error   string      `json:"error,omitempty"`
+	Success bool   `json:"success"`
+	Data    any    `json:"data,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 func main() {
@@ -33,8 +33,8 @@ func main() {
 	<-make(chan bool)
 }
 
-// Common pattern: YAML string input → Result output
-func handleYamlInput(args []js.Value, processor func(string) (interface{}, error)) any {
+// handleYamlInput provides a common pattern for YAML string input processing
+func handleYamlInput(args []js.Value, processor func(string) (any, error)) any {
 	if len(args) == 0 {
 		return resultToJS(Result{Success: false, Error: "No arguments provided"})
 	}
@@ -49,13 +49,13 @@ func handleYamlInput(args []js.Value, processor func(string) (interface{}, error
 }
 
 func parseYaml(this js.Value, args []js.Value) any {
-	return handleYamlInput(args, func(yamlStr string) (interface{}, error) {
+	return handleYamlInput(args, func(yamlStr string) (any, error) {
 		return dsl.ParseFromString(yamlStr)
 	})
 }
 
 func validateYaml(this js.Value, args []js.Value) any {
-	return handleYamlInput(args, func(yamlStr string) (interface{}, error) {
+	return handleYamlInput(args, func(yamlStr string) (any, error) {
 		flow, err := dsl.ParseFromString(yamlStr)
 		if err != nil {
 			return nil, err
@@ -70,7 +70,7 @@ func validateYaml(this js.Value, args []js.Value) any {
 }
 
 func generateMermaid(this js.Value, args []js.Value) any {
-	return handleYamlInput(args, func(yamlStr string) (interface{}, error) {
+	return handleYamlInput(args, func(yamlStr string) (any, error) {
 		flow, err := dsl.ParseFromString(yamlStr)
 		if err != nil {
 			return nil, err
@@ -81,7 +81,7 @@ func generateMermaid(this js.Value, args []js.Value) any {
 }
 
 func yamlToVisual(this js.Value, args []js.Value) any {
-	return handleYamlInput(args, func(yamlStr string) (interface{}, error) {
+	return handleYamlInput(args, func(yamlStr string) (any, error) {
 		flow, err := dsl.ParseFromString(yamlStr)
 		if err != nil {
 			return nil, err
@@ -96,8 +96,12 @@ func visualToYaml(this js.Value, args []js.Value) any {
 		return resultToJS(Result{Success: false, Error: "No visual data provided"})
 	}
 
-	visualData := jsValueToMap(args[0])
-	flow, err := dsl.VisualToFlow(visualData)
+	var visualData dsl.VisualData
+	if err := unmarshalJSValue(args[0], &visualData); err != nil {
+		return resultToJS(Result{Success: false, Error: "Invalid visual data format: " + err.Error()})
+	}
+
+	flow, err := dsl.VisualToFlow(&visualData)
 	if err != nil {
 		return resultToJS(Result{Success: false, Error: err.Error()})
 	}
@@ -110,50 +114,34 @@ func visualToYaml(this js.Value, args []js.Value) any {
 	return resultToJS(Result{Success: true, Data: yamlStr})
 }
 
-// Convert JS Value to Go map (transport layer only)
-func jsValueToMap(jsVal js.Value) map[string]interface{} {
-	result := make(map[string]interface{})
+// unmarshalJSValue converts a JS value to a Go struct using JSON marshaling
+func unmarshalJSValue(jsVal js.Value, target any) error {
+	// Convert JS value to JSON string
+	jsonStr := js.Global().Get("JSON").Call("stringify", jsVal).String()
 	
-	keys := js.Global().Get("Object").Call("keys", jsVal)
-	for i := 0; i < keys.Length(); i++ {
-		key := keys.Index(i).String()
-		value := jsVal.Get(key)
-		result[key] = jsValueToInterface(value)
-	}
-	
-	return result
+	// Unmarshal JSON string to Go struct
+	return json.Unmarshal([]byte(jsonStr), target)
 }
 
-// Convert JS Value to Go interface{} (recursive helper)
-func jsValueToInterface(jsVal js.Value) interface{} {
-	switch jsVal.Type() {
-	case js.TypeString:
-		return jsVal.String()
-	case js.TypeNumber:
-		return jsVal.Float()
-	case js.TypeBoolean:
-		return jsVal.Bool()
-	case js.TypeObject:
-		if jsVal.Get("length").Type() == js.TypeNumber {
-			// Handle arrays
-			length := jsVal.Get("length").Int()
-			arr := make([]interface{}, length)
-			for j := 0; j < length; j++ {
-				arr[j] = jsValueToInterface(jsVal.Index(j))
-			}
-			return arr
+// resultToJS converts Result to JavaScript object with proper error handling
+func resultToJS(r Result) map[string]any {
+	jsonBytes, err := json.Marshal(r)
+	if err != nil {
+		// Fallback for marshal errors
+		return map[string]any{
+			"success": false,
+			"error":   "Failed to marshal result: " + err.Error(),
 		}
-		// Handle objects
-		return jsValueToMap(jsVal)
-	default:
-		return jsVal.String()
 	}
-}
-
-// Convert Result to JavaScript object
-func resultToJS(r Result) map[string]interface{} {
-	jsonBytes, _ := json.Marshal(r)
-	var jsResult map[string]interface{}
-	json.Unmarshal(jsonBytes, &jsResult)
+	
+	var jsResult map[string]any
+	if err := json.Unmarshal(jsonBytes, &jsResult); err != nil {
+		// Fallback for unmarshal errors
+		return map[string]any{
+			"success": false,
+			"error":   "Failed to unmarshal result: " + err.Error(),
+		}
+	}
+	
 	return jsResult
 }
