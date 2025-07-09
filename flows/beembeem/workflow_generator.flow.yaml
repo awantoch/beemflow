@@ -38,22 +38,34 @@ steps:
                   text: "Daily standup in 15 minutes!"
         - role: user
           content: "{{ event.text }}"
+  - id: validate_workflow
+    use: beembeem.validate_workflow
+    with:
+      workflow_yaml: "{{ check_workflow_request.choices.0.message.content }}"
   - id: save_workflow
+    if: "{{ validate_workflow.valid }}"
     use: beembeem.save_workflow
     with:
-      name: "{{ check_workflow_request.choices.0.message.content | regex_search('name: ([\\w_]+)', 1) }}"
+      name: "{{ validate_workflow.name }}"
       workflow_yaml: "{{ check_workflow_request.choices.0.message.content }}"
   - id: reply_success
-    if: "{{ save_workflow.success }}"
+    if: "{{ validate_workflow.valid and save_workflow.success }}"
     use: slack.chat.postMessage
     with:
       channel: "{{ event.channel }}"
       text: "✅ Workflow '{{ save_workflow.name }}' created successfully! You can run it with `flow start {{ save_workflow.name }}`"
       thread_ts: "{{ event.thread_ts or event.timestamp }}"
-  - id: reply_error
-    if: "{{ not save_workflow.success }}"
+  - id: reply_validation_error
+    if: "{{ not validate_workflow.valid }}"
     use: slack.chat.postMessage
     with:
       channel: "{{ event.channel }}"
-      text: "❌ Error creating workflow: {{ save_workflow.error }}"
+      text: "❌ Generated workflow is invalid: {{ validate_workflow.error }}"
+      thread_ts: "{{ event.thread_ts or event.timestamp }}"
+  - id: reply_save_error
+    if: "{{ validate_workflow.valid and not save_workflow.success }}"
+    use: slack.chat.postMessage
+    with:
+      channel: "{{ event.channel }}"
+      text: "❌ Error saving workflow: {{ save_workflow.error }}"
       thread_ts: "{{ event.thread_ts or event.timestamp }}"
