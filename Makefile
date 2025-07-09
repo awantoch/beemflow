@@ -40,7 +40,7 @@ editor: editor/wasm/main.wasm
 ## Build WASM module
 editor/wasm/main.wasm: editor/wasm/main.go editor/wasm/wasm_exec.js
 	@echo "🛠  Building BeemFlow WASM runtime..."
-	GOOS=js GOARCH=wasm go build -o $@ ./editor/wasm
+	cd editor/wasm && GOOS=js GOARCH=wasm go build -o main.wasm .
 
 ## Build web frontend
 editor-web:

@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 
 interface StepNodeData {
@@ -8,96 +8,130 @@ interface StepNodeData {
   if?: string
 }
 
+// Node configuration
+const NODE_CONFIG = {
+  HANDLE_STYLE: { width: 8, height: 8 },
+  DEFAULT_WIDTH: 200,
+  DEFAULT_HEIGHT: 80,
+} as const
+
+// Step type definitions with consistent styling
+const STEP_TYPES = {
+  echo: { icon: '📢', colors: ['#dbeafe', '#93c5fd', '#1e40af'] },
+  http: { icon: '🌐', colors: ['#fee2e2', '#fca5a5', '#991b1b'] },
+  openai: { icon: '🤖', colors: ['#dcfce7', '#86efac', '#166534'] },
+  anthropic: { icon: '🧠', colors: ['#fef3c7', '#fbbf24', '#92400e'] },
+  slack: { icon: '💬', colors: ['#f3e8ff', '#c084fc', '#7c3aed'] },
+  twilio: { icon: '📱', colors: ['#fce7f3', '#f9a8d4', '#be185d'] },
+  default: { icon: '⚙️', colors: ['#f3f4f6', '#9ca3af', '#374151'] },
+} as const
+
+type StepType = keyof typeof STEP_TYPES
+
 export const StepNode = memo(({ data, selected }: NodeProps<StepNodeData>) => {
-  const getNodeIcon = (use: string) => {
-    if (use.includes('echo')) return '📢'
-    if (use.includes('http')) return '🌐'
-    if (use.includes('openai')) return '🤖'
-    if (use.includes('anthropic')) return '🧠'
-    if (use.includes('slack')) return '💬'
-    if (use.includes('twilio')) return '📱'
-    return '⚙️'
-  }
+  const stepType = useMemo((): StepType => {
+    const use = data.use.toLowerCase()
+    
+    for (const [key] of Object.entries(STEP_TYPES)) {
+      if (key !== 'default' && use.includes(key)) {
+        return key as StepType
+      }
+    }
+    return 'default'
+  }, [data.use])
 
-  const getNodeColor = (use: string) => {
-    if (use.includes('echo')) return '#dbeafe #93c5fd #1e40af' // blue
-    if (use.includes('http')) return '#fee2e2 #fca5a5 #991b1b' // red
-    if (use.includes('openai')) return '#dcfce7 #86efac #166534' // green
-    if (use.includes('anthropic')) return '#fed7aa #fdba74 #9a3412' // orange
-    if (use.includes('slack')) return '#f3e8ff #c4b5fd #6b21a8' // purple
-    if (use.includes('twilio')) return '#fce7f3 #f9a8d4 #9d174d' // pink
-    return '#f3f4f6 #d1d5db #374151' // gray
-  }
+  const { icon, colors } = STEP_TYPES[stepType]
+  const [bgColor, borderColor, textColor] = colors
 
-  const [bgColor, borderColor, textColor] = getNodeColor(data.use).split(' ')
+  const hasCondition = Boolean(data.if)
+  const hasParameters = Boolean(data.with && Object.keys(data.with).length > 0)
+
+  const nodeStyle = useMemo(() => ({
+    background: bgColor,
+    border: `2px solid ${selected ? textColor : borderColor}`,
+    borderRadius: '8px',
+    padding: '12px',
+    minWidth: NODE_CONFIG.DEFAULT_WIDTH,
+    minHeight: NODE_CONFIG.DEFAULT_HEIGHT,
+    color: textColor,
+    fontSize: '14px',
+    fontFamily: 'system-ui, sans-serif',
+    boxShadow: selected 
+      ? `0 0 0 2px ${textColor}33` 
+      : '0 1px 3px rgba(0, 0, 0, 0.1)',
+    transition: 'all 0.2s ease',
+  }), [bgColor, borderColor, textColor, selected])
+
+  const headerStyle = useMemo(() => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '8px',
+    fontWeight: 600,
+  }), [])
+
+  const badgeStyle = useMemo(() => ({
+    fontSize: '10px',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    backgroundColor: textColor,
+    color: bgColor,
+    fontWeight: 500,
+  }), [textColor, bgColor])
+
+  const renderParameterSummary = useMemo(() => {
+    if (!hasParameters) return null
+
+    const paramCount = Object.keys(data.with!).length
+    const firstParam = Object.entries(data.with!)[0]
+    
+    return (
+      <div style={{ 
+        fontSize: '12px', 
+        opacity: 0.8, 
+        marginTop: '4px',
+        wordBreak: 'break-word'
+      }}>
+        {paramCount === 1 ? (
+          <span>{firstParam[0]}: {String(firstParam[1]).slice(0, 20)}...</span>
+        ) : (
+          <span>{paramCount} parameters</span>
+        )}
+      </div>
+    )
+  }, [hasParameters, data.with])
 
   return (
-    <div 
-      style={{
-        backgroundColor: bgColor,
-        borderColor: borderColor,
-        color: textColor,
-        boxShadow: selected ? '0 0 0 2px #3b82f6, 0 0 0 4px rgba(59, 130, 246, 0.1)' : '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-        borderWidth: '2px',
-        borderStyle: 'solid',
-        borderRadius: '8px',
-        padding: '12px 16px',
-        minWidth: '180px',
-        fontSize: '14px',
-        fontFamily: 'system-ui, sans-serif'
-      }}
-    >
+    <div style={nodeStyle}>
       <Handle
         type="target"
         position={Position.Top}
-        style={{
-          width: '12px',
-          height: '12px',
-          backgroundColor: '#6b7280',
-          border: '2px solid white',
-          borderRadius: '50%',
-          top: '-6px'
-        }}
+        style={NODE_CONFIG.HANDLE_STYLE}
       />
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-        <span style={{ fontSize: '18px' }}>{getNodeIcon(data.use)}</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, lineHeight: '1.25' }}>{data.id}</div>
-          <div style={{ opacity: 0.75, fontSize: '12px', lineHeight: '1.25' }}>{data.use}</div>
-        </div>
+      
+      <div style={headerStyle}>
+        <span style={{ fontSize: '16px' }}>{icon}</span>
+        <span>{data.id}</span>
+        {hasCondition && (
+          <span style={badgeStyle}>IF</span>
+        )}
       </div>
-
-      {data.with && Object.keys(data.with).length > 0 && (
-        <div style={{ opacity: 0.75, fontSize: '12px', marginBottom: '4px' }}>
-          {Object.keys(data.with).length} parameter{Object.keys(data.with).length !== 1 ? 's' : ''}
-        </div>
-      )}
-
-      {data.if && (
-        <div style={{
-          fontSize: '12px',
-          backgroundColor: '#fef08a',
-          color: '#854d0e',
-          padding: '2px 8px',
-          borderRadius: '4px',
-          marginTop: '4px'
-        }}>
-          Conditional
-        </div>
-      )}
-
+      
+      <div style={{ 
+        fontSize: '12px', 
+        opacity: 0.7, 
+        marginBottom: '4px',
+        wordBreak: 'break-word'
+      }}>
+        {data.use}
+      </div>
+      
+      {renderParameterSummary}
+      
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{
-          width: '12px',
-          height: '12px',
-          backgroundColor: '#6b7280',
-          border: '2px solid white',
-          borderRadius: '50%',
-          bottom: '-6px'
-        }}
+        style={NODE_CONFIG.HANDLE_STYLE}
       />
     </div>
   )
