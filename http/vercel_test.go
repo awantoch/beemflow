@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -52,5 +53,20 @@ func TestVercelHandlerWithEndpointFilter(t *testing.T) {
 	Handler(w2, req2)
 	if w2.Code != http.StatusNotFound {
 		t.Errorf("Expected flows endpoint to be blocked, got status %d", w2.Code)
+	}
+}
+
+func TestRootGreeting(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+
+	Handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if body := w.Body.String(); strings.TrimSpace(body) != "Hi, I'm BeemBeem! :D" {
+		t.Fatalf("unexpected root response: %s", body)
 	}
 }

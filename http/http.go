@@ -58,8 +58,8 @@ func StartServer(cfg *config.Config) error {
 	// Create HTTP mux
 	mux := http.NewServeMux()
 
-	// Register static file serving
-	mux.HandleFunc("/", http.FileServer(http.Dir(".")).ServeHTTP)
+	// Serve static files from ./static/ directory under /static/*
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	// Register system endpoints (health, spec) that don't follow the operation pattern
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
