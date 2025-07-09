@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import ReactFlow, {
   Background,
   Controls,
@@ -11,12 +11,9 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import { Editor } from '@monaco-editor/react'
 import { StepNode } from './components/StepNode'
-import { ErrorBoundary } from './components/ErrorBoundary'
 import { useBeemFlow } from './hooks/useBeemFlow'
 
-const nodeTypes = {
-  stepNode: StepNode,
-}
+const nodeTypes = { stepNode: StepNode }
 
 const initialYaml = `name: hello
 on: cli.manual
@@ -38,78 +35,68 @@ function App() {
   
   const { wasmLoaded, wasmError, yamlToVisual, visualToYaml, validateYaml } = useBeemFlow()
   
-  // Sync YAML to visual
+  // Simple YAML to visual sync
+  const syncYamlToVisual = useCallback((yamlContent: string) => {
+    if (!wasmLoaded || !yamlContent.trim()) return
+    
+    const visual = yamlToVisual(yamlContent)
+    if (visual.nodes.length > 0) {
+      setNodes(visual.nodes)
+      setEdges(visual.edges)
+    }
+  }, [wasmLoaded, yamlToVisual, setNodes, setEdges])
+
+  // Simple visual to YAML sync
+  const syncVisualToYaml = useCallback(() => {
+    if (!wasmLoaded || nodes.length === 0) return
+    
+    const visual = { nodes, edges, flow: null }
+    const newYaml = visualToYaml(visual)
+    if (newYaml && newYaml !== yaml) {
+      setYaml(newYaml)
+    }
+  }, [wasmLoaded, nodes, edges, visualToYaml, yaml])
+
+  // Handle YAML changes
   const handleYamlChange = useCallback((value: string | undefined) => {
     const newYaml = value || ''
     setYaml(newYaml)
-    
-    if (wasmLoaded && newYaml.trim()) {
-      const visual = yamlToVisual(newYaml)
-      if (visual.nodes.length > 0) {
-        setNodes(visual.nodes)
-        setEdges(visual.edges)
-      }
-    }
-  }, [wasmLoaded, yamlToVisual, setNodes, setEdges])
-  
-  // Sync visual to YAML
-  const handleVisualChange = useCallback(() => {
-    if (wasmLoaded && nodes.length > 0) {
-      const visual = { nodes, edges, flow: null }
-      const newYaml = visualToYaml(visual)
-      if (newYaml && newYaml !== yaml) {
-        setYaml(newYaml)
-      }
-    }
-  }, [wasmLoaded, nodes, edges, visualToYaml, yaml])
-  
+    syncYamlToVisual(newYaml)
+  }, [syncYamlToVisual])
+
+  // Handle visual changes with simple debouncing
+  const handleNodesChange = useCallback((changes: any) => {
+    onNodesChange(changes)
+    setTimeout(syncVisualToYaml, 100)
+  }, [onNodesChange, syncVisualToYaml])
+
+  const handleEdgesChange = useCallback((changes: any) => {
+    onEdgesChange(changes)
+    setTimeout(syncVisualToYaml, 100)
+  }, [onEdgesChange, syncVisualToYaml])
+
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds: any[]) => addEdge(params, eds)),
     [setEdges]
   )
-  
-  // Validate YAML
-  const validation = useMemo(() => {
-    if (!wasmLoaded || !yaml.trim()) return null
-    return validateYaml(yaml)
-  }, [wasmLoaded, yaml, validateYaml])
-  
-  // Debounced visual change handlers
-  const handleNodesChange = useCallback((changes: any) => {
-    onNodesChange(changes)
-    setTimeout(handleVisualChange, 100)
-  }, [onNodesChange, handleVisualChange])
-  
-  const handleEdgesChange = useCallback((changes: any) => {
-    onEdgesChange(changes)
-    setTimeout(handleVisualChange, 100)
-  }, [onEdgesChange, handleVisualChange])
 
   // Initial sync when WASM loads
-  useMemo(() => {
-    if (wasmLoaded && yaml.trim()) {
-      const visual = yamlToVisual(yaml)
-      if (visual.nodes.length > 0) {
-        setNodes(visual.nodes)
-        setEdges(visual.edges)
-      }
+  useEffect(() => {
+    if (wasmLoaded) {
+      syncYamlToVisual(yaml)
     }
-  }, [wasmLoaded]) // Only run when WASM loads
+  }, [wasmLoaded, syncYamlToVisual, yaml])
 
+  // Get validation status
+  const validation = wasmLoaded && yaml.trim() ? validateYaml(yaml) : null
+
+  // Loading states
   if (wasmError) {
     return (
-      <div style={{
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#fef2f2'
-      }}>
-        <div style={{ textAlign: 'center', padding: '32px' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#991b1b', marginBottom: '16px' }}>
-            Failed to Load BeemFlow
-          </h1>
-          <p style={{ color: '#dc2626' }}>{wasmError}</p>
+      <div className="error-container">
+        <div className="error-content">
+          <h1>Failed to Load BeemFlow</h1>
+          <p>{wasmError}</p>
         </div>
       </div>
     )
@@ -117,186 +104,306 @@ function App() {
 
   if (!wasmLoaded) {
     return (
-      <div style={{
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#eff6ff'
-      }}>
-        <div style={{ textAlign: 'center', padding: '32px' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            border: '3px solid #2563eb',
-            borderTop: '3px solid transparent',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 16px'
-          }}></div>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e40af', marginBottom: '8px' }}>
-            Loading BeemFlow
-          </h1>
-          <p style={{ color: '#2563eb' }}>Initializing WASM runtime...</p>
+      <div className="loading-container">
+        <div className="loading-content">
+          <div className="spinner"></div>
+          <h1>Loading BeemFlow</h1>
+          <p>Initializing WASM runtime...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <ErrorBoundary>
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f3f4f6' }}>
-        {/* Header */}
-        <header style={{
-          height: '56px',
-          backgroundColor: 'white',
-          borderBottom: '1px solid #e5e7eb',
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 24px',
-          boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <h1 style={{ fontSize: '20px', fontWeight: 'bold', color: '#1f2937' }}>BeemFlow</h1>
-            <span style={{ fontSize: '18px', color: '#9ca3af' }}>→</span>
-            <h2 style={{ fontSize: '18px', color: '#4b5563' }}>Editor</h2>
-          </div>
-          
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* Validation indicator */}
-            {validation && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '4px 12px',
-                borderRadius: '9999px',
-                fontSize: '14px',
-                backgroundColor: validation.success ? '#dcfce7' : '#fee2e2',
-                color: validation.success ? '#166534' : '#991b1b'
-              }}>
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  backgroundColor: validation.success ? '#4ade80' : '#f87171'
-                }}></div>
-                {validation.success ? 'Valid' : 'Invalid'}
-              </div>
-            )}
-            
-            {/* View mode selector */}
-            <div style={{ display: 'flex', borderRadius: '8px', border: '1px solid #d1d5db', overflow: 'hidden' }}>
-              {(['visual', 'split', 'yaml'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setEditMode(mode)}
-                  style={{
-                    padding: '8px 16px',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    backgroundColor: editMode === mode ? '#2563eb' : 'white',
-                    color: editMode === mode ? 'white' : '#374151',
-                    border: 'none',
-                    borderRight: mode !== 'yaml' ? '1px solid #d1d5db' : 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-        </header>
-
-        {/* Main content */}
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-          {/* Visual Editor */}
-          {(editMode === 'visual' || editMode === 'split') && (
-            <div style={{ flex: 1, backgroundColor: '#f9fafb' }}>
-              <ErrorBoundary fallback={
-                <div style={{ padding: '20px', color: '#ef4444' }}>
-                  Error loading visual editor
-                </div>
-              }>
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  onNodesChange={handleNodesChange}
-                  onEdgesChange={handleEdgesChange}
-                  onConnect={onConnect}
-                  nodeTypes={nodeTypes}
-                  fitView
-                  style={{ backgroundColor: 'white' }}
-                >
-                  <Background color="#f1f5f9" gap={20} size={1} />
-                  <Controls style={{ backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }} />
-                  <MiniMap 
-                    nodeColor="#e2e8f0"
-                    style={{ backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                  />
-                </ReactFlow>
-              </ErrorBoundary>
-            </div>
-          )}
-
-          {/* YAML Editor */}
-          {(editMode === 'yaml' || editMode === 'split') && (
-            <div style={{ flex: 1, backgroundColor: 'white', borderLeft: editMode === 'split' ? '1px solid #e5e7eb' : 'none' }}>
-              <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <div style={{
-                  height: '40px',
-                  backgroundColor: '#f9fafb',
-                  borderBottom: '1px solid #e5e7eb',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0 16px'
-                }}>
-                  <span style={{ fontSize: '14px', fontWeight: 500, color: '#374151' }}>YAML Editor</span>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <ErrorBoundary fallback={
-                    <div style={{ padding: '20px', color: '#ef4444' }}>
-                      Error loading YAML editor
-                    </div>
-                  }>
-                    <Editor
-                      height="100%"
-                      language="yaml"
-                      theme="vs-light"
-                      value={yaml}
-                      onChange={handleYamlChange}
-                      options={{
-                        minimap: { enabled: false },
-                        fontSize: 14,
-                        wordWrap: 'on',
-                        automaticLayout: true,
-                        scrollBeyondLastLine: false,
-                        renderLineHighlight: 'none',
-                        overviewRulerBorder: false,
-                        hideCursorInOverviewRuler: true,
-                        lineNumbers: 'on',
-                        glyphMargin: false,
-                        folding: true,
-                        lineDecorationsWidth: 0,
-                        lineNumbersMinChars: 3,
-                      }}
-                    />
-                  </ErrorBoundary>
-                </div>
-              </div>
-            </div>
-          )}
+    <div className="app">
+      {/* Header */}
+      <header className="header">
+        <div className="header-title">
+          <h1>BeemFlow</h1>
+          <span>→</span>
+          <h2>Editor</h2>
         </div>
+        
+        <div className="header-controls">
+          {/* Validation indicator */}
+          {validation && (
+            <div className={`validation ${validation.success ? 'valid' : 'invalid'}`}>
+              <div className="validation-dot"></div>
+              {validation.success ? 'Valid' : 'Invalid'}
+            </div>
+          )}
+          
+          {/* View mode selector */}
+          <div className="mode-selector">
+            {(['visual', 'split', 'yaml'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setEditMode(mode)}
+                className={editMode === mode ? 'active' : ''}
+              >
+                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
 
-        <style>{`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
+      {/* Main content */}
+      <div className="main">
+        {/* Visual Editor */}
+        {(editMode === 'visual' || editMode === 'split') && (
+          <div className="visual-editor">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={handleNodesChange}
+              onEdgesChange={handleEdgesChange}
+              onConnect={onConnect}
+              nodeTypes={nodeTypes}
+              fitView
+            >
+              <Background color="#f1f5f9" gap={20} size={1} />
+              <Controls />
+              <MiniMap nodeColor="#e2e8f0" />
+            </ReactFlow>
+          </div>
+        )}
+
+        {/* YAML Editor */}
+        {(editMode === 'yaml' || editMode === 'split') && (
+          <div className={`yaml-editor ${editMode === 'split' ? 'split' : ''}`}>
+            <div className="yaml-header">
+              <span>YAML Editor</span>
+            </div>
+            <div className="yaml-content">
+              <Editor
+                height="100%"
+                language="yaml"
+                theme="vs-light"
+                value={yaml}
+                onChange={handleYamlChange}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  wordWrap: 'on',
+                  automaticLayout: true,
+                  scrollBeyondLastLine: false,
+                  lineNumbers: 'on',
+                  folding: true,
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
-    </ErrorBoundary>
+
+      <style>{`
+        .app {
+          height: 100vh;
+          display: flex;
+          flex-direction: column;
+          background: #f3f4f6;
+        }
+
+        .header {
+          height: 56px;
+          background: white;
+          border-bottom: 1px solid #e5e7eb;
+          display: flex;
+          align-items: center;
+          padding: 0 24px;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .header-title {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .header-title h1 {
+          font-size: 20px;
+          font-weight: bold;
+          color: #1f2937;
+          margin: 0;
+        }
+
+        .header-title span {
+          font-size: 18px;
+          color: #9ca3af;
+        }
+
+        .header-title h2 {
+          font-size: 18px;
+          color: #4b5563;
+          margin: 0;
+        }
+
+        .header-controls {
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .validation {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 12px;
+          border-radius: 9999px;
+          font-size: 14px;
+        }
+
+        .validation.valid {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .validation.invalid {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+
+        .validation-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+        }
+
+        .validation.valid .validation-dot {
+          background: #4ade80;
+        }
+
+        .validation.invalid .validation-dot {
+          background: #f87171;
+        }
+
+        .mode-selector {
+          display: flex;
+          border-radius: 8px;
+          border: 1px solid #d1d5db;
+          overflow: hidden;
+        }
+
+        .mode-selector button {
+          padding: 8px 16px;
+          font-size: 14px;
+          font-weight: 500;
+          background: white;
+          color: #374151;
+          border: none;
+          border-right: 1px solid #d1d5db;
+          cursor: pointer;
+        }
+
+        .mode-selector button:last-child {
+          border-right: none;
+        }
+
+        .mode-selector button.active {
+          background: #2563eb;
+          color: white;
+        }
+
+        .main {
+          flex: 1;
+          display: flex;
+          overflow: hidden;
+        }
+
+        .visual-editor {
+          flex: 1;
+          background: white;
+        }
+
+        .yaml-editor {
+          flex: 1;
+          background: white;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .yaml-editor.split {
+          border-left: 1px solid #e5e7eb;
+        }
+
+        .yaml-header {
+          height: 40px;
+          background: #f9fafb;
+          border-bottom: 1px solid #e5e7eb;
+          display: flex;
+          align-items: center;
+          padding: 0 16px;
+          font-size: 14px;
+          font-weight: 500;
+          color: #374151;
+        }
+
+        .yaml-content {
+          flex: 1;
+        }
+
+        .loading-container, .error-container {
+          height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .loading-container {
+          background: #eff6ff;
+        }
+
+        .error-container {
+          background: #fef2f2;
+        }
+
+        .loading-content, .error-content {
+          text-align: center;
+          padding: 32px;
+        }
+
+        .loading-content h1 {
+          font-size: 24px;
+          font-weight: bold;
+          color: #1e40af;
+          margin: 16px 0 8px 0;
+        }
+
+        .error-content h1 {
+          font-size: 24px;
+          font-weight: bold;
+          color: #991b1b;
+          margin: 0 0 16px 0;
+        }
+
+        .loading-content p {
+          color: #2563eb;
+          margin: 0;
+        }
+
+        .error-content p {
+          color: #dc2626;
+          margin: 0;
+        }
+
+        .spinner {
+          width: 48px;
+          height: 48px;
+          border: 3px solid #2563eb;
+          border-top: 3px solid transparent;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+          margin: 0 auto;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
   )
 }
 
