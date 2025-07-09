@@ -32,47 +32,87 @@ function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [editMode, setEditMode] = useState<'visual' | 'yaml' | 'split'>('split')
+  const [validation, setValidation] = useState<{ success: boolean; error?: string } | null>(null)
+  const [syncing, setSyncing] = useState(false)
   
-  const { wasmLoaded, wasmError, yamlToVisual, visualToYaml, validateYaml } = useBeemFlow()
+  const { wasmError, yamlToVisual, visualToYaml, validateYaml, loading } = useBeemFlow()
   
-  // Simple YAML to visual sync
-  const syncYamlToVisual = useCallback((yamlContent: string) => {
-    if (!wasmLoaded || !yamlContent.trim()) return
+  // Async YAML to visual sync
+  const syncYamlToVisual = useCallback(async (yamlContent: string) => {
+    if (!yamlContent.trim()) return
     
-    const visual = yamlToVisual(yamlContent)
-    if (visual.nodes.length > 0) {
-      setNodes(visual.nodes)
-      setEdges(visual.edges)
+    setSyncing(true)
+    try {
+      const visual = await yamlToVisual(yamlContent)
+      if (visual.nodes.length > 0) {
+        setNodes(visual.nodes)
+        setEdges(visual.edges)
+      }
+    } catch (error) {
+      console.error('Failed to sync YAML to visual:', error)
+    } finally {
+      setSyncing(false)
     }
-  }, [wasmLoaded, yamlToVisual, setNodes, setEdges])
+  }, [yamlToVisual, setNodes, setEdges])
 
-  // Simple visual to YAML sync
-  const syncVisualToYaml = useCallback(() => {
-    if (!wasmLoaded || nodes.length === 0) return
+  // Async visual to YAML sync
+  const syncVisualToYaml = useCallback(async () => {
+    if (nodes.length === 0) return
     
-    const visual = { nodes, edges, flow: null }
-    const newYaml = visualToYaml(visual)
-    if (newYaml && newYaml !== yaml) {
-      setYaml(newYaml)
+    setSyncing(true)
+    try {
+      const visual = { nodes, edges, flow: null }
+      const newYaml = await visualToYaml(visual)
+      if (newYaml && newYaml !== yaml) {
+        setYaml(newYaml)
+      }
+    } catch (error) {
+      console.error('Failed to sync visual to YAML:', error)
+    } finally {
+      setSyncing(false)
     }
-  }, [wasmLoaded, nodes, edges, visualToYaml, yaml])
+  }, [nodes, edges, visualToYaml, yaml])
+
+  // Async validation
+  const validateYamlContent = useCallback(async (yamlContent: string) => {
+    if (!yamlContent.trim()) {
+      setValidation(null)
+      return
+    }
+    
+    try {
+      const result = await validateYaml(yamlContent)
+      setValidation(result as { success: boolean; error?: string })
+    } catch (error) {
+      setValidation({ success: false, error: String(error) })
+    }
+  }, [validateYaml])
 
   // Handle YAML changes
   const handleYamlChange = useCallback((value: string | undefined) => {
     const newYaml = value || ''
     setYaml(newYaml)
-    syncYamlToVisual(newYaml)
-  }, [syncYamlToVisual])
+    
+    // Debounce validation and sync
+    const timeoutId = setTimeout(() => {
+      validateYamlContent(newYaml)
+      syncYamlToVisual(newYaml)
+    }, 500)
+    
+    return () => clearTimeout(timeoutId)
+  }, [validateYamlContent, syncYamlToVisual])
 
-  // Handle visual changes with simple debouncing
+  // Handle visual changes with debouncing
   const handleNodesChange = useCallback((changes: any) => {
     onNodesChange(changes)
-    setTimeout(syncVisualToYaml, 100)
+    const timeoutId = setTimeout(() => syncVisualToYaml(), 500)
+    return () => clearTimeout(timeoutId)
   }, [onNodesChange, syncVisualToYaml])
 
   const handleEdgesChange = useCallback((changes: any) => {
     onEdgesChange(changes)
-    setTimeout(syncVisualToYaml, 100)
+    const timeoutId = setTimeout(() => syncVisualToYaml(), 500)
+    return () => clearTimeout(timeoutId)
   }, [onEdgesChange, syncVisualToYaml])
 
   const onConnect = useCallback(
@@ -80,15 +120,11 @@ function App() {
     [setEdges]
   )
 
-  // Initial sync when WASM loads
+  // Initial sync when component mounts
   useEffect(() => {
-    if (wasmLoaded) {
-      syncYamlToVisual(yaml)
-    }
-  }, [wasmLoaded, syncYamlToVisual, yaml])
-
-  // Get validation status
-  const validation = wasmLoaded && yaml.trim() ? validateYaml(yaml) : null
+    validateYamlContent(yaml)
+    syncYamlToVisual(yaml)
+  }, []) // Only run once on mount
 
   // Loading states
   if (wasmError) {
@@ -97,18 +133,6 @@ function App() {
         <div className="error-content">
           <h1>Failed to Load BeemFlow</h1>
           <p>{wasmError}</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!wasmLoaded) {
-    return (
-      <div className="loading-container">
-        <div className="loading-content">
-          <div className="spinner"></div>
-          <h1>Loading BeemFlow</h1>
-          <p>Initializing WASM runtime...</p>
         </div>
       </div>
     )
@@ -125,8 +149,16 @@ function App() {
         </div>
         
         <div className="header-controls">
+          {/* Loading indicator */}
+          {(loading || syncing) && (
+            <div className="loading-indicator">
+              <div className="spinner-small"></div>
+              <span>Processing...</span>
+            </div>
+          )}
+          
           {/* Validation indicator */}
-          {validation && (
+          {validation && !loading && (
             <div className={`validation ${validation.success ? 'valid' : 'invalid'}`}>
               <div className="validation-dot"></div>
               {validation.success ? 'Valid' : 'Invalid'}
@@ -244,6 +276,26 @@ function App() {
           display: flex;
           align-items: center;
           gap: 16px;
+        }
+
+        .loading-indicator {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 12px;
+          border-radius: 9999px;
+          background: #f3f4f6;
+          color: #6b7280;
+          font-size: 14px;
+        }
+
+        .spinner-small {
+          width: 16px;
+          height: 16px;
+          border: 2px solid #d1d5db;
+          border-top: 2px solid #6b7280;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
         }
 
         .validation {

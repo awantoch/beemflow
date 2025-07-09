@@ -1,11 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 
-// Simple WASM result interface
-interface WasmResult {
-  success: boolean
-  data?: any
-  error?: string
-}
+
 
 export interface VisualData {
   nodes: any[]
@@ -13,119 +8,130 @@ export interface VisualData {
   flow: any
 }
 
-// Global WASM functions (set by Go runtime)
-declare global {
-  function beemflowParseYaml(yaml: string): WasmResult
-  function beemflowValidateYaml(yaml: string): WasmResult
-  function beemflowGenerateMermaid(yaml: string): WasmResult
-  function beemflowYamlToVisual(yaml: string): WasmResult
-  function beemflowVisualToYaml(visual: any): WasmResult
-  class Go {
-    importObject: WebAssembly.Imports
-    run(instance: WebAssembly.Instance): Promise<void>
+// HTTP API client for BeemFlow operations
+class BeemFlowAPI {
+  private baseUrl: string
+
+  constructor(baseUrl: string = '') {
+    this.baseUrl = baseUrl
+  }
+
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    return response.json()
+  }
+
+  async parseYaml(yaml: string) {
+    return this.request('/editor/parse', {
+      method: 'POST',
+      body: JSON.stringify({ yaml }),
+    })
+  }
+
+  async validateYaml(yaml: string) {
+    return this.request('/validate', {
+      method: 'POST',
+      body: JSON.stringify({ name: yaml }),
+    })
+  }
+
+  async generateMermaid(yaml: string) {
+    return this.request('/flows/graph', {
+      method: 'POST',
+      body: JSON.stringify({ name: yaml }),
+    })
+  }
+
+  async yamlToVisual(yaml: string) {
+    return this.request('/editor/visual', {
+      method: 'POST',
+      body: JSON.stringify({ yaml }),
+    })
+  }
+
+  async visualToYaml(visualData: VisualData) {
+    return this.request('/editor/yaml', {
+      method: 'POST',
+      body: JSON.stringify({ visualData }),
+    })
   }
 }
 
 export const useBeemFlow = () => {
-  const [wasmLoaded, setWasmLoaded] = useState(false)
-  const [wasmError, setWasmError] = useState<string | null>(null)
+  const [api] = useState(() => new BeemFlowAPI())
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // Load WASM once on mount
-  useEffect(() => {
-    let mounted = true
-    
-    const loadWasm = async () => {
-      try {
-        // Load wasm_exec.js
-        const script = document.createElement('script')
-        script.src = '/wasm_exec.js'
-        document.head.appendChild(script)
-        
-        await new Promise((resolve, reject) => {
-          script.onload = resolve
-          script.onerror = reject
-        })
-
-        // Load and run WASM
-        const go = new Go()
-        const wasmModule = await WebAssembly.instantiateStreaming(
-          fetch('/main.wasm'),
-          go.importObject
-        )
-        
-        go.run(wasmModule.instance)
-        
-        if (mounted) {
-          setWasmLoaded(true)
-        }
-      } catch (error) {
-        if (mounted) {
-          setWasmError(`Failed to load WASM: ${error}`)
-        }
-      }
+  const handleRequest = useCallback(async <T>(
+    requestFn: () => Promise<T>,
+    defaultValue: T
+  ): Promise<T> => {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await requestFn()
+      return result
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      setError(errorMessage)
+      console.error('API error:', errorMessage)
+      return defaultValue
+    } finally {
+      setLoading(false)
     }
-
-    loadWasm()
-    return () => { mounted = false }
   }, [])
 
-  // Simple function wrappers
-  const parseYaml = useCallback((yaml: string) => {
-    if (!wasmLoaded) return null
-    try {
-      const result = beemflowParseYaml(yaml)
-      return result.success ? result.data : null
-    } catch (error) {
-      console.error('Parse error:', error)
-      return null
-    }
-  }, [wasmLoaded])
+  const parseYaml = useCallback(async (yaml: string) => {
+    return handleRequest(() => api.parseYaml(yaml), null)
+  }, [api, handleRequest])
 
-  const validateYaml = useCallback((yaml: string) => {
-    if (!wasmLoaded) return { success: false, error: 'WASM not loaded' }
-    try {
-      return beemflowValidateYaml(yaml)
-    } catch (error) {
-      return { success: false, error: String(error) }
-    }
-  }, [wasmLoaded])
+  const validateYaml = useCallback(async (yaml: string) => {
+    return handleRequest(
+      () => api.validateYaml(yaml),
+      { success: false, error: 'Validation failed' }
+    )
+  }, [api, handleRequest])
 
-  const generateMermaid = useCallback((yaml: string) => {
-    if (!wasmLoaded) return ''
-    try {
-      const result = beemflowGenerateMermaid(yaml)
-      return result.success ? result.data : ''
-    } catch (error) {
-      console.error('Mermaid error:', error)
-      return ''
-    }
-  }, [wasmLoaded])
+  const generateMermaid = useCallback(async (yaml: string) => {
+    const result = await handleRequest(
+      () => api.generateMermaid(yaml),
+      { diagram: '' }
+    )
+    return (result as { diagram: string }).diagram || ''
+  }, [api, handleRequest])
 
-  const yamlToVisual = useCallback((yaml: string): VisualData => {
-    if (!wasmLoaded) return { nodes: [], edges: [], flow: null }
-    try {
-      const result = beemflowYamlToVisual(yaml)
-      return result.success ? result.data : { nodes: [], edges: [], flow: null }
-    } catch (error) {
-      console.error('YAML to visual error:', error)
-      return { nodes: [], edges: [], flow: null }
-    }
-  }, [wasmLoaded])
+  const yamlToVisual = useCallback(async (yaml: string): Promise<VisualData> => {
+    const result = await handleRequest(
+      () => api.yamlToVisual(yaml),
+      { nodes: [], edges: [], flow: null }
+    )
+    return result as VisualData
+  }, [api, handleRequest])
 
-  const visualToYaml = useCallback((visual: VisualData) => {
-    if (!wasmLoaded) return ''
-    try {
-      const result = beemflowVisualToYaml(visual)
-      return result.success ? result.data : ''
-    } catch (error) {
-      console.error('Visual to YAML error:', error)
-      return ''
-    }
-  }, [wasmLoaded])
+  const visualToYaml = useCallback(async (visual: VisualData) => {
+    const result = await handleRequest(() => api.visualToYaml(visual), '')
+    return result as string
+  }, [api, handleRequest])
 
   return {
-    wasmLoaded,
-    wasmError,
+    // API ready state (always true for HTTP API)
+    wasmLoaded: true,
+    wasmError: error,
+    loading,
+    error,
+    
+    // API methods (now async)
     parseYaml,
     validateYaml,
     generateMermaid,
