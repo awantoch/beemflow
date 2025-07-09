@@ -23,212 +23,131 @@ type Result struct {
 	Error   string      `json:"error,omitempty"`
 }
 
-// WasmFunction represents a WASM function signature
-type WasmFunction func(this js.Value, args []js.Value) any
-
 func main() {
 	// Register BeemFlow functions for JavaScript
-	functions := map[string]WasmFunction{
-		"beemflowParseYaml":      parseYaml,
-		"beemflowValidateYaml":   validateYaml,
-		"beemflowGenerateMermaid": generateMermaid,
-		"beemflowYamlToVisual":   yamlToVisual,
-		"beemflowVisualToYaml":   visualToYaml,
-	}
-
-	for name, fn := range functions {
-		js.Global().Set(name, js.FuncOf(fn))
-	}
+	js.Global().Set("beemflowParseYaml", js.FuncOf(parseYaml))
+	js.Global().Set("beemflowValidateYaml", js.FuncOf(validateYaml))
+	js.Global().Set("beemflowGenerateMermaid", js.FuncOf(generateMermaid))
+	js.Global().Set("beemflowYamlToVisual", js.FuncOf(yamlToVisual))
+	js.Global().Set("beemflowVisualToYaml", js.FuncOf(visualToYaml))
 
 	// Keep the WASM module alive
 	<-make(chan bool)
 }
 
-// validateArgs checks if the required number of arguments are provided
-func validateArgs(args []js.Value, required int, errorMsg string) (string, error) {
-	if len(args) < required {
-		return "", fmt.Errorf(errorMsg)
+// Common helper for YAML parsing with error handling
+func parseAndValidateYaml(yamlStr string) (*model.Flow, *Result) {
+	if yamlStr == "" {
+		return nil, &Result{Success: false, Error: "No YAML provided"}
+	}
+
+	flow, err := dsl.ParseFromString(yamlStr)
+	if err != nil {
+		return nil, &Result{Success: false, Error: err.Error()}
+	}
+
+	return flow, nil
+}
+
+// Common helper for extracting YAML string from JS args
+func getYamlFromArgs(args []js.Value) (string, *Result) {
+	if len(args) == 0 {
+		return "", &Result{Success: false, Error: "No arguments provided"}
 	}
 	return args[0].String(), nil
 }
 
-// parseFlowFromYAML is a common helper for parsing YAML to Flow
-func parseFlowFromYAML(yaml string) (*model.Flow, error) {
-	return dsl.ParseFromString(yaml)
-}
-
 func parseYaml(this js.Value, args []js.Value) any {
-	yaml, err := validateArgs(args, 1, "No YAML provided")
-	if err != nil {
-		return result(false, nil, err.Error())
+	yamlStr, errResult := getYamlFromArgs(args)
+	if errResult != nil {
+		return resultToJS(*errResult)
 	}
 
-	flow, err := parseFlowFromYAML(yaml)
-	if err != nil {
-		return result(false, nil, err.Error())
+	flow, errResult := parseAndValidateYaml(yamlStr)
+	if errResult != nil {
+		return resultToJS(*errResult)
 	}
 
-	return result(true, flowToMap(flow), "")
+	// Use native Go JSON marshaling since Flow has json tags
+	return resultToJS(Result{Success: true, Data: flow})
 }
 
 func validateYaml(this js.Value, args []js.Value) any {
-	yaml, err := validateArgs(args, 1, "No YAML provided")
-	if err != nil {
-		return result(false, nil, err.Error())
+	yamlStr, errResult := getYamlFromArgs(args)
+	if errResult != nil {
+		return resultToJS(*errResult)
 	}
 
-	flow, err := parseFlowFromYAML(yaml)
-	if err != nil {
-		return result(false, nil, err.Error())
+	flow, errResult := parseAndValidateYaml(yamlStr)
+	if errResult != nil {
+		return resultToJS(*errResult)
 	}
 
+	// Use existing BeemFlow validation
 	if err := dsl.Validate(flow); err != nil {
-		return result(false, nil, err.Error())
+		return resultToJS(Result{Success: false, Error: err.Error()})
 	}
 
-	return result(true, "Flow is valid", "")
+	return resultToJS(Result{Success: true, Data: "Flow is valid"})
 }
 
 func generateMermaid(this js.Value, args []js.Value) any {
-	yaml, err := validateArgs(args, 1, "No YAML provided")
-	if err != nil {
-		return result(false, nil, err.Error())
+	yamlStr, errResult := getYamlFromArgs(args)
+	if errResult != nil {
+		return resultToJS(*errResult)
 	}
 
-	flow, err := parseFlowFromYAML(yaml)
-	if err != nil {
-		return result(false, nil, err.Error())
+	flow, errResult := parseAndValidateYaml(yamlStr)
+	if errResult != nil {
+		return resultToJS(*errResult)
 	}
 
+	// Use existing BeemFlow Mermaid generation
 	diagram, err := graph.ExportMermaid(flow)
 	if err != nil {
-		return result(false, nil, err.Error())
+		return resultToJS(Result{Success: false, Error: err.Error()})
 	}
 
-	return result(true, diagram, "")
+	return resultToJS(Result{Success: true, Data: diagram})
 }
 
 func yamlToVisual(this js.Value, args []js.Value) any {
-	yaml, err := validateArgs(args, 1, "No YAML provided")
-	if err != nil {
-		return result(false, nil, err.Error())
+	yamlStr, errResult := getYamlFromArgs(args)
+	if errResult != nil {
+		return resultToJS(*errResult)
 	}
 
-	flow, err := parseFlowFromYAML(yaml)
-	if err != nil {
-		return result(false, nil, err.Error())
+	flow, errResult := parseAndValidateYaml(yamlStr)
+	if errResult != nil {
+		return resultToJS(*errResult)
 	}
 
-	visualData := convertFlowToVisual(flow)
-	return result(true, visualData, "")
+	// Use existing BeemFlow graph generation
+	g := graph.NewGraph(flow)
+	
+	// Convert to React Flow format
+	visualData := map[string]interface{}{
+		"nodes": graphNodesToReactFlow(g.Nodes, flow),
+		"edges": graphEdgesToReactFlow(g.Edges),
+		"flow":  flow, // Flow already has JSON tags
+	}
+
+	return resultToJS(Result{Success: true, Data: visualData})
 }
 
 func visualToYaml(this js.Value, args []js.Value) any {
 	if len(args) == 0 {
-		return result(false, nil, "No visual data provided")
+		return resultToJS(Result{Success: false, Error: "No visual data provided"})
 	}
 
-	// Parse the visual data from JavaScript
+	// Extract nodes from JavaScript
 	visualData := args[0]
-	
-	// Extract nodes array
 	nodesJS := visualData.Get("nodes")
 	if nodesJS.Type() != js.TypeObject {
-		return result(false, nil, "Invalid nodes data")
+		return resultToJS(Result{Success: false, Error: "Invalid nodes data"})
 	}
 
-	// Convert nodes to steps
-	steps, err := convertNodesToSteps(nodesJS)
-	if err != nil {
-		return result(false, nil, err.Error())
-	}
-
-	// Create flow
-	flow := &model.Flow{
-		Name:  "editor_flow",
-		On:    "cli.manual",
-		Steps: steps,
-	}
-
-	// Generate YAML
-	yamlBytes, err := dsl.FlowToYAML(flow)
-	if err != nil {
-		return result(false, nil, err.Error())
-	}
-
-	return result(true, string(yamlBytes), "")
-}
-
-// convertFlowToVisual converts a Flow to visual representation
-func convertFlowToVisual(flow *model.Flow) map[string]any {
-	nodes := make([]map[string]any, 0, len(flow.Steps))
-	edges := make([]map[string]any, 0)
-
-	// Convert steps to visual nodes
-	for i, step := range flow.Steps {
-		node := map[string]any{
-			"id":   step.ID,
-			"type": "stepNode",
-			"position": map[string]any{
-				"x": float64(i * 300),
-				"y": 100.0,
-			},
-			"data": stepToNodeData(step),
-		}
-		nodes = append(nodes, node)
-
-		// Create edges based on dependencies
-		stepEdges := createEdgesForStep(step, i, flow.Steps)
-		edges = append(edges, stepEdges...)
-	}
-
-	return map[string]any{
-		"nodes": nodes,
-		"edges": edges,
-		"flow":  flowToMap(flow),
-	}
-}
-
-// stepToNodeData converts a Step to node data
-func stepToNodeData(step model.Step) map[string]any {
-	return map[string]any{
-		"id":   step.ID,
-		"use":  step.Use,
-		"with": step.With,
-		"if":   step.If,
-	}
-}
-
-// createEdgesForStep creates edges for a step based on dependencies
-func createEdgesForStep(step model.Step, index int, allSteps []model.Step) []map[string]any {
-	var edges []map[string]any
-
-	if len(step.DependsOn) > 0 {
-		// Explicit dependencies
-		for _, dep := range step.DependsOn {
-			edge := map[string]any{
-				"id":     fmt.Sprintf("%s-%s", dep, step.ID),
-				"source": dep,
-				"target": step.ID,
-			}
-			edges = append(edges, edge)
-		}
-	} else if index > 0 {
-		// Sequential dependency
-		prevStep := allSteps[index-1]
-		edge := map[string]any{
-			"id":     fmt.Sprintf("%s-%s", prevStep.ID, step.ID),
-			"source": prevStep.ID,
-			"target": step.ID,
-		}
-		edges = append(edges, edge)
-	}
-
-	return edges
-}
-
-// convertNodesToSteps converts JavaScript nodes to model.Step slice
-func convertNodesToSteps(nodesJS js.Value) ([]model.Step, error) {
+	// Convert JS nodes to model.Step (minimal conversion)
 	var steps []model.Step
 	nodesLength := nodesJS.Length()
 	
@@ -241,12 +160,12 @@ func convertNodesToSteps(nodesJS js.Value) ([]model.Step, error) {
 			Use: dataJS.Get("use").String(),
 		}
 
-		// Extract 'with' parameters if they exist
+		// Handle 'with' parameters
 		if withJS := dataJS.Get("with"); withJS.Type() == js.TypeObject {
-			step.With = jsObjectToMap(withJS)
+			step.With = jsValueToMap(withJS)
 		}
 
-		// Extract 'if' condition if it exists
+		// Handle 'if' condition
 		if ifJS := dataJS.Get("if"); ifJS.Type() == js.TypeString && ifJS.String() != "" {
 			step.If = ifJS.String()
 		}
@@ -254,64 +173,89 @@ func convertNodesToSteps(nodesJS js.Value) ([]model.Step, error) {
 		steps = append(steps, step)
 	}
 
-	return steps, nil
+	// Create flow with minimal structure
+	flow := &model.Flow{
+		Name:  "editor_flow",
+		On:    "cli.manual",
+		Steps: steps,
+	}
+
+	// Use existing BeemFlow YAML generation
+	yamlBytes, err := dsl.FlowToYAML(flow)
+	if err != nil {
+		return resultToJS(Result{Success: false, Error: err.Error()})
+	}
+
+	return resultToJS(Result{Success: true, Data: string(yamlBytes)})
 }
 
-// Helper functions
-func result(success bool, data interface{}, errorMsg string) map[string]any {
-	r := Result{Success: success}
-	if success {
-		r.Data = data
-	} else {
-		r.Error = errorMsg
+// Convert graph nodes to React Flow format
+func graphNodesToReactFlow(nodes []*graph.Node, flow *model.Flow) []map[string]interface{} {
+	reactNodes := make([]map[string]interface{}, len(nodes))
+	
+	// Create a map of step ID to step for quick lookup
+	stepMap := make(map[string]model.Step)
+	for _, step := range flow.Steps {
+		stepMap[step.ID] = step
 	}
 	
-	// Convert to map for JS consumption
-	jsonBytes, _ := json.Marshal(r)
-	var resultMap map[string]any
-	json.Unmarshal(jsonBytes, &resultMap)
-	return resultMap
-}
-
-func flowToMap(flow *model.Flow) map[string]any {
-	return map[string]any{
-		"name":    flow.Name,
-		"version": flow.Version,
-		"on":      flow.On,
-		"vars":    flow.Vars,
-		"steps":   stepsToMaps(flow.Steps),
-		"catch":   stepsToMaps(flow.Catch),
-	}
-}
-
-func stepsToMaps(steps []model.Step) []map[string]any {
-	result := make([]map[string]any, len(steps))
-	for i, step := range steps {
-		result[i] = map[string]any{
-			"id":         step.ID,
-			"use":        step.Use,
-			"with":       step.With,
-			"depends_on": step.DependsOn,
-			"parallel":   step.Parallel,
-			"if":         step.If,
-			"foreach":    step.Foreach,
-			"as":         step.As,
-			"steps":      stepsToMaps(step.Steps),
+	for i, node := range nodes {
+		// Get the corresponding step data
+		step, exists := stepMap[node.ID]
+		nodeData := map[string]interface{}{
+			"id":    node.ID,
+			"label": node.Label,
+		}
+		
+		// Add step data if it exists
+		if exists {
+			nodeData["use"] = step.Use
+			if step.With != nil {
+				nodeData["with"] = step.With
+			}
+			if step.If != "" {
+				nodeData["if"] = step.If
+			}
+		}
+		
+		reactNodes[i] = map[string]interface{}{
+			"id":   node.ID,
+			"type": "stepNode",
+			"position": map[string]interface{}{
+				"x": float64(i * 300), // Simple horizontal layout
+				"y": 100.0,
+			},
+			"data": nodeData,
 		}
 	}
-	return result
+	
+	return reactNodes
 }
 
-func jsObjectToMap(obj js.Value) map[string]any {
-	result := make(map[string]any)
+// Convert graph edges to React Flow format
+func graphEdgesToReactFlow(edges []*graph.Edge) []map[string]interface{} {
+	reactEdges := make([]map[string]interface{}, len(edges))
 	
-	// Get all property names
-	keys := js.Global().Get("Object").Call("keys", obj)
-	keysLength := keys.Length()
+	for i, edge := range edges {
+		reactEdges[i] = map[string]interface{}{
+			"id":     fmt.Sprintf("%s-%s", edge.From, edge.To),
+			"source": edge.From,
+			"target": edge.To,
+			"label":  edge.Label,
+		}
+	}
 	
-	for i := 0; i < keysLength; i++ {
+	return reactEdges
+}
+
+// Convert JS Value to Go map (minimal implementation)
+func jsValueToMap(jsVal js.Value) map[string]interface{} {
+	result := make(map[string]interface{})
+	
+	keys := js.Global().Get("Object").Call("keys", jsVal)
+	for i := 0; i < keys.Length(); i++ {
 		key := keys.Index(i).String()
-		value := obj.Get(key)
+		value := jsVal.Get(key)
 		
 		switch value.Type() {
 		case js.TypeString:
@@ -321,12 +265,20 @@ func jsObjectToMap(obj js.Value) map[string]any {
 		case js.TypeBoolean:
 			result[key] = value.Bool()
 		case js.TypeObject:
-			result[key] = jsObjectToMap(value)
+			result[key] = jsValueToMap(value)
 		default:
-			// Handle other types as needed
 			result[key] = value.String()
 		}
 	}
 	
 	return result
+}
+
+// Convert Result to JavaScript object
+func resultToJS(r Result) map[string]interface{} {
+	// Use Go's built-in JSON marshaling and unmarshaling
+	jsonBytes, _ := json.Marshal(r)
+	var jsResult map[string]interface{}
+	json.Unmarshal(jsonBytes, &jsResult)
+	return jsResult
 }
