@@ -13,14 +13,12 @@ import (
 var (
 	initServerless sync.Once
 	initErr        error
-	// Cache the HTTP multiplexer to avoid regenerating on every request
 	cachedMux      *http.ServeMux
-	muxMutex       sync.RWMutex
 )
 
 // Handler is the entry point for Vercel serverless functions
 func Handler(w http.ResponseWriter, r *http.Request) {
-	// CORS
+	// CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -29,7 +27,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Initialize once (includes handler generation)
+	// Initialize once
 	initServerless.Do(func() {
 		cfg := &config.Config{
 			Storage: config.StorageConfig{
@@ -44,29 +42,28 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		if cfg.FlowsDir != "" {
 			api.SetFlowsDir(cfg.FlowsDir)
 		}
-		_, initErr = api.InitializeDependencies(cfg)
 		
-		// Generate handlers ONCE during initialization, not on every request
-		if initErr == nil {
-			mux := http.NewServeMux()
-			if endpoints := os.Getenv("BEEMFLOW_ENDPOINTS"); endpoints != "" {
-				filteredOps := api.GetOperationsMapByGroups(strings.Split(endpoints, ","))
-				api.GenerateHTTPHandlersForOperations(mux, filteredOps)
-			} else {
-				api.GenerateHTTPHandlers(mux)
-			}
-			
-			// Add health check
-			mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(`{"status":"healthy"}`))
-			})
-			
-			// Cache the mux
-			muxMutex.Lock()
-			cachedMux = mux
-			muxMutex.Unlock()
+		_, initErr = api.InitializeDependencies(cfg)
+		if initErr != nil {
+			return
 		}
+		
+		// Generate handlers once during initialization
+		mux := http.NewServeMux()
+		if endpoints := os.Getenv("BEEMFLOW_ENDPOINTS"); endpoints != "" {
+			filteredOps := api.GetOperationsMapByGroups(strings.Split(endpoints, ","))
+			api.GenerateHTTPHandlersForOperations(mux, filteredOps)
+		} else {
+			api.GenerateHTTPHandlers(mux)
+		}
+		
+		// Health check endpoint
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"status":"healthy"}`))
+		})
+		
+		cachedMux = mux
 	})
 
 	if initErr != nil {
@@ -74,15 +71,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use cached mux for all requests
-	muxMutex.RLock()
-	mux := cachedMux
-	muxMutex.RUnlock()
-	
-	if mux == nil {
+	if cachedMux == nil {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
-	mux.ServeHTTP(w, r)
+	cachedMux.ServeHTTP(w, r)
 }
