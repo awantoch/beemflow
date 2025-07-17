@@ -13,11 +13,12 @@ import (
 var (
 	initServerless sync.Once
 	initErr        error
+	cachedMux      *http.ServeMux
 )
 
 // Handler is the entry point for Vercel serverless functions
 func Handler(w http.ResponseWriter, r *http.Request) {
-	// CORS
+	// CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -41,7 +42,28 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		if cfg.FlowsDir != "" {
 			api.SetFlowsDir(cfg.FlowsDir)
 		}
+		
 		_, initErr = api.InitializeDependencies(cfg)
+		if initErr != nil {
+			return
+		}
+		
+		// Generate handlers once during initialization
+		mux := http.NewServeMux()
+		if endpoints := os.Getenv("BEEMFLOW_ENDPOINTS"); endpoints != "" {
+			filteredOps := api.GetOperationsMapByGroups(strings.Split(endpoints, ","))
+			api.GenerateHTTPHandlersForOperations(mux, filteredOps)
+		} else {
+			api.GenerateHTTPHandlers(mux)
+		}
+		
+		// Health check endpoint
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"status":"healthy"}`))
+		})
+		
+		cachedMux = mux
 	})
 
 	if initErr != nil {
@@ -49,20 +71,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate handlers
-	mux := http.NewServeMux()
-	if endpoints := os.Getenv("BEEMFLOW_ENDPOINTS"); endpoints != "" {
-		filteredOps := api.GetOperationsMapByGroups(strings.Split(endpoints, ","))
-		api.GenerateHTTPHandlersForOperations(mux, filteredOps)
-	} else {
-		api.GenerateHTTPHandlers(mux)
+	if cachedMux == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
 	}
 
-	// Health check
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"healthy"}`))
-	})
-
-	mux.ServeHTTP(w, r)
+	cachedMux.ServeHTTP(w, r)
 }
