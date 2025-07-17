@@ -5,6 +5,13 @@
       "GO_BUILD_FLAGS": "-ldflags '-s -w'"
     }
   },
+  "functions": {
+    "api/index.go": {
+      "maxDuration": 300,
+      "memory": 1024,
+      "runtime": "go1.x"
+    }
+  },
   "routes": [
     { "src": "(?:.*)", "dest": "api/index.go" }
   ]
