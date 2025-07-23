@@ -53,11 +53,7 @@ The same universal protocol powers the BeemFlow agency, SaaS, and acquisition fl
       - [Python: Dataclass Patterns](#python-dataclass-patterns)
       - [Rust: Zero-Cost Abstractions](#rust-zero-cost-abstractions)
     - [Why This Matters](#why-this-matters)
-  - [Architecture](#architecture)
   - [Security \& Secrets](#security--secrets)
-  - [Roadmap](#roadmap)
-  - [Contributing](#contributing)
-    - [Code Quality Standards](#code-quality-standards)
   - [License](#license)
 
 ---
@@ -1238,78 +1234,19 @@ func BuildApprovalFlow(requiresLegal, requiresFinance bool) *model.Flow {
 
 **The result?** Flows become **first-class citizens** in your codebase—testable, composable, and maintainable like any other code.
 
-**Schema-First Validation:**
-```go
-// Every flow is validated against the JSON Schema
-func (s *FlowService) RunSpec(ctx context.Context, flow *model.Flow, vars map[string]interface{}) (string, map[string]interface{}, error) {
-    if err := dsl.Validate(flow); err != nil {
-        return "", nil, fmt.Errorf("flow validation failed: %w", err)
-    }
-    // ... execute flow
-}
-```
-
-> 💡 **Try it yourself**: Use [our JSON schemas](./docs/) to validate workflows anywhere in your stack—CI/CD, API gateways, custom tooling, or runtime validation!
-
----
-
-## Architecture
-
-- Router & planner (DAG builder)
-- Executor (persistent state, retries, awaits)
-- Event bus (memory, NATS, Temporal future)
-- Registry & adapters
-
 ---
 
 ## Security & Secrets
 
 - Secrets from env, Vault, or MCP store: `{{ secrets.NAME }}`.
 - HMAC-signed resume tokens for durable waits.
-- SOC 2 Type II in progress; ISO 27001 roadmap next.
-
----
-
-## Roadmap
-
-- VS Code extension (YAML + Mermaid preview).
-- Flow template gallery (`flow init payroll` etc.).
-- Cron & Temporal adapters.
-- Hot-reload adapters without downtime.
-- On-chain event bus (experimental).
-
----
-
-## Contributing
-
-```bash
-git clone https://github.com/awantoch/beemflow
-make dev
-```
-
-- **Code**: Go 1.24+, linted, tested.
-- **Docs**: PRs welcome — every example is CI-verified and BeemFlow-reviewed.
-- **Community**: Join <https://discord.gg/beemflow>.
-
-### Code Quality Standards
-
-We maintain strict code quality standards to ensure the codebase is modern, maintainable, and follows best practices.
-
-```bash
-# Run comprehensive code quality checks
-make check
-
-# Fix common issues automatically 
-make fix
-```
-
-See our [.golangci.yml](./.golangci.yml) for the full list of linter rules we enforce.
+- SOC 2 Type II & ISO 27001 soon.
 
 ---
 
 ## License
 
-MIT — use it, remix it, ship it.
+We'll see -- feel free to read the code and try things out but not sure if MIT or not yet.
 Commercial cloud & SLA on the way.
 
 ---
