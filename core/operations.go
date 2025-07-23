@@ -90,6 +90,16 @@ type SearchArgs struct {
 	Query string `json:"query" flag:"query" description:"Search query"`
 }
 
+// ParseYamlArgs represents arguments for parsing YAML
+type ParseYamlArgs struct {
+	Yaml string `json:"yaml" flag:"yaml" description:"YAML string to parse"`
+}
+
+// VisualToYamlArgs represents arguments for converting visual data to YAML
+type VisualToYamlArgs struct {
+	VisualData *dsl.VisualData `json:"visualData" flag:"visual-data" description:"Visual editor data"`
+}
+
 // Global operation registry
 var operationRegistry = make(map[string]*OperationDefinition)
 
@@ -602,6 +612,70 @@ func init() {
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		Handler: func(ctx context.Context, args any) (any, error) {
 			return GetRegistryIndex(ctx)
+		},
+	})
+
+	// === VISUAL EDITOR APIS (Unified with existing flow operations) ===
+
+	// Parse YAML to Flow (for visual editor)
+	RegisterOperation(&OperationDefinition{
+		ID:          "parseYaml",
+		Name:        "Parse YAML",
+		Description: "Parse YAML string to Flow structure",
+		Group:       "system",
+		HTTPMethod:  http.MethodPost,
+		HTTPPath:    "/editor/parse",
+		CLIUse:      "editor parse",
+		CLIShort:    "Parse YAML to Flow structure",
+		MCPName:     "beemflow_parse_yaml",
+		ArgsType:    reflect.TypeOf(ParseYamlArgs{}),
+		Handler: func(ctx context.Context, args any) (any, error) {
+			a := args.(*ParseYamlArgs)
+			return dsl.ParseFromString(a.Yaml)
+		},
+	})
+
+	// Convert Flow to Visual Format (for visual editor)
+	RegisterOperation(&OperationDefinition{
+		ID:          "flowToVisual",
+		Name:        "Flow to Visual",
+		Description: "Convert Flow to visual editor format",
+		Group:       "system",
+		HTTPMethod:  http.MethodPost,
+		HTTPPath:    "/editor/visual",
+		CLIUse:      "editor visual",
+		CLIShort:    "Convert Flow to visual format",
+		MCPName:     "beemflow_flow_to_visual",
+		ArgsType:    reflect.TypeOf(ParseYamlArgs{}),
+		Handler: func(ctx context.Context, args any) (any, error) {
+			a := args.(*ParseYamlArgs)
+			flow, err := dsl.ParseFromString(a.Yaml)
+			if err != nil {
+				return nil, err
+			}
+			return dsl.FlowToVisual(flow)
+		},
+	})
+
+	// Convert Visual to YAML (for visual editor)
+	RegisterOperation(&OperationDefinition{
+		ID:          "visualToYaml",
+		Name:        "Visual to YAML",
+		Description: "Convert visual editor format to YAML",
+		Group:       "system",
+		HTTPMethod:  http.MethodPost,
+		HTTPPath:    "/editor/yaml",
+		CLIUse:      "editor yaml",
+		CLIShort:    "Convert visual format to YAML",
+		MCPName:     "beemflow_visual_to_yaml",
+		ArgsType:    reflect.TypeOf(VisualToYamlArgs{}),
+		Handler: func(ctx context.Context, args any) (any, error) {
+			a := args.(*VisualToYamlArgs)
+			flow, err := dsl.VisualToFlow(a.VisualData)
+			if err != nil {
+				return nil, err
+			}
+			return dsl.FlowToYAMLString(flow)
 		},
 	})
 

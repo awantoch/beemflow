@@ -34,3 +34,9 @@ beemflow.db
 
 # GoReleaser
 dist/
+
+# Editor build artifacts
+editor/web/node_modules/
+editor/web/dist/
+editor/web/package-lock.json
+editor/wasm/main.wasm
