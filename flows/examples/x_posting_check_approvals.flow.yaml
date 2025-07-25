@@ -1,0 +1,53 @@
+name: x_posting_check_approvals
+on:
+  - event: tweet.check_approvals  # Can be triggered via cron job or manual trigger
+
+steps:
+  # Step 1: Read all pending tweets from Google Sheets
+  - id: read_pending
+    use: mcp://google-sheets/sheets.spreadsheets.values.get
+    with:
+      spreadsheetId: "{{ secrets.GOOGLE_SHEETS_DRAFT_ID }}"
+      range: "Sheet1!A:F"
+      majorDimension: "ROWS"
+
+  # Step 2: Process each row to find approved tweets
+  - id: process_approvals
+    for:
+      each: row
+      in: "{{ read_pending.values }}"
+      # Skip header row
+      when: "{{ forloop.index > 0 }}"
+    steps:
+      # Check if approved (column E is TRUE) and not yet posted (column F is empty)
+      - id: check_approval
+        when: "{{ row.4 == 'TRUE' && row.5 == '' }}"
+        steps:
+          # Post to X/Twitter
+          - id: post_tweet
+            use: mcp://x-twitter/post
+            with:
+              text: "{{ row.2 }}"  # Tweet content from column C
+            
+          # Update the sheet to mark as posted
+          - id: mark_posted
+            use: mcp://google-sheets/sheets.spreadsheets.values.update
+            with:
+              spreadsheetId: "{{ secrets.GOOGLE_SHEETS_DRAFT_ID }}"
+              range: "Sheet1!D{{ forloop.index + 1 }}:F{{ forloop.index + 1 }}"
+              valueInputOption: "USER_ENTERED"
+              values:
+                - - "Posted"  # Update status
+                  - "TRUE"    # Keep approved
+                  - "=NOW()"  # Posted timestamp
+
+          # Emit success event
+          - id: emit_posted
+            use: event.emit
+            with:
+              topic: "tweet.posted"
+              data:
+                content: "{{ row.2 }}"
+                sourceFile: "{{ row.1 }}"
+                postedAt: "{{ post_tweet.timestamp }}"
+                tweetId: "{{ post_tweet.id }}"

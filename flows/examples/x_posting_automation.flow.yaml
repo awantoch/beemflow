@@ -1,0 +1,55 @@
+name: x_posting_automation
+on:
+  - event: google.drive.new_file  # Can be triggered via webhook or polling script
+
+steps:
+  # Step 1: Get the new file from Google Drive
+  - id: get_file_info
+    use: mcp://google-sheets/drive.files.get
+    with:
+      fileId: "{{ event.fileId }}"
+      fields: "id,name,mimeType,createdTime,owners"
+
+  # Step 2: Read file content
+  - id: read_content
+    use: mcp://google-sheets/drive.files.export
+    with:
+      fileId: "{{ event.fileId }}"
+      mimeType: "text/plain"
+
+  # Step 3: Generate tweet content using AI
+  - id: generate_tweet
+    use: openai.chat_completion
+    with:
+      model: "gpt-4o"
+      messages:
+        - role: system
+          content: "You are a social media expert. Create an engaging tweet (max 280 chars) based on the provided content. Include relevant hashtags."
+        - role: user
+          content: "Create a tweet from this content: {{ read_content.data }}"
+
+  # Step 4: Create draft entry in Google Sheets
+  - id: create_draft
+    use: mcp://google-sheets/sheets.spreadsheets.values.append
+    with:
+      spreadsheetId: "{{ secrets.GOOGLE_SHEETS_DRAFT_ID }}"
+      range: "Sheet1!A:F"
+      valueInputOption: "USER_ENTERED"
+      values:
+        - - "=NOW()"  # Timestamp
+          - "{{ get_file_info.name }}"  # Source file
+          - "{{ generate_tweet.choices.0.message.content }}"  # Draft tweet
+          - "Pending"  # Status
+          - "FALSE"  # Approved checkbox
+          - ""  # Posted timestamp
+
+  # Step 5: Emit event for approval monitoring
+  - id: emit_pending
+    use: event.emit
+    with:
+      topic: "tweet.pending_approval"
+      data:
+        row: "{{ create_draft.updates.updatedRange }}"
+        spreadsheetId: "{{ secrets.GOOGLE_SHEETS_DRAFT_ID }}"
+        draftContent: "{{ generate_tweet.choices.0.message.content }}"
+        sourceFile: "{{ get_file_info.name }}"

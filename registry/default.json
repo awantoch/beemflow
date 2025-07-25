@@ -120,5 +120,35 @@
       "AIRTABLE_API_KEY": "$env:AIRTABLE_API_KEY"
     },
     "transport": "stdio"
+  },
+  {
+    "type": "mcp_server",
+    "name": "google-sheets",
+    "description": "Google Sheets integration via MCP protocol for spreadsheet operations.",
+    "command": "npx",
+    "args": ["-y", "@xing5/mcp-server-google-sheets"],
+    "version": "0.1.0",
+    "registry": "default",
+    "env": {
+      "GOOGLE_API_KEY": "$env:GOOGLE_API_KEY",
+      "GOOGLE_SERVICE_ACCOUNT_JSON": "$env:GOOGLE_SERVICE_ACCOUNT_JSON"
+    },
+    "transport": "stdio"
+  },
+  {
+    "type": "mcp_server",
+    "name": "x-twitter",
+    "description": "X (Twitter) integration via MCP protocol for posting tweets and social media operations.",
+    "command": "npx",
+    "args": ["-y", "@profullstack/x-twitter-mcp"],
+    "version": "0.1.0",
+    "registry": "default",
+    "env": {
+      "TWITTER_API_KEY": "$env:TWITTER_API_KEY",
+      "TWITTER_API_SECRET": "$env:TWITTER_API_SECRET",
+      "TWITTER_ACCESS_TOKEN": "$env:TWITTER_ACCESS_TOKEN",
+      "TWITTER_ACCESS_SECRET": "$env:TWITTER_ACCESS_SECRET"
+    },
+    "transport": "stdio"
   }
 ] 

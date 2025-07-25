@@ -1,0 +1,44 @@
+name: x_posting_automation_test
+on:
+  - cli.manual
+
+steps:
+  # Test 1: Simulate file upload to Google Drive
+  - id: test_file_upload
+    use: event.emit
+    with:
+      topic: "google.drive.new_file"
+      data:
+        fileId: "test_file_123"
+        fileName: "test_content.txt"
+        content: "BeemFlow is an amazing workflow automation tool that makes it easy to build complex automations!"
+
+  # Wait for draft creation
+  - id: wait_for_draft
+    await_event:
+      source: internal
+      match:
+        topic: "tweet.pending_approval"
+      timeout: 30s
+
+  # Test 2: Verify draft was created
+  - id: log_draft
+    use: log
+    with:
+      message: "Draft created: {{ wait_for_draft.data.draftContent }}"
+      level: info
+
+  # Test 3: Trigger approval check
+  - id: test_approval_check
+    use: event.emit
+    with:
+      topic: "tweet.check_approvals"
+      data:
+        source: "test"
+
+  # Log completion
+  - id: test_complete
+    use: log
+    with:
+      message: "X posting automation test completed successfully"
+      level: info
