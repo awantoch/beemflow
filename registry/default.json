@@ -109,6 +109,173 @@
     }
   },
   {
+    "type": "tool",
+    "name": "google_drive.files.list",
+    "description": "List files in Google Drive, with optional folder filtering and search queries",
+    "kind": "task",
+    "version": "1.0.0",
+    "registry": "default",
+    "parameters": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "q": {
+          "type": "string",
+          "description": "Query for searching files (e.g., 'parents in \"FOLDER_ID\"' to list files in a folder)"
+        },
+        "pageSize": {
+          "type": "integer",
+          "description": "Maximum number of files to return",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "pageToken": {
+          "type": "string",
+          "description": "Token for retrieving next page of results"
+        },
+        "orderBy": {
+          "type": "string",
+          "description": "Sort order (e.g., 'createdTime desc', 'modifiedTime', 'name')"
+        },
+        "fields": {
+          "type": "string",
+          "description": "Fields to include in response",
+          "default": "nextPageToken,files(id,name,mimeType,parents,createdTime,modifiedTime,size,webViewLink)"
+        }
+      }
+    },
+    "endpoint": "https://www.googleapis.com/drive/v3/files",
+    "method": "GET",
+    "headers": {
+      "Authorization": "Bearer $env:GOOGLE_ACCESS_TOKEN",
+      "Content-Type": "application/json"
+    }
+  },
+  {
+    "type": "tool",
+    "name": "google_sheets.values.get",
+    "description": "Get values from a range in a Google Sheets spreadsheet",
+    "kind": "task",
+    "version": "1.0.0",
+    "registry": "default",
+    "parameters": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["spreadsheetId", "range"],
+      "properties": {
+        "spreadsheetId": {
+          "type": "string",
+          "description": "ID of the spreadsheet"
+        },
+        "range": {
+          "type": "string",
+          "description": "A1 notation range (e.g., 'Sheet1!A1:D10' or 'A:D')"
+        },
+        "majorDimension": {
+          "type": "string",
+          "description": "Major dimension for returned values",
+          "enum": ["ROWS", "COLUMNS"],
+          "default": "ROWS"
+        },
+        "valueRenderOption": {
+          "type": "string",
+          "description": "How values should be represented",
+          "enum": ["FORMATTED_VALUE", "UNFORMATTED_VALUE", "FORMULA"],
+          "default": "FORMATTED_VALUE"
+        }
+      }
+    },
+    "endpoint": "https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values/{range}",
+    "method": "GET",
+    "headers": {
+      "Authorization": "Bearer $env:GOOGLE_ACCESS_TOKEN",
+      "Content-Type": "application/json"
+    }
+  },
+  {
+    "type": "tool",
+    "name": "google_sheets.values.update",
+    "description": "Update values in a range of a Google Sheets spreadsheet",
+    "kind": "task",
+    "version": "1.0.0",
+    "registry": "default",
+    "parameters": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["spreadsheetId", "range", "values"],
+      "properties": {
+        "spreadsheetId": {
+          "type": "string",
+          "description": "ID of the spreadsheet"
+        },
+        "range": {
+          "type": "string",
+          "description": "A1 notation range to update (e.g., 'Sheet1!A1:D10')"
+        },
+        "values": {
+          "type": "array",
+          "description": "2D array of values to write",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "valueInputOption": {
+          "type": "string",
+          "description": "How input data should be interpreted",
+          "enum": ["INPUT_VALUE_OPTION_UNSPECIFIED", "RAW", "USER_ENTERED"],
+          "default": "USER_ENTERED"
+        }
+      }
+    },
+    "endpoint": "https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values/{range}",
+    "method": "PUT",
+    "headers": {
+      "Authorization": "Bearer $env:GOOGLE_ACCESS_TOKEN",
+      "Content-Type": "application/json"
+    }
+  },
+  {
+    "type": "tool",
+    "name": "x.post",
+    "description": "Post a tweet to X (Twitter) via the API v2",
+    "kind": "task",
+    "version": "1.0.0",
+    "registry": "default",
+    "parameters": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The text content of the tweet",
+          "maxLength": 280
+        },
+        "media_ids": {
+          "type": "array",
+          "description": "Array of media IDs to attach to the tweet",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "endpoint": "https://api.twitter.com/2/tweets",
+    "method": "POST",
+    "headers": {
+      "Authorization": "Bearer $env:X_BEARER_TOKEN",
+      "Content-Type": "application/json"
+    }
+  },
+  {
     "type": "mcp_server",
     "name": "airtable",
     "description": "Airtable integration via MCP protocol for database operations.",
