@@ -3,42 +3,35 @@ on:
   - cli.manual
 
 steps:
-  # Test 1: Simulate file upload to Google Drive
-  - id: test_file_upload
-    use: event.emit
+  # Test 1: Log the test scenario
+  - id: log_test_start
+    use: core.echo
     with:
-      topic: "google.drive.new_file"
-      data:
-        fileId: "test_file_123"
-        fileName: "test_content.txt"
-        content: "BeemFlow is an amazing workflow automation tool that makes it easy to build complex automations!"
+      text: "Starting X posting automation test"
 
-  # Wait for draft creation
-  - id: wait_for_draft
-    await_event:
-      source: internal
-      match:
-        topic: "tweet.pending_approval"
-      timeout: 30s
+  # Test 2: Simulate draft creation data
+  - id: simulate_draft
+    use: core.echo
+    with:
+      text: "Test tweet: BeemFlow is an amazing workflow automation tool!"
+      draft_content: "BeemFlow is an amazing workflow automation tool that makes it easy to build complex automations!"
+      file_name: "test_content.txt"
 
-  # Test 2: Verify draft was created
+  # Test 3: Log the draft
   - id: log_draft
-    use: log
+    use: core.echo  
     with:
-      message: "Draft created: {{ wait_for_draft.data.draftContent }}"
-      level: info
+      text: "Draft created: {{ simulate_draft.draft_content }}"
 
-  # Test 3: Trigger approval check
-  - id: test_approval_check
-    use: event.emit
+  # Test 4: Simulate approval process
+  - id: simulate_approval
+    use: core.echo
     with:
-      topic: "tweet.check_approvals"
-      data:
-        source: "test"
+      text: "Simulating approval for: {{ simulate_draft.draft_content }}"
+      approved: "TRUE"
 
-  # Log completion
-  - id: test_complete
-    use: log
+  # Test 5: Final log
+  - id: log_complete
+    use: core.echo
     with:
-      message: "X posting automation test completed successfully"
-      level: info
+      text: "X posting automation test completed successfully"

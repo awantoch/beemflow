@@ -1,6 +1,13 @@
 name: x_posting_automation
 on:
-  - event: google.drive.new_file  # Can be triggered via webhook or polling script
+  - event: google.drive.new_file  # Triggered by external integration (webhook, API, etc.)
+  - cli.manual  # Can also be triggered manually for testing
+
+# Note: Since cron scheduling is not yet implemented in BeemFlow runtime,
+# this workflow is triggered by events. You can:
+# 1. Set up Google Drive webhooks to emit this event
+# 2. Use an external cron service to call the BeemFlow API periodically
+# 3. Manually trigger via CLI: beemflow run x_posting_automation
 
 steps:
   # Step 1: Get the new file from Google Drive
@@ -42,14 +49,3 @@ steps:
           - "Pending"  # Status
           - "FALSE"  # Approved checkbox
           - ""  # Posted timestamp
-
-  # Step 5: Emit event for approval monitoring
-  - id: emit_pending
-    use: event.emit
-    with:
-      topic: "tweet.pending_approval"
-      data:
-        row: "{{ create_draft.updates.updatedRange }}"
-        spreadsheetId: "{{ secrets.GOOGLE_SHEETS_DRAFT_ID }}"
-        draftContent: "{{ generate_tweet.choices.0.message.content }}"
-        sourceFile: "{{ get_file_info.name }}"

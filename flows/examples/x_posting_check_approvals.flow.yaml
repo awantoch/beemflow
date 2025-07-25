@@ -1,6 +1,7 @@
 name: x_posting_check_approvals
 on:
-  - event: tweet.check_approvals  # Can be triggered via cron job or manual trigger
+  - event: tweet.check_approvals  # Triggered by external system or manual API call
+  - cli.manual  # Can also be triggered manually
 
 steps:
   # Step 1: Read all pending tweets from Google Sheets
@@ -40,14 +41,3 @@ steps:
                 - - "Posted"  # Update status
                   - "TRUE"    # Keep approved
                   - "=NOW()"  # Posted timestamp
-
-          # Emit success event
-          - id: emit_posted
-            use: event.emit
-            with:
-              topic: "tweet.posted"
-              data:
-                content: "{{ row.2 }}"
-                sourceFile: "{{ row.1 }}"
-                postedAt: "{{ post_tweet.timestamp }}"
-                tweetId: "{{ post_tweet.id }}"
