@@ -10,15 +10,19 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/awantoch/beemflow/constants"
 	"github.com/awantoch/beemflow/registry"
 	"github.com/awantoch/beemflow/utils"
 )
 
-// defaultClient is used for HTTP requests with a timeout to avoid hanging.
-var defaultClient = &http.Client{Timeout: 30 * time.Second}
+// getHTTPClient returns an HTTP client that respects context deadlines
+func getHTTPClient() *http.Client {
+	return &http.Client{
+		// Don't set a timeout here - let the context handle timeouts
+		// This allows proper context cancellation and deadline handling
+	}
+}
 
 // Environment variable pattern for safe parsing
 var envVarPattern = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)`)
@@ -148,8 +152,9 @@ func (a *HTTPAdapter) executeHTTPRequest(ctx context.Context, req HTTPRequest) (
 	}
 	httpReq.Header.Set(constants.HeaderAccept, constants.DefaultJSONAccept)
 
-	// Execute request
-	resp, err := defaultClient.Do(httpReq)
+	// Execute request with context-aware client
+	client := getHTTPClient()
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, utils.Errorf("HTTP request failed: %w", err)
 	}

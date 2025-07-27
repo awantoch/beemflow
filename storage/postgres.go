@@ -224,7 +224,7 @@ func (s *PostgresStorage) SavePausedRun(ctx context.Context, token string, pause
 		return err
 	}
 
-	_, err = s.db.Exec(`
+	_, err = s.db.ExecContext(ctx, `
 INSERT INTO paused_runs (token, flow, step_idx, step_ctx, outputs)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT(token) DO UPDATE SET 
@@ -237,7 +237,7 @@ ON CONFLICT(token) DO UPDATE SET
 }
 
 func (s *PostgresStorage) LoadPausedRuns(ctx context.Context) (map[string]any, error) {
-	rows, err := s.db.Query(`SELECT token, flow, step_idx, step_ctx, outputs FROM paused_runs`)
+	rows, err := s.db.QueryContext(ctx, `SELECT token, flow, step_idx, step_ctx, outputs FROM paused_runs`)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +278,7 @@ func (s *PostgresStorage) LoadPausedRuns(ctx context.Context) (map[string]any, e
 }
 
 func (s *PostgresStorage) DeletePausedRun(ctx context.Context, token string) error {
-	_, err := s.db.Exec(`DELETE FROM paused_runs WHERE token = $1`, token)
+	_, err := s.db.ExecContext(ctx, `DELETE FROM paused_runs WHERE token = $1`, token)
 	return err
 }
 

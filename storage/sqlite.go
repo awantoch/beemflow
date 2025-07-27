@@ -255,7 +255,7 @@ func (s *SqliteStorage) SavePausedRun(ctx context.Context, token string, paused 
 			persist.RunID = s
 		}
 	}
-	_, err = s.db.Exec(`
+	_, err = s.db.ExecContext(ctx, `
 	INSERT INTO paused_runs (token, flow, step_idx, step_ctx, outputs)
 	VALUES (?, ?, ?, ?, ?)
 	ON CONFLICT(token) DO UPDATE SET flow=excluded.flow, step_idx=excluded.step_idx, step_ctx=excluded.step_ctx, outputs=excluded.outputs
@@ -264,7 +264,7 @@ func (s *SqliteStorage) SavePausedRun(ctx context.Context, token string, paused 
 }
 
 func (s *SqliteStorage) LoadPausedRuns(ctx context.Context) (map[string]any, error) {
-	rows, err := s.db.Query(`SELECT token, flow, step_idx, step_ctx, outputs FROM paused_runs`)
+	rows, err := s.db.QueryContext(ctx, `SELECT token, flow, step_idx, step_ctx, outputs FROM paused_runs`)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +302,7 @@ func (s *SqliteStorage) LoadPausedRuns(ctx context.Context) (map[string]any, err
 }
 
 func (s *SqliteStorage) DeletePausedRun(ctx context.Context, token string) error {
-	_, err := s.db.Exec(`DELETE FROM paused_runs WHERE token=?`, token)
+	_, err := s.db.ExecContext(ctx, `DELETE FROM paused_runs WHERE token=?`, token)
 	return err
 }
 
