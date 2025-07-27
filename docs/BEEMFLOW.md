@@ -185,14 +185,14 @@ A BeemFlow flow is started by one or more triggers, defined in the `on:` field a
 - `cli.manual` — Manual trigger from the CLI or API.
 - `event: <topic>` — Subscribes to a named event topic (e.g. `event: tweet.request`).
 - `schedule.cron` — Runs on a cron schedule (requires a `cron:` field).
-- `schedule.interval` — Runs on a fixed interval (requires an `every:` field).
+- `http.request` — Triggered by HTTP request (API endpoints).
 
 ### Events
 - When a flow is triggered by an event, the event payload is available as `.event` in templates.
 - For scheduled triggers, `.event` is usually empty unless injected by the runner.
 
 ### Await Event (`await_event`)
-The `await_event` step pauses the flow until a matching event is received. This enables human-in-the-loop, webhook, or external event-driven automations.
+The `await_event` step pauses the flow until a matching event is received. This enables human-in-the-loop or external event-driven automations.
 
 **Schema:**
 ```yaml

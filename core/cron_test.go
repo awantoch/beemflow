@@ -399,7 +399,7 @@ func TestCron_ValidationError(t *testing.T) {
 
 	// Create a workflow WITHOUT schedule.cron trigger
 	testFlow := `name: non_cron_workflow
-on: webhook
+on: http.request
 
 steps:
   - id: echo

@@ -54,7 +54,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		},
 		FlowsDir: os.Getenv("FLOWS_DIR"),
 		Event: &config.EventConfig{
-			Driver: "memory", // In-memory event bus for serverless
+			Driver: "serverless", // Serverless-optimized event bus (no goroutines)
 		},
 	}
 	if cfg.FlowsDir != "" {

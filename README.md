@@ -303,7 +303,7 @@ flow run human_approval.flow.yaml
 
 **What happens?**
 - The flow sends an SMS for approval.
-- It pauses until a reply is received (via webhook or manual event).
+- It pauses until a reply is received (via HTTP endpoint or manual event).
 - When the human replies, the flow resumes and prints the result.
 
 ---
@@ -479,8 +479,8 @@ flow run cfo_daily_cash.flow.yaml
 
 ```yaml
 name: ecommerce_autopilot
-on: schedule.interval
-every: "1h"
+on: schedule.cron
+cron: "0 * * * *"  # Every hour
 
 vars:
   MIN_MARGIN_PCT: 20
@@ -617,7 +617,7 @@ steps:
 
 ✨ **Templating:** `{{…}}` gives you outputs, vars, secrets, helper funcs.
 
-⏳ **Durable waits:** `await_event` pauses until external approval / webhook.
+⏳ **Durable waits:** `await_event` pauses until external approval / HTTP event.
 
 ⚡ **Parallelism & retries:** `parallel: true` blocks and `retry:` back-offs.
 
@@ -686,7 +686,7 @@ BeemFlow provides **three complementary ways** to integrate with HTTP APIs and e
 **How it works:**
 - **Complete HTTP control** - any method, headers, body, authentication
 - **No assumptions** - you specify exactly what gets sent
-- **Perfect for** - REST APIs, webhooks, custom protocols
+- **Perfect for** - REST APIs, HTTP endpoints, custom protocols
 - **Raw power** - handles any HTTP scenario
 
 ### 🚀 Pattern 3: MCP Servers (For complex integrations)
@@ -725,7 +725,7 @@ BeemFlow provides **three complementary ways** to integrate with HTTP APIs and e
 | Custom REST API (advanced) | MCP server | `mcp://my-api/search` with caching, retries, etc. |
 | Database queries | MCP server | `mcp://postgres/query` |
 | File processing | MCP server | `mcp://filesystem/read` |
-| One-off webhook/custom request | Generic HTTP | `http` with custom headers |
+| One-off HTTP/custom request | Generic HTTP | `http` with custom headers |
 
 ### Testing All Patterns
 

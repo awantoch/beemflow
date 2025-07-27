@@ -8,9 +8,11 @@ import (
 	"net/url"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/utils"
+	"github.com/robfig/cron/v3"
 )
 
 const cronMarker = "# BeemFlow managed - do not edit"
@@ -153,23 +155,114 @@ func (c *CronManager) RemoveAllEntries() error {
 
 // extractCronExpression gets cron from flow (reuse existing logic)
 func extractCronExpression(flow *model.Flow) string {
-	// Check if triggered by schedule.cron
-	hasScheduleCron := false
-	switch on := flow.On.(type) {
-	case string:
-		hasScheduleCron = (on == "schedule.cron")
-	case []interface{}:
-		for _, trigger := range on {
-			if str, ok := trigger.(string); ok && str == "schedule.cron" {
-				hasScheduleCron = true
-				break
+	if !hasScheduleCronTrigger(flow) || flow.Cron == "" {
+		return ""
+	}
+	return flow.Cron
+}
+
+// CheckAndExecuteCronFlows checks all flows for cron schedules and executes those that are due
+// This is optimized for serverless - it's stateless and relies only on the database
+func CheckAndExecuteCronFlows(ctx context.Context) (map[string]interface{}, error) {
+	// List all flows
+	flows, err := ListFlows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
+	triggered := []string{}
+	errors := []string{}
+	checked := 0
+	
+	// Get current time
+	now := time.Now().UTC()
+	
+	// Create cron parser - using standard cron format (5 fields)
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	
+	for _, flowName := range flows {
+		flow, err := GetFlow(ctx, flowName)
+		if err != nil {
+			errors = append(errors, flowName + ": " + err.Error())
+			continue
+		}
+		
+		// Check if flow has schedule.cron trigger
+		if !hasScheduleCronTrigger(&flow) {
+			continue
+		}
+		
+		checked++
+		
+		// Parse cron expression
+		if flow.Cron == "" {
+			errors = append(errors, flowName + ": missing cron expression")
+			continue
+		}
+		
+		schedule, err := parser.Parse(flow.Cron)
+		if err != nil {
+			errors = append(errors, flowName + ": invalid cron: " + err.Error())
+			continue
+		}
+		
+		// Check if we should run now
+		// In serverless, we need to check if the schedule matches within our check window
+		// Vercel cron runs every 5 minutes, so we check a 5-minute window
+		if shouldRunNow(schedule, now, 5*time.Minute) {
+			// Trigger the workflow
+			event := map[string]interface{}{
+				"trigger":   "schedule.cron",
+				"workflow":  flowName,
+				"timestamp": now.Format(time.RFC3339),
+			}
+			
+			if _, err := StartRun(ctx, flowName, event); err != nil {
+				errors = append(errors, flowName + ": failed to start: " + err.Error())
+			} else {
+				triggered = append(triggered, flowName)
+				utils.Info("Triggered cron workflow: %s", flowName)
 			}
 		}
 	}
+	
+	return map[string]interface{}{
+		"status":    "completed",
+		"timestamp": now.Format(time.RFC3339),
+		"triggered": len(triggered),
+		"workflows": triggered,
+		"errors":    errors,
+		"checked":   checked,
+		"total":     len(flows),
+	}, nil
+}
 
-	if !hasScheduleCron || flow.Cron == "" {
-		return ""
+// shouldRunNow checks if a cron schedule should run within the given window
+// This handles the fact that Vercel cron might not run exactly on time
+func shouldRunNow(schedule cron.Schedule, now time.Time, window time.Duration) bool {
+	// Get the previous scheduled time
+	// We look back one window period to find when it should have last run
+	checkFrom := now.Add(-window)
+	
+	// Get when it should next run after our check start time
+	nextRun := schedule.Next(checkFrom)
+	
+	// If the next run time is in the past (or within 1 minute future), we should run it
+	// The 1 minute future buffer handles edge cases where Vercel cron is slightly early
+	return nextRun.Before(now.Add(1 * time.Minute))
+}
+
+// hasScheduleCronTrigger checks if a flow has schedule.cron in its triggers
+func hasScheduleCronTrigger(flow *model.Flow) bool {
+	switch on := flow.On.(type) {
+	case string:
+		return on == "schedule.cron"
+	case []interface{}:
+		for _, trigger := range on {
+			if str, ok := trigger.(string); ok && str == "schedule.cron" {
+				return true
+			}
+		}
 	}
-
-	return flow.Cron
+	return false
 }

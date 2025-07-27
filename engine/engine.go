@@ -2,6 +2,9 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"maps"
 	"regexp"
 	"strings"
@@ -25,6 +28,29 @@ import (
 type runIDKeyType struct{}
 
 var runIDKey = runIDKeyType{}
+
+// generateDeterministicRunID creates a deterministic UUID based on flow name and event data
+// This enables deduplication of runs with identical inputs within a time window
+func generateDeterministicRunID(flowName string, event map[string]any) uuid.UUID {
+	// Create a deterministic hash of the inputs
+	h := sha256.New()
+	h.Write([]byte(flowName))
+	
+	// Add time window (5 minute buckets) to allow same workflow to run again after window
+	now := time.Now().UTC()
+	timeBucket := now.Truncate(5 * time.Minute).Unix()
+	h.Write([]byte(fmt.Sprintf(":%d", timeBucket)))
+	
+	// Add event data (sorted for consistency)
+	if eventBytes, err := json.Marshal(event); err == nil {
+		h.Write(eventBytes)
+	}
+	
+	// Generate UUID v5 (deterministic) from the hash
+	// Using DNS namespace as the namespace UUID
+	sum := h.Sum(nil)
+	return uuid.NewSHA1(uuid.NameSpaceDNS, sum[:16])
+}
 
 // Type aliases for better readability and type safety
 type (
@@ -180,6 +206,11 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 
 	// Setup execution context
 	stepCtx, runID := e.setupExecutionContext(ctx, flow, event)
+	
+	// Check if this is a duplicate run
+	if runID == uuid.Nil {
+		return nil, fmt.Errorf("duplicate run detected for workflow %s with same inputs", flow.Name)
+	}
 
 	// Execute the flow steps
 	outputs, err := e.executeStepsWithPersistence(ctx, flow, stepCtx, 0, runID)
@@ -196,8 +227,22 @@ func (e *Engine) setupExecutionContext(ctx context.Context, flow *model.Flow, ev
 	// Create step context using the new constructor
 	stepCtx := NewStepContext(event, flow.Vars, secretsMap)
 
-	// Create and persist the run
-	runID := uuid.New()
+	// Create deterministic run ID based on flow name, event data, and time window
+	runID := generateDeterministicRunID(flow.Name, event)
+	
+	// Check if this run already exists (deduplication)
+	existingRun, err := e.Storage.GetRun(ctx, runID)
+	if err == nil && existingRun != nil {
+		// Run already exists, check if it's recent (within 5 minutes)
+		if time.Since(existingRun.StartedAt) < 5*time.Minute {
+			// This is a duplicate run within the deduplication window
+			utils.Info("Duplicate run detected for %s, skipping (existing run: %s)", flow.Name, existingRun.ID)
+			return stepCtx, uuid.Nil // Return nil ID to signal duplicate
+		}
+		// Older run with same ID, generate a new unique ID
+		runID = uuid.New()
+	}
+	
 	run := &model.Run{
 		ID:        runID,
 		FlowName:  flow.Name,

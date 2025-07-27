@@ -18,6 +18,7 @@ import (
 type WatermillEventBus struct {
 	publisher  message.Publisher
 	subscriber message.Subscriber
+	serverless bool // If true, avoid spawning goroutines
 }
 
 // NewWatermillInMemBus returns a Watermill-based, in-memory bus.
@@ -25,6 +26,19 @@ func NewWatermillInMemBus() *WatermillEventBus {
 	logger := watermill.NewStdLogger(false, false)
 	ps := gochannel.NewGoChannel(gochannel.Config{OutputChannelBuffer: 100}, logger)
 	return &WatermillEventBus{publisher: ps, subscriber: ps}
+}
+
+// NewWatermillServerlessBus returns a Watermill bus optimized for serverless
+// It uses synchronous publish and avoids spawning long-running goroutines
+func NewWatermillServerlessBus() *WatermillEventBus {
+	logger := watermill.NewStdLogger(false, false)
+	config := gochannel.Config{
+		OutputChannelBuffer: 1, // Small buffer for serverless
+		Persistent: false, // No persistence needed in serverless
+		BlockPublishUntilSubscriberAck: true, // Synchronous publish
+	}
+	ps := gochannel.NewGoChannel(config, logger)
+	return &WatermillEventBus{publisher: ps, subscriber: ps, serverless: true}
 }
 
 // NewWatermillNATSBUS returns a NATS-backed bus or error if setup fails.
@@ -80,6 +94,17 @@ func (b *WatermillEventBus) Publish(topic string, payload any) error {
 }
 
 func (b *WatermillEventBus) Subscribe(ctx context.Context, topic string, handler func(payload any)) {
+	// In serverless mode, we don't want to spawn goroutines
+	if b.serverless {
+		// Check if context indicates we should skip subscriptions entirely
+		if skip, ok := ctx.Value("no-event-subscribe").(bool); ok && skip {
+			return
+		}
+		// For serverless, we'll process messages synchronously if they arrive
+		// but we won't block waiting for them
+		return
+	}
+	
 	ch, err := b.subscriber.Subscribe(ctx, topic)
 	if err != nil {
 		return

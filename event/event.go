@@ -17,13 +17,16 @@ func NewInProcEventBus() *WatermillEventBus {
 	return NewWatermillInMemBus()
 }
 
-// NewEventBusFromConfig returns an EventBus based on config. Supported: memory (default), nats (with url).
+
+// NewEventBusFromConfig returns an EventBus based on config. Supported: memory (default), serverless, nats (with url).
 // Unknown drivers fail cleanly. See docs/flow.config.schema.json for config schema.
 func NewEventBusFromConfig(cfg *config.EventConfig) (EventBus, error) {
 	if cfg == nil || cfg.Driver == "" || cfg.Driver == "memory" {
 		return NewWatermillInMemBus(), nil
 	}
 	switch cfg.Driver {
+	case "serverless":
+		return NewWatermillServerlessBus(), nil
 	case "nats":
 		if cfg.URL == "" {
 			return nil, fmt.Errorf("NATS driver requires url")
