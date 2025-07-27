@@ -162,7 +162,7 @@ func extractCronExpression(flow *model.Flow) string {
 }
 
 // CheckAndExecuteCronFlows checks all flows for cron schedules and executes those that are due
-// This is optimized for serverless - it's stateless and relies only on the database
+// This is stateless and relies only on the database
 func CheckAndExecuteCronFlows(ctx context.Context) (map[string]interface{}, error) {
 	// List all flows
 	flows, err := ListFlows(ctx)
@@ -207,21 +207,26 @@ func CheckAndExecuteCronFlows(ctx context.Context) (map[string]interface{}, erro
 		}
 		
 		// Check if we should run now
-		// In serverless, we need to check if the schedule matches within our check window
-		// Vercel cron runs every 5 minutes, so we check a 5-minute window
-		if shouldRunNow(schedule, now, 5*time.Minute) {
-			// Trigger the workflow
+		// We check if the schedule matches within our check window
+		// System cron typically runs every 5 minutes, so we check a 5-minute window
+		scheduledTime := shouldRunNowWithTime(schedule, now, 5*time.Minute)
+		if !scheduledTime.IsZero() {
+			// Create event with the actual scheduled time to enable proper deduplication
 			event := map[string]interface{}{
-				"trigger":   "schedule.cron",
-				"workflow":  flowName,
-				"timestamp": now.Format(time.RFC3339),
+				"trigger":       "schedule.cron",
+				"workflow":      flowName,
+				"timestamp":     now.Format(time.RFC3339),
+				"scheduled_for": scheduledTime.Format(time.RFC3339), // Actual cron time
 			}
 			
 			if _, err := StartRun(ctx, flowName, event); err != nil {
-				errors = append(errors, flowName + ": failed to start: " + err.Error())
+				// Ignore nil errors from duplicate detection
+				if err.Error() != "" {
+					errors = append(errors, flowName + ": failed to start: " + err.Error())
+				}
 			} else {
 				triggered = append(triggered, flowName)
-				utils.Info("Triggered cron workflow: %s", flowName)
+				utils.Info("Triggered cron workflow: %s for scheduled time: %s", flowName, scheduledTime.Format(time.RFC3339))
 			}
 		}
 	}
@@ -237,19 +242,27 @@ func CheckAndExecuteCronFlows(ctx context.Context) (map[string]interface{}, erro
 	}, nil
 }
 
-// shouldRunNow checks if a cron schedule should run within the given window
-// This handles the fact that Vercel cron might not run exactly on time
-func shouldRunNow(schedule cron.Schedule, now time.Time, window time.Duration) bool {
-	// Get the previous scheduled time
-	// We look back one window period to find when it should have last run
+// shouldRunNowWithTime checks if a cron schedule should run within the given window
+// Returns the scheduled time if it should run, or zero time if not
+// This handles the fact that system cron might not run exactly on time
+func shouldRunNowWithTime(schedule cron.Schedule, now time.Time, window time.Duration) time.Time {
+	// Get the previous scheduled time by looking back from now
+	// We need to find the most recent scheduled time that should have run
 	checkFrom := now.Add(-window)
 	
 	// Get when it should next run after our check start time
 	nextRun := schedule.Next(checkFrom)
 	
-	// If the next run time is in the past (or within 1 minute future), we should run it
-	// The 1 minute future buffer handles edge cases where Vercel cron is slightly early
-	return nextRun.Before(now.Add(1 * time.Minute))
+	// Check if this scheduled time falls within our window
+	// The scheduled time must be:
+	// 1. After our check start time (checkFrom)
+	// 2. Before or at the current time (with 1 minute buffer for early triggers)
+	if nextRun.After(checkFrom) && nextRun.Before(now.Add(1*time.Minute)) {
+		// Return the actual scheduled time for deduplication
+		return nextRun
+	}
+	
+	return time.Time{} // Zero time means don't run
 }
 
 // hasScheduleCronTrigger checks if a flow has schedule.cron in its triggers

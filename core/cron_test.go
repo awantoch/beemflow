@@ -283,8 +283,8 @@ steps:
 		t.Error("Missing triggered count in response")
 	}
 
-	if _, ok := response["results"]; !ok {
-		t.Error("Missing results in response")
+	if _, ok := response["workflows"]; !ok {
+		t.Error("Missing workflows in response")
 	}
 
 	// Note: The new cron system uses storage-based scheduling and async events

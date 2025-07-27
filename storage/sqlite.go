@@ -229,7 +229,7 @@ func (s *SqliteStorage) ResolveWait(ctx context.Context, token uuid.UUID) (*mode
 
 // PausedRunPersist and helpers
 
-func (s *SqliteStorage) SavePausedRun(token string, paused any) error {
+func (s *SqliteStorage) SavePausedRun(ctx context.Context, token string, paused any) error {
 	b, err := json.Marshal(paused)
 	if err != nil {
 		return err
@@ -263,7 +263,7 @@ func (s *SqliteStorage) SavePausedRun(token string, paused any) error {
 	return err
 }
 
-func (s *SqliteStorage) LoadPausedRuns() (map[string]any, error) {
+func (s *SqliteStorage) LoadPausedRuns(ctx context.Context) (map[string]any, error) {
 	rows, err := s.db.Query(`SELECT token, flow, step_idx, step_ctx, outputs FROM paused_runs`)
 	if err != nil {
 		return nil, err
@@ -301,7 +301,7 @@ func (s *SqliteStorage) LoadPausedRuns() (map[string]any, error) {
 	return result, nil
 }
 
-func (s *SqliteStorage) DeletePausedRun(token string) error {
+func (s *SqliteStorage) DeletePausedRun(ctx context.Context, token string) error {
 	_, err := s.db.Exec(`DELETE FROM paused_runs WHERE token=?`, token)
 	return err
 }

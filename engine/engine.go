@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -41,15 +42,27 @@ func generateDeterministicRunID(flowName string, event map[string]any) uuid.UUID
 	timeBucket := now.Truncate(5 * time.Minute).Unix()
 	h.Write([]byte(fmt.Sprintf(":%d", timeBucket)))
 	
-	// Add event data (sorted for consistency)
-	if eventBytes, err := json.Marshal(event); err == nil {
-		h.Write(eventBytes)
+	// Sort map keys for deterministic ordering
+	keys := make([]string, 0, len(event))
+	for k := range event {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	
+	// Add event data in sorted order
+	for _, k := range keys {
+		h.Write([]byte(k))
+		if v, err := json.Marshal(event[k]); err == nil {
+			h.Write(v)
+		} else {
+			// Fallback for unmarshalable values
+			h.Write([]byte(fmt.Sprintf("%v", event[k])))
+		}
 	}
 	
-	// Generate UUID v5 (deterministic) from the hash
-	// Using DNS namespace as the namespace UUID
-	sum := h.Sum(nil)
-	return uuid.NewSHA1(uuid.NameSpaceDNS, sum[:16])
+	// Generate UUID v5 (deterministic) from the hash  
+	// Use the full hash directly with UUID v5
+	return uuid.NewSHA1(uuid.NameSpaceDNS, h.Sum(nil))
 }
 
 // Type aliases for better readability and type safety
@@ -209,7 +222,8 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 	
 	// Check if this is a duplicate run
 	if runID == uuid.Nil {
-		return nil, fmt.Errorf("duplicate run detected for workflow %s with same inputs", flow.Name)
+		// Duplicate detected - return empty outputs and no error to signal successful deduplication
+		return map[string]any{}, nil
 	}
 
 	// Execute the flow steps
@@ -437,7 +451,7 @@ func (e *Engine) handleExistingPausedRun(ctx context.Context, token string) {
 					utils.ErrorCtx(ctx, "Failed to mark existing run as skipped: %v", "error", err)
 				}
 			}
-			if err := e.Storage.DeletePausedRun(token); err != nil {
+			if err := e.Storage.DeletePausedRun(ctx, token); err != nil {
 				utils.ErrorCtx(ctx, constants.ErrFailedToDeletePausedRun, "error", err)
 			}
 		}
@@ -462,7 +476,7 @@ func (e *Engine) registerPausedRun(ctx context.Context, token string, flow *mode
 	}
 
 	if e.Storage != nil {
-		if err := e.Storage.SavePausedRun(token, pausedRunToMap(e.waiting[token])); err != nil {
+		if err := e.Storage.SavePausedRun(ctx, token, pausedRunToMap(e.waiting[token])); err != nil {
 			utils.ErrorCtx(ctx, "Failed to save paused run: %v", "error", err)
 		}
 	}
@@ -531,7 +545,7 @@ func (e *Engine) retrieveAndRemovePausedRun(ctx context.Context, token string) *
 
 	delete(e.waiting, token)
 	if e.Storage != nil {
-		if err := e.Storage.DeletePausedRun(token); err != nil {
+		if err := e.Storage.DeletePausedRun(ctx, token); err != nil {
 			utils.ErrorCtx(ctx, constants.ErrFailedToDeletePausedRun, "error", err)
 		}
 	}

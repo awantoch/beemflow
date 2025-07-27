@@ -191,7 +191,7 @@ func tryFindPausedRun(store storage.Storage, execErr error) (uuid.UUID, error) {
 		return uuid.Nil, execErr
 	}
 
-	paused, err := store.LoadPausedRuns()
+	paused, err := store.LoadPausedRuns(context.Background())
 	if err != nil {
 		return uuid.Nil, execErr
 	}

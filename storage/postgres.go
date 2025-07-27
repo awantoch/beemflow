@@ -33,8 +33,8 @@ func NewPostgresStorage(dsn string) (*PostgresStorage, error) {
 		return nil, fmt.Errorf("failed to ping postgres database: %w", err)
 	}
 
-	// Configure connection pool for serverless
-	// Keep connections minimal to avoid hanging
+	// Configure connection pool settings
+	// Keep connections minimal for efficiency
 	db.SetMaxOpenConns(2)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(30 * time.Second)
@@ -201,7 +201,7 @@ func (s *PostgresStorage) ResolveWait(ctx context.Context, token uuid.UUID) (*mo
 	return nil, nil
 }
 
-func (s *PostgresStorage) SavePausedRun(token string, paused any) error {
+func (s *PostgresStorage) SavePausedRun(ctx context.Context, token string, paused any) error {
 	b, err := json.Marshal(paused)
 	if err != nil {
 		return err
@@ -236,7 +236,7 @@ ON CONFLICT(token) DO UPDATE SET
 	return err
 }
 
-func (s *PostgresStorage) LoadPausedRuns() (map[string]any, error) {
+func (s *PostgresStorage) LoadPausedRuns(ctx context.Context) (map[string]any, error) {
 	rows, err := s.db.Query(`SELECT token, flow, step_idx, step_ctx, outputs FROM paused_runs`)
 	if err != nil {
 		return nil, err
@@ -277,7 +277,7 @@ func (s *PostgresStorage) LoadPausedRuns() (map[string]any, error) {
 	return result, nil
 }
 
-func (s *PostgresStorage) DeletePausedRun(token string) error {
+func (s *PostgresStorage) DeletePausedRun(ctx context.Context, token string) error {
 	_, err := s.db.Exec(`DELETE FROM paused_runs WHERE token = $1`, token)
 	return err
 }

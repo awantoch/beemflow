@@ -612,7 +612,7 @@ func init() {
 	RegisterOperation(&OperationDefinition{
 		ID:          "system_cron",
 		Name:        "System Cron Trigger",
-		Description: "Triggers all workflows with schedule.cron (called by Vercel or system cron)",
+		Description: "Triggers all workflows with schedule.cron (called by system cron)",
 		Group:       "system",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/cron",
@@ -620,7 +620,7 @@ func init() {
 		SkipMCP:     true,
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		HTTPHandler: func(w http.ResponseWriter, r *http.Request) {
-			// Verify CRON_SECRET if set (Vercel security)
+			// Verify CRON_SECRET if set for security
 			if secret := os.Getenv("CRON_SECRET"); secret != "" {
 				auth := r.Header.Get("Authorization")
 				if auth != "Bearer "+secret {
@@ -631,7 +631,7 @@ func init() {
 			
 			ctx := r.Context()
 			
-			// Use the optimized serverless cron checker that respects cron expressions
+			// Use the optimized cron checker that respects cron expressions
 			result, err := CheckAndExecuteCronFlows(ctx)
 			if err != nil {
 				utils.Error("Failed to check cron flows: %v", err)
@@ -656,7 +656,7 @@ func init() {
 		SkipMCP:     true,
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		HTTPHandler: func(w http.ResponseWriter, r *http.Request) {
-			// Verify CRON_SECRET if set (Vercel security)
+			// Verify CRON_SECRET if set for security
 			if secret := os.Getenv("CRON_SECRET"); secret != "" {
 				auth := r.Header.Get("Authorization")
 				if auth != "Bearer "+secret {
