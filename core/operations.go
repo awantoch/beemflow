@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -729,13 +730,30 @@ func init() {
 			
 			ctx := r.Context()
 			
-			// Extract workflow name from path
-			parts := strings.Split(r.URL.Path, "/")
-			if len(parts) < 3 {
+			// Extract workflow name from path safely
+			// First check for any path traversal attempts in the original path
+			if strings.Contains(r.URL.Path, "..") {
+				http.Error(w, "Invalid workflow name", http.StatusBadRequest)
+				return
+			}
+			
+			cleanPath := path.Clean(r.URL.Path)
+			
+			// Ensure the path starts with /cron/
+			if !strings.HasPrefix(cleanPath, "/cron/") {
 				http.Error(w, "Invalid path", http.StatusBadRequest)
 				return
 			}
-			workflowName := parts[len(parts)-1]
+			
+			// Extract workflow name - everything after /cron/
+			workflowName := strings.TrimPrefix(cleanPath, "/cron/")
+			
+			// Additional validation
+			if workflowName == "" || workflowName == "." || workflowName == "/" || 
+			   strings.ContainsAny(workflowName, "/\\") {
+				http.Error(w, "Invalid workflow name", http.StatusBadRequest)
+				return
+			}
 			
 			// Verify workflow exists
 			flow, err := GetFlow(ctx, workflowName)

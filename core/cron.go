@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/url"
 	"os/exec"
-	"strconv"
 	"strings"
 
 	"github.com/awantoch/beemflow/model"
@@ -16,8 +16,13 @@ import (
 const cronMarker = "# BeemFlow managed - do not edit"
 
 // ShellQuote safely quotes a string for use in shell commands
+// It escapes single quotes and wraps the string in single quotes
+// This prevents shell injection attacks
 func ShellQuote(s string) string {
-	return strconv.Quote(s)
+	// Replace single quotes with '\'' (end quote, escaped quote, start quote)
+	escaped := strings.ReplaceAll(s, "'", "'\\''")
+	// Wrap in single quotes
+	return "'" + escaped + "'"
 }
 
 // shellQuote is the internal version
@@ -67,10 +72,11 @@ func (c *CronManager) SyncCronEntries(ctx context.Context) error {
 				curlCmd.WriteString(shellQuote("Authorization: Bearer " + c.cronSecret))
 			}
 			
-			// Build URL with proper escaping
-			url := fmt.Sprintf("%s/cron/%s", c.serverURL, flowName)
+			// Build URL with proper escaping and URL encoding
+			encodedFlowName := url.PathEscape(flowName)
+			fullURL := fmt.Sprintf("%s/cron/%s", c.serverURL, encodedFlowName)
 			curlCmd.WriteString(" ")
-			curlCmd.WriteString(shellQuote(url))
+			curlCmd.WriteString(shellQuote(fullURL))
 			curlCmd.WriteString(" >/dev/null 2>&1")
 			
 			// Create cron entry with proper spacing
