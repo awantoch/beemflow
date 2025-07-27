@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -33,14 +32,14 @@ var runIDKey = runIDKeyType{}
 // generateDeterministicRunID creates a deterministic UUID based on flow name and event data
 // This enables deduplication of runs with identical inputs within a time window
 func generateDeterministicRunID(flowName string, event map[string]any) uuid.UUID {
-	// Create a deterministic hash of the inputs
-	h := sha256.New()
-	h.Write([]byte(flowName))
+	// Build raw data for UUID v5 generation
+	var data []byte
+	data = append(data, []byte(flowName)...)
 	
 	// Add time window (5 minute buckets) to allow same workflow to run again after window
 	now := time.Now().UTC()
 	timeBucket := now.Truncate(5 * time.Minute).Unix()
-	h.Write([]byte(fmt.Sprintf(":%d", timeBucket)))
+	data = append(data, []byte(fmt.Sprintf(":%d", timeBucket))...)
 	
 	// Sort map keys for deterministic ordering
 	keys := make([]string, 0, len(event))
@@ -51,18 +50,18 @@ func generateDeterministicRunID(flowName string, event map[string]any) uuid.UUID
 	
 	// Add event data in sorted order
 	for _, k := range keys {
-		h.Write([]byte(k))
+		data = append(data, []byte(k)...)
 		if v, err := json.Marshal(event[k]); err == nil {
-			h.Write(v)
+			data = append(data, v...)
 		} else {
 			// Fallback for unmarshalable values
-			h.Write([]byte(fmt.Sprintf("%v", event[k])))
+			data = append(data, []byte(fmt.Sprintf("%v", event[k]))...)
 		}
 	}
 	
-	// Generate UUID v5 (deterministic) from the hash  
-	// Use the full hash directly with UUID v5
-	return uuid.NewSHA1(uuid.NameSpaceDNS, h.Sum(nil))
+	// Generate UUID v5 (deterministic) using SHA1 internally
+	// uuid.NewSHA1 will hash the raw data with SHA1
+	return uuid.NewSHA1(uuid.NameSpaceDNS, data)
 }
 
 // Type aliases for better readability and type safety
