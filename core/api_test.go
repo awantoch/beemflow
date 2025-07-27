@@ -9,6 +9,7 @@ import (
 
 	"github.com/awantoch/beemflow/config"
 	"github.com/awantoch/beemflow/model"
+	"github.com/awantoch/beemflow/storage"
 	"github.com/awantoch/beemflow/utils"
 	"github.com/google/uuid"
 )
@@ -47,7 +48,9 @@ func TestGraphFlow(t *testing.T) {
 }
 
 func TestStartRun(t *testing.T) {
-	_, err := StartRun(context.Background(), "dummy", map[string]any{})
+	// Use test context with memory storage
+	ctx := WithStore(context.Background(), storage.NewMemoryStorage())
+	_, err := StartRun(ctx, "dummy", map[string]any{})
 	if err != nil {
 		t.Errorf("StartRun returned error: %v", err)
 	}

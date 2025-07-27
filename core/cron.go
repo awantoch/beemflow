@@ -8,9 +8,11 @@ import (
 	"net/url"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/awantoch/beemflow/model"
 	"github.com/awantoch/beemflow/utils"
+	"github.com/robfig/cron/v3"
 )
 
 const cronMarker = "# BeemFlow managed - do not edit"
@@ -153,23 +155,124 @@ func (c *CronManager) RemoveAllEntries() error {
 
 // extractCronExpression gets cron from flow (reuse existing logic)
 func extractCronExpression(flow *model.Flow) string {
-	// Check if triggered by schedule.cron
-	hasScheduleCron := false
-	switch on := flow.On.(type) {
-	case string:
-		hasScheduleCron = (on == "schedule.cron")
-	case []interface{}:
-		for _, trigger := range on {
-			if str, ok := trigger.(string); ok && str == "schedule.cron" {
-				hasScheduleCron = true
-				break
+	if !hasScheduleCronTrigger(flow) || flow.Cron == "" {
+		return ""
+	}
+	return flow.Cron
+}
+
+// CheckAndExecuteCronFlows checks all flows for cron schedules and executes those that are due
+// This is stateless and relies only on the database
+func CheckAndExecuteCronFlows(ctx context.Context) (map[string]interface{}, error) {
+	// List all flows
+	flows, err := ListFlows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
+	triggered := []string{}
+	errors := []string{}
+	checked := 0
+	
+	// Get current time
+	now := time.Now().UTC()
+	
+	// Create cron parser - using standard cron format (5 fields)
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	
+	for _, flowName := range flows {
+		flow, err := GetFlow(ctx, flowName)
+		if err != nil {
+			errors = append(errors, flowName + ": " + err.Error())
+			continue
+		}
+		
+		// Check if flow has schedule.cron trigger
+		if !hasScheduleCronTrigger(&flow) {
+			continue
+		}
+		
+		checked++
+		
+		// Parse cron expression
+		if flow.Cron == "" {
+			errors = append(errors, flowName + ": missing cron expression")
+			continue
+		}
+		
+		schedule, err := parser.Parse(flow.Cron)
+		if err != nil {
+			errors = append(errors, flowName + ": invalid cron: " + err.Error())
+			continue
+		}
+		
+		// Check if we should run now
+		// We check if the schedule matches within our check window
+		// System cron typically runs every 5 minutes, so we check a 5-minute window
+		scheduledTime := shouldRunNowWithTime(schedule, now, 5*time.Minute)
+		if !scheduledTime.IsZero() {
+			// Create event with the actual scheduled time to enable proper deduplication
+			event := map[string]interface{}{
+				"trigger":       "schedule.cron",
+				"workflow":      flowName,
+				"timestamp":     now.Format(time.RFC3339),
+				"scheduled_for": scheduledTime.Format(time.RFC3339), // Actual cron time
+			}
+			
+			if _, err := StartRun(ctx, flowName, event); err != nil {
+				errors = append(errors, flowName + ": failed to start: " + err.Error())
+			} else {
+				triggered = append(triggered, flowName)
+				utils.Info("Triggered cron workflow: %s for scheduled time: %s", flowName, scheduledTime.Format(time.RFC3339))
 			}
 		}
 	}
+	
+	return map[string]interface{}{
+		"status":    "completed",
+		"timestamp": now.Format(time.RFC3339),
+		"triggered": len(triggered),
+		"workflows": triggered,
+		"errors":    errors,
+		"checked":   checked,
+		"total":     len(flows),
+	}, nil
+}
 
-	if !hasScheduleCron || flow.Cron == "" {
-		return ""
+// shouldRunNowWithTime checks if a cron schedule should run within the given window
+// Returns the scheduled time if it should run, or zero time if not
+// This handles the fact that system cron might not run exactly on time
+func shouldRunNowWithTime(schedule cron.Schedule, now time.Time, window time.Duration) time.Time {
+	// Get the previous scheduled time by looking back from now
+	// We need to find the most recent scheduled time that should have run
+	checkFrom := now.Add(-window)
+	
+	// Get when it should next run after our check start time
+	nextRun := schedule.Next(checkFrom)
+	
+	// Check if this scheduled time falls within our window
+	// The scheduled time must be:
+	// 1. After our check start time (checkFrom)
+	// 2. Before or at the current time (with 1 minute buffer for early triggers)
+	if nextRun.After(checkFrom) && nextRun.Before(now.Add(1*time.Minute)) {
+		// Return the actual scheduled time for deduplication
+		return nextRun
 	}
+	
+	return time.Time{} // Zero time means don't run
+}
 
-	return flow.Cron
+// hasScheduleCronTrigger checks if a flow has schedule.cron in its triggers
+func hasScheduleCronTrigger(flow *model.Flow) bool {
+	switch on := flow.On.(type) {
+	case string:
+		return on == "schedule.cron"
+	case []interface{}:
+		for _, trigger := range on {
+			if str, ok := trigger.(string); ok && str == "schedule.cron" {
+				return true
+			}
+		}
+	}
+	return false
 }

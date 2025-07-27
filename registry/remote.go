@@ -29,7 +29,18 @@ func NewRemoteRegistry(baseURL, registryName string) *RemoteRegistry {
 
 // ListServers fetches and returns all entries from the remote registry
 func (r *RemoteRegistry) ListServers(ctx context.Context, opts ListOptions) ([]RegistryEntry, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
+	// Use a default timeout only if no deadline is set in context
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+	}
+	
+	// Use http.DefaultClient which respects context deadlines
+	client := &http.Client{
+		// Don't set a client timeout - let the context handle it
+		// This allows the context deadline to take precedence
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", r.BaseURL, nil)
 	if err != nil {

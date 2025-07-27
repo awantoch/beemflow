@@ -138,12 +138,12 @@ func TestMemoryStorage_AllOperations(t *testing.T) {
 		"stepName": "paused_step",
 	}
 
-	err = storage.SavePausedRun("pause_token", pausedData)
+	err = storage.SavePausedRun(context.Background(), "pause_token", pausedData)
 	if err != nil {
 		t.Fatalf("SavePausedRun failed: %v", err)
 	}
 
-	pausedRuns, err := storage.LoadPausedRuns()
+	pausedRuns, err := storage.LoadPausedRuns(context.Background())
 	if err != nil {
 		t.Fatalf("LoadPausedRuns failed: %v", err)
 	}
@@ -155,12 +155,12 @@ func TestMemoryStorage_AllOperations(t *testing.T) {
 	}
 
 	// Test DeletePausedRun
-	err = storage.DeletePausedRun("pause_token")
+	err = storage.DeletePausedRun(context.Background(), "pause_token")
 	if err != nil {
 		t.Fatalf("DeletePausedRun failed: %v", err)
 	}
 
-	pausedRuns, err = storage.LoadPausedRuns()
+	pausedRuns, err = storage.LoadPausedRuns(context.Background())
 	if err != nil {
 		t.Fatalf("LoadPausedRuns after delete failed: %v", err)
 	}
@@ -207,12 +207,12 @@ func TestSqliteStorage_AllOperations(t *testing.T) {
 		"stepName": "paused_step",
 	}
 
-	err = storage.SavePausedRun("sqlite_pause_token", pausedData)
+	err = storage.SavePausedRun(context.Background(), "sqlite_pause_token", pausedData)
 	if err != nil {
 		t.Fatalf("SavePausedRun failed: %v", err)
 	}
 
-	pausedRuns, err := storage.LoadPausedRuns()
+	pausedRuns, err := storage.LoadPausedRuns(context.Background())
 	if err != nil {
 		t.Fatalf("LoadPausedRuns failed: %v", err)
 	}
@@ -221,12 +221,12 @@ func TestSqliteStorage_AllOperations(t *testing.T) {
 	}
 
 	// Test DeletePausedRun
-	err = storage.DeletePausedRun("sqlite_pause_token")
+	err = storage.DeletePausedRun(context.Background(), "sqlite_pause_token")
 	if err != nil {
 		t.Fatalf("DeletePausedRun failed: %v", err)
 	}
 
-	pausedRuns, err = storage.LoadPausedRuns()
+	pausedRuns, err = storage.LoadPausedRuns(context.Background())
 	if err != nil {
 		t.Fatalf("LoadPausedRuns after delete failed: %v", err)
 	}
@@ -685,20 +685,20 @@ func TestSqliteStorage_SavePausedRun_ErrorCases(t *testing.T) {
 		"data":     map[string]any{"nested": "value"},
 	}
 
-	err = storage.SavePausedRun("test_token", pausedData)
+	err = storage.SavePausedRun(context.Background(), "test_token", pausedData)
 	if err != nil {
 		t.Fatalf("SavePausedRun failed: %v", err)
 	}
 
 	// Test SavePausedRun with nil data
-	err = storage.SavePausedRun("nil_token", nil)
+	err = storage.SavePausedRun(context.Background(), "nil_token", nil)
 	if err != nil {
 		t.Fatalf("SavePausedRun with nil data failed: %v", err)
 	}
 
 	// Test SavePausedRun with empty data
 	emptyData := map[string]any{}
-	err = storage.SavePausedRun("empty_token", emptyData)
+	err = storage.SavePausedRun(context.Background(), "empty_token", emptyData)
 	if err != nil {
 		t.Fatalf("SavePausedRun with empty data failed: %v", err)
 	}
@@ -707,19 +707,19 @@ func TestSqliteStorage_SavePausedRun_ErrorCases(t *testing.T) {
 	invalidData := map[string]any{
 		"channel": make(chan int), // channels can't be marshaled to JSON
 	}
-	err = storage.SavePausedRun("invalid_token", invalidData)
+	err = storage.SavePausedRun(context.Background(), "invalid_token", invalidData)
 	if err == nil {
 		t.Error("Expected error for data that can't be marshaled to JSON")
 	}
 
 	// Test SavePausedRun with empty token
-	err = storage.SavePausedRun("", pausedData)
+	err = storage.SavePausedRun(context.Background(), "", pausedData)
 	if err != nil {
 		t.Fatalf("SavePausedRun with empty token failed: %v", err)
 	}
 
 	// Verify saved runs
-	pausedRuns, err := storage.LoadPausedRuns()
+	pausedRuns, err := storage.LoadPausedRuns(context.Background())
 	if err != nil {
 		t.Fatalf("LoadPausedRuns failed: %v", err)
 	}

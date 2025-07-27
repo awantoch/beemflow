@@ -46,7 +46,7 @@ func TestShellQuote(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			got := shellQuote(tt.input)
+			got := ShellQuote(tt.input)
 			assert.Equal(t, tt.expected, got)
 		})
 	}
@@ -166,8 +166,8 @@ func TestCronCommandInjection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
 			// Test that dangerous characters are safely escaped
-			quotedSecret := shellQuote("Authorization: Bearer " + tt.cronSecret)
-			quotedURL := shellQuote(tt.serverURL + "/cron/" + url.PathEscape(tt.flowName))
+			quotedSecret := ShellQuote("Authorization: Bearer " + tt.cronSecret)
+			quotedURL := ShellQuote(tt.serverURL + "/cron/" + url.PathEscape(tt.flowName))
 			
 			// Verify that the quoted strings are safe
 			// The single quote escaping should handle all dangerous input
@@ -283,8 +283,8 @@ steps:
 		t.Error("Missing triggered count in response")
 	}
 
-	if _, ok := response["results"]; !ok {
-		t.Error("Missing results in response")
+	if _, ok := response["workflows"]; !ok {
+		t.Error("Missing workflows in response")
 	}
 
 	// Note: The new cron system uses storage-based scheduling and async events
@@ -399,7 +399,7 @@ func TestCron_ValidationError(t *testing.T) {
 
 	// Create a workflow WITHOUT schedule.cron trigger
 	testFlow := `name: non_cron_workflow
-on: webhook
+on: http.request
 
 steps:
   - id: echo
@@ -426,6 +426,54 @@ steps:
 
 	// Should get bad request
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCron_ErrorHandling(t *testing.T) {
+	// Create temp directory with test workflow
+	tmpDir, err := os.MkdirTemp("", "cron_error_test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create a workflow that will fail (missing required step)
+	testFlow := `name: failing_workflow
+on: schedule.cron
+steps:
+  - id: fail_step
+    use: non.existent.tool
+`
+	flowPath := filepath.Join(tmpDir, "failing_workflow.flow.yaml")
+	err = os.WriteFile(flowPath, []byte(testFlow), 0644)
+	require.NoError(t, err)
+
+	// Set flows directory
+	SetFlowsDir(tmpDir)
+
+	// Get cron operation
+	cronOp, exists := GetOperation("system_cron")
+	require.True(t, exists)
+
+	// Test the endpoint
+	req := httptest.NewRequest(http.MethodPost, "/cron", nil)
+	store := storage.NewMemoryStorage()
+	req = req.WithContext(WithStore(req.Context(), store))
+	w := httptest.NewRecorder()
+
+	cronOp.HTTPHandler(w, req)
+
+	// Check response
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	// Should have errors for the failing workflow
+	if errList, ok := response["errors"].([]interface{}); ok && len(errList) > 0 {
+		// Good - we got errors as expected
+		t.Logf("Got expected errors: %v", errList)
+	} else {
+		t.Error("Expected errors for failing workflow, but got none")
+	}
 }
 
 func TestCron_Security(t *testing.T) {

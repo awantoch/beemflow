@@ -11,7 +11,6 @@ type Flow struct {
 	Version string         `yaml:"version,omitempty" json:"version,omitempty"`
 	On      any            `yaml:"on" json:"on,omitempty"`
 	Cron    string         `yaml:"cron,omitempty" json:"cron,omitempty"`   // Cron expression for schedule.cron
-	Every   string         `yaml:"every,omitempty" json:"every,omitempty"` // Interval for schedule.interval
 	Vars    map[string]any `yaml:"vars,omitempty" json:"vars,omitempty"`
 	Steps   []Step         `yaml:"steps" json:"steps"`
 	Catch   []Step         `yaml:"catch,omitempty" json:"catch,omitempty"`

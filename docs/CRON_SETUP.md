@@ -36,21 +36,7 @@ steps:
 
 ## Setup Options
 
-### 1. Vercel (Serverless)
-
-Add to `vercel.json`:
-```json
-{
-  "crons": [{
-    "path": "/cron",
-    "schedule": "*/5 * * * *"
-  }]
-}
-```
-
-For security, set the `CRON_SECRET` environment variable in Vercel. BeemFlow will automatically verify this secret on incoming cron requests.
-
-### 2. System Cron (Linux/Mac)
+### 1. System Cron (Linux/Mac)
 
 Add to crontab:
 ```bash
@@ -62,7 +48,7 @@ Add to crontab:
 0 * * * * curl -X POST http://localhost:3333/cron/hourly_sync
 ```
 
-### 3. Kubernetes CronJob
+### 2. Kubernetes CronJob
 
 ```yaml
 apiVersion: batch/v1
@@ -85,7 +71,7 @@ spec:
           restartPolicy: OnFailure
 ```
 
-### 4. GitHub Actions
+### 3. GitHub Actions
 
 ```yaml
 name: Trigger BeemFlow Workflows
@@ -101,19 +87,19 @@ jobs:
           curl -X POST https://your-beemflow-instance.com/cron
 ```
 
-### 5. AWS EventBridge / CloudWatch Events
+### 4. AWS EventBridge / CloudWatch Events
 
 Create a rule that triggers a Lambda function or directly calls your BeemFlow endpoint.
 
 ## Auto-Setup (Server Mode)
 
-When running BeemFlow in server mode, it can automatically manage system cron entries:
+When running BeemFlow in server mode, it automatically manages system cron entries:
 
 ```bash
-beemflow serve --auto-cron
+beemflow serve
 ```
 
-This will:
+The server will:
 1. Add cron entries for each workflow based on their `cron` field
 2. Clean up entries on shutdown
 3. Update entries when workflows change

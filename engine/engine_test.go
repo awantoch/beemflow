@@ -24,6 +24,113 @@ func TestMain(m *testing.M) {
 	utils.WithCleanDirs(m, ".beemflow", config.DefaultConfigDir, config.DefaultFlowsDir)
 }
 
+func TestGenerateDeterministicRunID(t *testing.T) {
+	// Test that the same inputs generate the same UUID
+	flowName := "test-flow"
+	event := map[string]any{
+		"key1": "value1",
+		"key2": 42,
+		"key3": true,
+	}
+	
+	// Generate UUID multiple times with same inputs
+	id1 := generateDeterministicRunID(flowName, event)
+	id2 := generateDeterministicRunID(flowName, event)
+	
+	// They should be identical
+	if id1 != id2 {
+		t.Errorf("Same inputs generated different UUIDs: %s != %s", id1, id2)
+	}
+	
+	// Test that different inputs generate different UUIDs
+	event2 := map[string]any{
+		"key1": "value1",
+		"key2": 43, // Changed value
+		"key3": true,
+	}
+	
+	id3 := generateDeterministicRunID(flowName, event2)
+	if id1 == id3 {
+		t.Error("Different inputs generated the same UUID")
+	}
+	
+	// Test that different flow names generate different UUIDs
+	id4 := generateDeterministicRunID("different-flow", event)
+	if id1 == id4 {
+		t.Error("Different flow names generated the same UUID")
+	}
+	
+	// Test that order doesn't matter (map keys are sorted)
+	eventReordered := map[string]any{
+		"key3": true,
+		"key1": "value1", 
+		"key2": 42,
+	}
+	
+	id5 := generateDeterministicRunID(flowName, eventReordered)
+	if id1 != id5 {
+		t.Error("Same event with different key order generated different UUIDs")
+	}
+	
+	// Verify it's a valid UUID v5 (has correct version and variant bits)
+	if id1.Version() != 5 {
+		t.Errorf("Expected UUID version 5, got %d", id1.Version())
+	}
+	
+	// Test with empty event
+	idEmpty := generateDeterministicRunID(flowName, map[string]any{})
+	if idEmpty == uuid.Nil {
+		t.Error("Empty event generated nil UUID")
+	}
+	
+	// Test with complex nested structures
+	complexEvent := map[string]any{
+		"nested": map[string]any{
+			"deep": "value",
+		},
+		"array": []any{1, 2, 3},
+	}
+	
+	idComplex1 := generateDeterministicRunID(flowName, complexEvent)
+	idComplex2 := generateDeterministicRunID(flowName, complexEvent)
+	
+	if idComplex1 != idComplex2 {
+		t.Error("Complex event generated different UUIDs on repeated calls")
+	}
+}
+
+func TestGenerateDeterministicRunID_TimeWindow(t *testing.T) {
+	// This test verifies that UUIDs change after the 5-minute time window
+	// We can't easily test this without mocking time, but we can verify
+	// that UUIDs generated at different times are different
+	
+	flowName := "test-flow"
+	event := map[string]any{"key": "value"}
+	
+	// Generate first UUID
+	id1 := generateDeterministicRunID(flowName, event)
+	
+	// Sleep a tiny bit to ensure time has changed
+	time.Sleep(time.Millisecond)
+	
+	// Generate second UUID - should still be the same (within 5 min window)
+	id2 := generateDeterministicRunID(flowName, event)
+	
+	// Within the same 5-minute window, UUIDs should be identical
+	if id1 != id2 {
+		t.Log("Note: UUIDs differ within time window, this might happen if test runs across minute boundary")
+		// This is not necessarily an error - it depends on when the test runs
+	}
+	
+	// Verify the UUID is deterministic by regenerating with exact same inputs
+	id3 := generateDeterministicRunID(flowName, event)
+	id4 := generateDeterministicRunID(flowName, event)
+	
+	if id3 != id4 {
+		t.Error("Immediate regeneration produced different UUIDs")
+	}
+}
+
 func TestNewEngine(t *testing.T) {
 	e := NewDefaultEngine(context.Background())
 	if e == nil {

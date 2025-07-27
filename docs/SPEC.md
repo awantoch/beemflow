@@ -168,7 +168,7 @@ steps:
 | Custom REST API (advanced) | MCP Server | `mcp://my-api/search` | Caching, retries, business logic |
 | Database operations | MCP Server | `mcp://postgres/query` | Stateful connections, complex logic |
 | File processing | MCP Server | `mcp://filesystem/read` | File system operations |
-| One-off webhook/custom request | Generic HTTP | `http` with POST | Single-use, non-reusable requests |
+| One-off HTTP/custom request | Generic HTTP | `http` with POST | Single-use, non-reusable requests |
 
 ---
 
@@ -239,7 +239,7 @@ steps:
 **Key characteristics:**
 - **Complete HTTP control** - any method, headers, body
 - **No assumptions** - you specify exactly what gets sent
-- **Perfect for** - REST APIs, webhooks, custom protocols
+- **Perfect for** - REST APIs, HTTP endpoints, custom protocols
 - **Raw power** - handles any HTTP scenario
 
 ### Examples:
@@ -298,10 +298,10 @@ steps:
 
 #### Webhook Integration
 ```yaml
-- id: send_webhook
+- id: send_notification
   use: http
   with:
-    url: "{{ webhook_url }}"
+    url: "{{ notification_url }}"
     method: "POST"
     headers:
       Content-Type: "application/json"
@@ -531,7 +531,7 @@ A BeemFlow flow is started by one or more triggers, defined in the `on:` field a
 - `cli.manual` — Manual trigger from the CLI or API.
 - `event: <topic>` — Subscribes to a named event topic (e.g. `event: tweet.request`).
 - `schedule.cron` — Runs on a cron schedule (requires a `cron:` field).
-- `schedule.interval` — Runs on a fixed interval (requires an `every:` field).
+- `http.request` — Triggered by HTTP request (API endpoints).
 
 **Examples:**
 
@@ -547,9 +547,7 @@ cron: "0 9 * * 1-5"  # every weekday at 09:00
 ```
 
 ```yaml
-on:
-  - schedule.interval
-every: "1h"
+on: http.request
 ```
 
 ---
@@ -572,7 +570,7 @@ steps:
 ---
 
 ## Await Event (`await_event`)
-The `await_event` step pauses the flow until a matching event is received. This enables human-in-the-loop, webhook, or external event-driven automations.
+The `await_event` step pauses the flow until a matching event is received. This enables human-in-the-loop or external event-driven automations.
 
 **Schema:**
 
@@ -895,7 +893,7 @@ Flows can pause on `await_event` and resume via `POST /resume/{token}` (HMAC-sig
 ```
 
 **Why it's powerful:**
-- Enables human-in-the-loop, webhook, or external event-driven automations.
+- Enables human-in-the-loop or external event-driven automations.
 - Flows are durable and resumable.
 
 ---

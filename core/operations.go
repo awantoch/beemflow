@@ -612,7 +612,7 @@ func init() {
 	RegisterOperation(&OperationDefinition{
 		ID:          "system_cron",
 		Name:        "System Cron Trigger",
-		Description: "Triggers all workflows with schedule.cron (called by Vercel or system cron)",
+		Description: "Triggers all workflows with schedule.cron (called by system cron)",
 		Group:       "system",
 		HTTPMethod:  http.MethodPost,
 		HTTPPath:    "/cron",
@@ -620,7 +620,7 @@ func init() {
 		SkipMCP:     true,
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		HTTPHandler: func(w http.ResponseWriter, r *http.Request) {
-			// Verify CRON_SECRET if set (Vercel security)
+			// Verify CRON_SECRET if set for security
 			if secret := os.Getenv("CRON_SECRET"); secret != "" {
 				auth := r.Header.Get("Authorization")
 				if auth != "Bearer "+secret {
@@ -630,80 +630,17 @@ func init() {
 			}
 			
 			ctx := r.Context()
-			triggeredWorkflows := []string{}
 			
-			// List all workflows
-			flows, err := ListFlows(ctx)
+			// Use the optimized cron checker that respects cron expressions
+			result, err := CheckAndExecuteCronFlows(ctx)
 			if err != nil {
-				utils.Error("Failed to list flows: %v", err)
-				http.Error(w, "Failed to list workflows", http.StatusInternalServerError)
+				utils.Error("Failed to check cron flows: %v", err)
+				http.Error(w, "Failed to check workflows", http.StatusInternalServerError)
 				return
-			}
-			
-			// Early exit if no workflows
-			if len(flows) == 0 {
-				response := map[string]interface{}{
-					"status":    "completed",
-					"timestamp": time.Now().UTC().Format(time.RFC3339),
-					"triggered": 0,
-					"workflows": []string{},
-					"results":   map[string]string{},
-				}
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(response)
-				return
-			}
-			
-			// Trigger each workflow that has schedule.cron
-			for _, flowName := range flows {
-				flow, err := GetFlow(ctx, flowName)
-				if err != nil {
-					continue
-				}
-				
-				// Check if workflow has schedule.cron trigger
-				hasCron := false
-				switch on := flow.On.(type) {
-				case string:
-					hasCron = (on == "schedule.cron")
-				case []interface{}:
-					for _, trigger := range on {
-						if str, ok := trigger.(string); ok && str == "schedule.cron" {
-							hasCron = true
-							break
-						}
-					}
-				}
-				
-				if !hasCron {
-					continue
-				}
-				
-				// Trigger the workflow
-				event := map[string]interface{}{
-					"trigger":   "schedule.cron",
-					"workflow":  flowName,
-					"timestamp": time.Now().UTC().Format(time.RFC3339),
-				}
-				
-				if _, err := StartRun(ctx, flowName, event); err != nil {
-					utils.Error("Failed to trigger %s: %v", flowName, err)
-				} else {
-					triggeredWorkflows = append(triggeredWorkflows, flowName)
-				}
-			}
-			
-			// Response for compatibility
-			response := map[string]interface{}{
-				"status":    "completed",
-				"timestamp": time.Now().UTC().Format(time.RFC3339),
-				"triggered": len(triggeredWorkflows),
-				"workflows": triggeredWorkflows,
-				"results":   map[string]string{}, // For backward compatibility
 			}
 			
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response)
+			json.NewEncoder(w).Encode(result)
 		},
 	})
 
@@ -719,7 +656,7 @@ func init() {
 		SkipMCP:     true,
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		HTTPHandler: func(w http.ResponseWriter, r *http.Request) {
-			// Verify CRON_SECRET if set (Vercel security)
+			// Verify CRON_SECRET if set for security
 			if secret := os.Getenv("CRON_SECRET"); secret != "" {
 				auth := r.Header.Get("Authorization")
 				if auth != "Bearer "+secret {

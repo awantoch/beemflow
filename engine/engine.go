@@ -2,8 +2,11 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"maps"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +28,41 @@ import (
 type runIDKeyType struct{}
 
 var runIDKey = runIDKeyType{}
+
+// generateDeterministicRunID creates a deterministic UUID based on flow name and event data
+// This enables deduplication of runs with identical inputs within a time window
+func generateDeterministicRunID(flowName string, event map[string]any) uuid.UUID {
+	// Build raw data for UUID v5 generation
+	var data []byte
+	data = append(data, []byte(flowName)...)
+	
+	// Add time window (5 minute buckets) to allow same workflow to run again after window
+	now := time.Now().UTC()
+	timeBucket := now.Truncate(5 * time.Minute).Unix()
+	data = append(data, []byte(fmt.Sprintf(":%d", timeBucket))...)
+	
+	// Sort map keys for deterministic ordering
+	keys := make([]string, 0, len(event))
+	for k := range event {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	
+	// Add event data in sorted order
+	for _, k := range keys {
+		data = append(data, []byte(k)...)
+		if v, err := json.Marshal(event[k]); err == nil {
+			data = append(data, v...)
+		} else {
+			// Fallback for unmarshalable values
+			data = append(data, []byte(fmt.Sprintf("%v", event[k]))...)
+		}
+	}
+	
+	// Generate UUID v5 (deterministic) using SHA1 internally
+	// uuid.NewSHA1 will hash the raw data with SHA1
+	return uuid.NewSHA1(uuid.NameSpaceDNS, data)
+}
 
 // Type aliases for better readability and type safety
 type (
@@ -180,6 +218,12 @@ func (e *Engine) Execute(ctx context.Context, flow *model.Flow, event map[string
 
 	// Setup execution context
 	stepCtx, runID := e.setupExecutionContext(ctx, flow, event)
+	
+	// Check if this is a duplicate run
+	if runID == uuid.Nil {
+		// Duplicate detected - return empty outputs and no error to signal successful deduplication
+		return map[string]any{}, nil
+	}
 
 	// Execute the flow steps
 	outputs, err := e.executeStepsWithPersistence(ctx, flow, stepCtx, 0, runID)
@@ -196,8 +240,22 @@ func (e *Engine) setupExecutionContext(ctx context.Context, flow *model.Flow, ev
 	// Create step context using the new constructor
 	stepCtx := NewStepContext(event, flow.Vars, secretsMap)
 
-	// Create and persist the run
-	runID := uuid.New()
+	// Create deterministic run ID based on flow name, event data, and time window
+	runID := generateDeterministicRunID(flow.Name, event)
+	
+	// Check if this run already exists (deduplication)
+	existingRun, err := e.Storage.GetRun(ctx, runID)
+	if err == nil && existingRun != nil {
+		// Run already exists, check if it's recent (within 5 minutes)
+		if time.Since(existingRun.StartedAt) < 5*time.Minute {
+			// This is a duplicate run within the deduplication window
+			utils.Info("Duplicate run detected for %s, skipping (existing run: %s)", flow.Name, existingRun.ID)
+			return stepCtx, uuid.Nil // Return nil ID to signal duplicate
+		}
+		// Older run with same ID, generate a new unique ID
+		runID = uuid.New()
+	}
+	
 	run := &model.Run{
 		ID:        runID,
 		FlowName:  flow.Name,
@@ -392,7 +450,7 @@ func (e *Engine) handleExistingPausedRun(ctx context.Context, token string) {
 					utils.ErrorCtx(ctx, "Failed to mark existing run as skipped: %v", "error", err)
 				}
 			}
-			if err := e.Storage.DeletePausedRun(token); err != nil {
+			if err := e.Storage.DeletePausedRun(ctx, token); err != nil {
 				utils.ErrorCtx(ctx, constants.ErrFailedToDeletePausedRun, "error", err)
 			}
 		}
@@ -417,7 +475,7 @@ func (e *Engine) registerPausedRun(ctx context.Context, token string, flow *mode
 	}
 
 	if e.Storage != nil {
-		if err := e.Storage.SavePausedRun(token, pausedRunToMap(e.waiting[token])); err != nil {
+		if err := e.Storage.SavePausedRun(ctx, token, pausedRunToMap(e.waiting[token])); err != nil {
 			utils.ErrorCtx(ctx, "Failed to save paused run: %v", "error", err)
 		}
 	}
@@ -486,7 +544,7 @@ func (e *Engine) retrieveAndRemovePausedRun(ctx context.Context, token string) *
 
 	delete(e.waiting, token)
 	if e.Storage != nil {
-		if err := e.Storage.DeletePausedRun(token); err != nil {
+		if err := e.Storage.DeletePausedRun(ctx, token); err != nil {
 			utils.ErrorCtx(ctx, constants.ErrFailedToDeletePausedRun, "error", err)
 		}
 	}

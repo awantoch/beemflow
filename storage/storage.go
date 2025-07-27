@@ -16,8 +16,8 @@ type Storage interface {
 	RegisterWait(ctx context.Context, token uuid.UUID, wakeAt *int64) error
 	ResolveWait(ctx context.Context, token uuid.UUID) (*model.Run, error)
 	ListRuns(ctx context.Context) ([]*model.Run, error)
-	SavePausedRun(token string, paused any) error
-	LoadPausedRuns() (map[string]any, error)
-	DeletePausedRun(token string) error
+	SavePausedRun(ctx context.Context, token string, paused any) error
+	LoadPausedRuns(ctx context.Context) (map[string]any, error)
+	DeletePausedRun(ctx context.Context, token string) error
 	DeleteRun(ctx context.Context, id uuid.UUID) error
 }

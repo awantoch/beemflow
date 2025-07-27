@@ -76,14 +76,14 @@ func (m *MemoryStorage) ListRuns(ctx context.Context) ([]*model.Run, error) {
 	return out, nil
 }
 
-func (m *MemoryStorage) SavePausedRun(token string, paused any) error {
+func (m *MemoryStorage) SavePausedRun(ctx context.Context, token string, paused any) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.paused[token] = paused
 	return nil
 }
 
-func (m *MemoryStorage) LoadPausedRuns() (map[string]any, error) {
+func (m *MemoryStorage) LoadPausedRuns(ctx context.Context) (map[string]any, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	out := make(map[string]any, len(m.paused))
@@ -91,7 +91,7 @@ func (m *MemoryStorage) LoadPausedRuns() (map[string]any, error) {
 	return out, nil
 }
 
-func (m *MemoryStorage) DeletePausedRun(token string) error {
+func (m *MemoryStorage) DeletePausedRun(ctx context.Context, token string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.paused, token)
