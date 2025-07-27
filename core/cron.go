@@ -220,10 +220,7 @@ func CheckAndExecuteCronFlows(ctx context.Context) (map[string]interface{}, erro
 			}
 			
 			if _, err := StartRun(ctx, flowName, event); err != nil {
-				// Ignore nil errors from duplicate detection
-				if err.Error() != "" {
-					errors = append(errors, flowName + ": failed to start: " + err.Error())
-				}
+				errors = append(errors, flowName + ": failed to start: " + err.Error())
 			} else {
 				triggered = append(triggered, flowName)
 				utils.Info("Triggered cron workflow: %s for scheduled time: %s", flowName, scheduledTime.Format(time.RFC3339))
