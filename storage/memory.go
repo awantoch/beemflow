@@ -105,3 +105,24 @@ func (m *MemoryStorage) DeleteRun(ctx context.Context, id uuid.UUID) error {
 	delete(m.steps, id)
 	return nil
 }
+
+
+// GetLatestRunByFlowName retrieves the most recent run for a given flow name
+func (m *MemoryStorage) GetLatestRunByFlowName(ctx context.Context, flowName string) (*model.Run, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var latest *model.Run
+	for _, run := range m.runs {
+		if run.FlowName == flowName {
+			if latest == nil || run.StartedAt.After(latest.StartedAt) {
+				latest = run
+			}
+		}
+	}
+
+	if latest == nil {
+		return nil, sql.ErrNoRows
+	}
+	return latest, nil
+}

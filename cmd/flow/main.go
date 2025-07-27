@@ -141,9 +141,9 @@ func newServeCmd() *cobra.Command {
 			}
 
 			utils.Info("Starting BeemFlow HTTP server...")
-			// If stdout is not a terminal (e.g., piped in tests), skip starting the server to avoid blocking
-			if fi, statErr := os.Stdout.Stat(); statErr == nil && fi.Mode()&os.ModeCharDevice == 0 {
-				utils.User("flow serve (stub)")
+			// Skip actual server start in tests
+			if os.Getenv("BEEMFLOW_TEST") == "1" {
+				utils.User("flow serve (test mode)")
 				return
 			}
 			if err := beemhttp.StartServer(cfg); err != nil {

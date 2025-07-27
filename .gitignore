@@ -28,6 +28,8 @@ vendor/
 .env
 beemflow.db
 .beemflow/
+test.db
+*.db
 
 # Build artifacts
 *.log

@@ -33,8 +33,14 @@ func GetStoreFromConfig(cfg *config.Config) (storage.Storage, error) {
 				return storage.NewMemoryStorage(), nil
 			}
 			return store, nil
+		case "postgres", "postgresql":
+			store, err := storage.NewPostgresStorage(cfg.Storage.DSN)
+			if err != nil {
+				return nil, utils.Errorf("failed to create postgres storage: %w", err)
+			}
+			return store, nil
 		default:
-			return nil, utils.Errorf("unsupported storage driver: %s (supported: sqlite)", cfg.Storage.Driver)
+			return nil, utils.Errorf("unsupported storage driver: %s (supported: sqlite, postgres)", cfg.Storage.Driver)
 		}
 	}
 	// Default to SQLite with default path (already points to home directory)
@@ -120,6 +126,17 @@ func GraphFlow(ctx context.Context, name string) (string, error) {
 
 // createEngineFromConfig creates a new engine instance with storage from config
 func createEngineFromConfig(ctx context.Context) (*engine.Engine, error) {
+	// Check if store is already in context (e.g., from tests)
+	if store := GetStoreFromContext(ctx); store != nil {
+		return engine.NewEngine(
+			engine.NewDefaultAdapterRegistry(ctx),
+			dsl.NewTemplater(),
+			event.NewInProcEventBus(),
+			nil, // blob store not needed here
+			store,
+		), nil
+	}
+
 	cfg, err := config.LoadConfig(constants.ConfigFileName)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
@@ -476,4 +493,38 @@ func ListToolManifests(ctx context.Context) ([]registry.ToolManifest, error) {
 		})
 	}
 	return manifests, nil
+}
+
+// Context keys for storing dependencies
+type contextKey string
+
+const (
+	storeContextKey  contextKey = "store"
+	configContextKey contextKey = "config"
+)
+
+// GetStoreFromContext retrieves the storage from context
+func GetStoreFromContext(ctx context.Context) storage.Storage {
+	if store, ok := ctx.Value(storeContextKey).(storage.Storage); ok {
+		return store
+	}
+	return nil
+}
+
+// GetConfigFromContext retrieves the config from context
+func GetConfigFromContext(ctx context.Context) *config.Config {
+	if cfg, ok := ctx.Value(configContextKey).(*config.Config); ok {
+		return cfg
+	}
+	return nil
+}
+
+// WithStore adds storage to context
+func WithStore(ctx context.Context, store storage.Storage) context.Context {
+	return context.WithValue(ctx, storeContextKey, store)
+}
+
+// WithConfig adds config to context
+func WithConfig(ctx context.Context, cfg *config.Config) context.Context {
+	return context.WithValue(ctx, configContextKey, cfg)
 }

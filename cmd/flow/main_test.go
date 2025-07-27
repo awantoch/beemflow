@@ -67,6 +67,10 @@ func captureStderrExit(f func()) (output string, code int) {
 }
 
 func TestMainCommands(t *testing.T) {
+	// Set test mode to prevent actual server start
+	os.Setenv("BEEMFLOW_TEST", "1")
+	defer os.Unsetenv("BEEMFLOW_TEST")
+	
 	cases := []struct {
 		args        []string
 		wantsOutput bool
