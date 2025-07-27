@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/awantoch/beemflow/config"
 	api "github.com/awantoch/beemflow/core"
@@ -27,6 +29,12 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+	
+	// Add serverless flag to context with timeout to ensure cleanup
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	ctx = context.WithValue(ctx, "serverless", true)
+	r = r.WithContext(ctx)
 
 	// Initialize once
 	initServerless.Do(func() {
@@ -51,6 +59,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 				DSN:    dsn,
 			},
 			FlowsDir: os.Getenv("FLOWS_DIR"),
+			// Event configuration for serverless
+			Event: &config.EventConfig{
+				Driver: "memory", // Use in-memory for serverless
+			},
 		}
 		if cfg.FlowsDir != "" {
 			api.SetFlowsDir(cfg.FlowsDir)
@@ -88,6 +100,5 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 		return
 	}
-
 	cachedMux.ServeHTTP(w, r)
 }
