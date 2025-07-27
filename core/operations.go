@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/awantoch/beemflow/adapter"
 	"github.com/awantoch/beemflow/constants"
@@ -602,6 +604,173 @@ func init() {
 		ArgsType:    reflect.TypeOf(EmptyArgs{}),
 		Handler: func(ctx context.Context, args any) (any, error) {
 			return GetRegistryIndex(ctx)
+		},
+	})
+
+	// System Cron - Simple endpoint for triggering scheduled workflows
+	RegisterOperation(&OperationDefinition{
+		ID:          "system_cron",
+		Name:        "System Cron Trigger",
+		Description: "Triggers all workflows with schedule.cron (called by Vercel or system cron)",
+		Group:       "system",
+		HTTPMethod:  http.MethodPost,
+		HTTPPath:    "/cron",
+		SkipCLI:     true,
+		SkipMCP:     true,
+		ArgsType:    reflect.TypeOf(EmptyArgs{}),
+		HTTPHandler: func(w http.ResponseWriter, r *http.Request) {
+			// Verify CRON_SECRET if set (Vercel security)
+			if secret := os.Getenv("CRON_SECRET"); secret != "" {
+				auth := r.Header.Get("Authorization")
+				if auth != "Bearer "+secret {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+			}
+			
+			ctx := r.Context()
+			triggeredWorkflows := []string{}
+			
+			// List all workflows
+			flows, err := ListFlows(ctx)
+			if err != nil {
+				utils.Error("Failed to list flows: %v", err)
+				http.Error(w, "Failed to list workflows", http.StatusInternalServerError)
+				return
+			}
+			
+			// Trigger each workflow that has schedule.cron
+			for _, flowName := range flows {
+				flow, err := GetFlow(ctx, flowName)
+				if err != nil {
+					continue
+				}
+				
+				// Check if workflow has schedule.cron trigger
+				hasCron := false
+				switch on := flow.On.(type) {
+				case string:
+					hasCron = (on == "schedule.cron")
+				case []interface{}:
+					for _, trigger := range on {
+						if str, ok := trigger.(string); ok && str == "schedule.cron" {
+							hasCron = true
+							break
+						}
+					}
+				}
+				
+				if !hasCron {
+					continue
+				}
+				
+				// Trigger the workflow
+				event := map[string]interface{}{
+					"trigger":   "schedule.cron",
+					"workflow":  flowName,
+					"timestamp": time.Now().UTC().Format(time.RFC3339),
+				}
+				
+				if _, err := StartRun(ctx, flowName, event); err != nil {
+					utils.Error("Failed to trigger %s: %v", flowName, err)
+				} else {
+					triggeredWorkflows = append(triggeredWorkflows, flowName)
+				}
+			}
+			
+			// Response for compatibility
+			response := map[string]interface{}{
+				"status":    "completed",
+				"timestamp": time.Now().UTC().Format(time.RFC3339),
+				"triggered": len(triggeredWorkflows),
+				"workflows": triggeredWorkflows,
+				"results":   map[string]string{}, // For backward compatibility
+			}
+			
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
+		},
+	})
+
+	// Per-workflow cron endpoint for more precise control
+	RegisterOperation(&OperationDefinition{
+		ID:          "workflow_cron",
+		Name:        "Workflow Cron Trigger",
+		Description: "Triggers a specific workflow (called by system cron)",
+		Group:       "system",
+		HTTPMethod:  http.MethodPost,
+		HTTPPath:    "/cron/{workflow}",
+		SkipCLI:     true,
+		SkipMCP:     true,
+		ArgsType:    reflect.TypeOf(EmptyArgs{}),
+		HTTPHandler: func(w http.ResponseWriter, r *http.Request) {
+			// Verify CRON_SECRET if set (Vercel security)
+			if secret := os.Getenv("CRON_SECRET"); secret != "" {
+				auth := r.Header.Get("Authorization")
+				if auth != "Bearer "+secret {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+			}
+			
+			ctx := r.Context()
+			
+			// Extract workflow name from path
+			parts := strings.Split(r.URL.Path, "/")
+			if len(parts) < 3 {
+				http.Error(w, "Invalid path", http.StatusBadRequest)
+				return
+			}
+			workflowName := parts[len(parts)-1]
+			
+			// Verify workflow exists
+			flow, err := GetFlow(ctx, workflowName)
+			if err != nil {
+				http.Error(w, "Workflow not found", http.StatusNotFound)
+				return
+			}
+			
+			// Check if it has schedule.cron trigger
+			hasCron := false
+			switch on := flow.On.(type) {
+			case string:
+				hasCron = (on == "schedule.cron")
+			case []interface{}:
+				for _, trigger := range on {
+					if str, ok := trigger.(string); ok && str == "schedule.cron" {
+						hasCron = true
+						break
+					}
+				}
+			}
+			
+			if !hasCron {
+				http.Error(w, "Workflow does not have schedule.cron trigger", http.StatusBadRequest)
+				return
+			}
+			
+			// Trigger the workflow
+			event := map[string]interface{}{
+				"trigger":   "schedule.cron",
+				"workflow":  workflowName,
+				"timestamp": time.Now().UTC().Format(time.RFC3339),
+			}
+			
+			runID, err := StartRun(ctx, workflowName, event)
+			if err != nil {
+				utils.Error("Failed to trigger %s: %v", workflowName, err)
+				http.Error(w, "Failed to trigger workflow", http.StatusInternalServerError)
+				return
+			}
+			
+			response := map[string]interface{}{
+				"status":   "triggered",
+				"workflow": workflowName,
+				"run_id":   runID.String(),
+			}
+			
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
 		},
 	})
 

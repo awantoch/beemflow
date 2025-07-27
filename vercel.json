@@ -5,6 +5,12 @@
       "GO_BUILD_FLAGS": "-ldflags '-s -w'"
     }
   },
+  "crons": [
+    {
+      "path": "/cron",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "routes": [
     { "src": "(?:.*)", "dest": "api/index.go" }
   ]

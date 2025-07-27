@@ -242,6 +242,7 @@ func TestGetOperation(t *testing.T) {
 	if op != nil {
 		t.Error("Expected nil operation for non-existent key")
 	}
+
 }
 
 // TestGetAllOperations tests the operation registry

@@ -82,6 +82,15 @@ func StartServer(cfg *config.Config) error {
 	}
 	defer cleanup()
 
+	// Initialize system cron integration for server mode
+	if err := setupSystemCron(cfg); err != nil {
+		utils.Warn("Failed to setup system cron integration: %v", err)
+		utils.Info("You can manually add cron entries or use the /cron endpoint")
+	}
+
+	// Ensure cron entries are cleaned up on shutdown
+	defer cleanupSystemCron()
+
 	// Determine server address
 	addr := getServerAddress(cfg)
 
@@ -235,6 +244,31 @@ func (rw *responseWriter) WriteHeader(code int) {
 
 // UpdateRunEvent updates the event for a run.
 // Used for tests and directly accesses the storage layer.
+// setupSystemCron configures system cron entries for workflows
+func setupSystemCron(cfg *config.Config) error {
+	// Only setup cron in server mode with a configured port
+	if cfg.HTTP == nil || cfg.HTTP.Port == 0 {
+		return nil
+	}
+
+	host := cfg.HTTP.Host
+	if host == "" {
+		host = "localhost"
+	}
+	serverURL := fmt.Sprintf("http://%s:%d", host, cfg.HTTP.Port)
+
+	manager := api.NewCronManager(serverURL)
+	return manager.SyncCronEntries(context.Background())
+}
+
+// cleanupSystemCron removes BeemFlow cron entries on shutdown
+func cleanupSystemCron() {
+	manager := api.NewCronManager("")
+	if err := manager.RemoveAllEntries(); err != nil {
+		utils.Warn("Failed to cleanup cron entries: %v", err)
+	}
+}
+
 func UpdateRunEvent(id uuid.UUID, newEvent map[string]any) error {
 	// Get storage from config
 	cfg, err := config.LoadConfig(constants.ConfigFileName)

@@ -261,11 +261,18 @@ func TestHTTPServer_ListRuns(t *testing.T) {
 		_ = StartServer(tempConfig)
 	}()
 
-	time.Sleep(500 * time.Millisecond) // Give server time to start
-
-	resp, err := http.Get("http://localhost:18080/runs")
+	// Wait for server with retry
+	var resp *http.Response
+	var err error
+	for i := 0; i < 5; i++ {
+		time.Sleep(time.Second)
+		resp, err = http.Get("http://localhost:18080/runs")
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
-		t.Fatalf("Failed to GET /runs: %v", err)
+		t.Fatalf("Failed to GET /runs after retries: %v", err)
 	}
 	defer resp.Body.Close()
 
