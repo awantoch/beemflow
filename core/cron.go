@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/awantoch/beemflow/model"
@@ -14,15 +15,27 @@ import (
 
 const cronMarker = "# BeemFlow managed - do not edit"
 
+// ShellQuote safely quotes a string for use in shell commands
+func ShellQuote(s string) string {
+	return strconv.Quote(s)
+}
+
+// shellQuote is the internal version
+func shellQuote(s string) string {
+	return ShellQuote(s)
+}
+
 // CronManager handles system cron integration
 type CronManager struct {
-	serverURL string
+	serverURL  string
+	cronSecret string
 }
 
 // NewCronManager creates a new cron manager
-func NewCronManager(serverURL string) *CronManager {
+func NewCronManager(serverURL string, cronSecret string) *CronManager {
 	return &CronManager{
-		serverURL: serverURL,
+		serverURL:  serverURL,
+		cronSecret: cronSecret,
 	}
 }
 
@@ -43,12 +56,25 @@ func (c *CronManager) SyncCronEntries(ctx context.Context) error {
 
 		cronExpr := extractCronExpression(&flow)
 		if cronExpr != "" {
-			// Create cron entry
-			entry := fmt.Sprintf("%s curl -sS -X POST %s/cron/%s %s",
-				cronExpr,
-				c.serverURL,
-				flowName,
-				cronMarker)
+			// Build curl command with proper escaping to prevent injection
+			var curlCmd strings.Builder
+			curlCmd.WriteString("curl -sS -X POST")
+			
+			// Add authorization header if CRON_SECRET is set
+			if c.cronSecret != "" {
+				// Properly escape the secret in the header
+				curlCmd.WriteString(" -H ")
+				curlCmd.WriteString(shellQuote("Authorization: Bearer " + c.cronSecret))
+			}
+			
+			// Build URL with proper escaping
+			url := fmt.Sprintf("%s/cron/%s", c.serverURL, flowName)
+			curlCmd.WriteString(" ")
+			curlCmd.WriteString(shellQuote(url))
+			curlCmd.WriteString(" >/dev/null 2>&1")
+			
+			// Create cron entry with proper spacing
+			entry := fmt.Sprintf("%s %s %s", cronExpr, curlCmd.String(), cronMarker)
 			entries = append(entries, entry)
 		}
 	}

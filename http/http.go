@@ -257,13 +257,14 @@ func setupSystemCron(cfg *config.Config) error {
 	}
 	serverURL := fmt.Sprintf("http://%s:%d", host, cfg.HTTP.Port)
 
-	manager := api.NewCronManager(serverURL)
+	cronSecret := os.Getenv("CRON_SECRET")
+	manager := api.NewCronManager(serverURL, cronSecret)
 	return manager.SyncCronEntries(context.Background())
 }
 
 // cleanupSystemCron removes BeemFlow cron entries on shutdown
 func cleanupSystemCron() {
-	manager := api.NewCronManager("")
+	manager := api.NewCronManager("", "")
 	if err := manager.RemoveAllEntries(); err != nil {
 		utils.Warn("Failed to cleanup cron entries: %v", err)
 	}

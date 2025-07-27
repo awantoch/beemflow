@@ -14,6 +14,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestShellQuote tests the shell quoting function
+func TestShellQuote(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"simple", `"simple"`},
+		{"with spaces", `"with spaces"`},
+		{"with'quote", `"with'quote"`},
+		{`with"doublequote`, `"with\"doublequote"`},
+		{"$(command)", `"$(command)"`},
+		{"`backticks`", `"` + "`backticks`" + `"`},
+		{"$variable", `"$variable"`},
+		{";semicolon", `";semicolon"`},
+		{"&ampersand", `"&ampersand"`},
+		{"|pipe", `"|pipe"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := shellQuote(tt.input)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
 // TestCronEndpoint tests the /cron endpoint functionality
 func TestCron_GlobalEndpoint(t *testing.T) {
 	// Create temp directory for test workflows
