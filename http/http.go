@@ -51,7 +51,9 @@ func init() {
 
 // StartServer starts the HTTP server with minimal setup - all the heavy lifting
 // is now done by the unified operations system
-func StartServer(cfg *config.Config) error {
+// NewHandler creates the HTTP handler with all routes configured.
+// This is useful for testing without starting a real server.
+func NewHandler(cfg *config.Config) (http.Handler, func(), error) {
 	// Initialize tracing
 	initTracerFromConfig(cfg)
 
@@ -78,6 +80,24 @@ func StartServer(cfg *config.Config) error {
 	// Initialize all dependencies (this could be moved to a separate DI package)
 	cleanup, err := api.InitializeDependencies(cfg)
 	if err != nil {
+		return nil, nil, err
+	}
+
+	// Create wrapped handler with middleware
+	wrappedMux := otelhttp.NewHandler(
+		requestIDMiddleware(
+			metricsMiddleware("root", mux),
+		),
+		"http.root",
+	)
+
+	return wrappedMux, cleanup, nil
+}
+
+func StartServer(cfg *config.Config) error {
+	// Create handler
+	handler, cleanup, err := NewHandler(cfg)
+	if err != nil {
 		return err
 	}
 	defer cleanup()
@@ -94,16 +114,8 @@ func StartServer(cfg *config.Config) error {
 	// Determine server address
 	addr := getServerAddress(cfg)
 
-	// Create wrapped handler with middleware
-	wrappedMux := otelhttp.NewHandler(
-		requestIDMiddleware(
-			metricsMiddleware("root", mux),
-		),
-		"http.root",
-	)
-
 	// Start server with graceful shutdown
-	return startServerWithGracefulShutdown(addr, wrappedMux)
+	return startServerWithGracefulShutdown(addr, handler)
 }
 
 // getServerAddress determines the server address from config

@@ -67,15 +67,10 @@ func captureStderrExit(f func()) (output string, code int) {
 }
 
 func TestMainCommands(t *testing.T) {
-	// Set test mode to prevent actual server start
-	os.Setenv("BEEMFLOW_TEST", "1")
-	defer os.Unsetenv("BEEMFLOW_TEST")
-	
 	cases := []struct {
 		args        []string
 		wantsOutput bool
 	}{
-		{[]string{"flow", "serve"}, true},
 		{[]string{"flow", "run"}, true},
 		{[]string{"flow", "test"}, true},
 		{[]string{"flow", "convert", "--help"}, true},
@@ -124,37 +119,6 @@ steps:
 	if !strings.Contains(out, "Lint OK") {
 		t.Errorf("expected Lint OK, got %q", out)
 	}
-
-	// Skip validate test - command doesn't exist
-	// os.Args = []string{"flow", "flows", "validate", tmpPath}
-	// out = captureOutput(func() {
-	// 	if err := NewRootCmd().Execute(); err != nil {
-	// 		log.Printf("Execute failed: %v", err)
-	// 		t.Errorf("validate command failed: %v", err)
-	// 	}
-	// })
-	// t.Logf("validate output: %q", out)
-	// if !strings.Contains(out, "Validation OK") {
-	// 	t.Errorf("expected Validation OK, got %q", out)
-	// }
-
-	// Skip validate error test - command doesn't exist
-	// // Test error case - invalid flow
-	// dir := t.TempDir()
-	// invalidFlow := filepath.Join(dir, "invalid.flow.yml")
-	// if err := os.WriteFile(invalidFlow, []byte("invalid: yaml: content:"), 0644); err != nil {
-	// 	t.Fatal(err)
-	// }
-	// 
-	// os.Args = []string{"flow", "validate", invalidFlow}
-	// out = captureOutput(func() {
-	// 	if err := NewRootCmd().Execute(); err != nil {
-	// 		// Expected to fail
-	// 	}
-	// })
-	// if !strings.Contains(out, "Error") && !strings.Contains(out, "error") {
-	// 	t.Errorf("expected error for invalid flow, got %q", out)
-	// }
 }
 
 func TestMain_ToolStub(t *testing.T) {
@@ -224,6 +188,25 @@ func TestNewServeCmd(t *testing.T) {
 	// Check that --addr flag is defined
 	if cmd.Flags().Lookup("addr") == nil {
 		t.Error("Expected --addr flag to be defined")
+	}
+}
+
+func TestServeCommand_Help(t *testing.T) {
+	// Test that serve --help works without starting the server
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"serve", "--help"})
+	
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("serve --help failed: %v", err)
+	}
+	
+	output := stdout.String()
+	if !strings.Contains(output, "Start the BeemFlow") {
+		t.Error("Expected help text to contain server description")
 	}
 }
 

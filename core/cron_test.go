@@ -46,7 +46,7 @@ func TestShellQuote(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			got := shellQuote(tt.input)
+			got := ShellQuote(tt.input)
 			assert.Equal(t, tt.expected, got)
 		})
 	}
@@ -166,8 +166,8 @@ func TestCronCommandInjection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
 			// Test that dangerous characters are safely escaped
-			quotedSecret := shellQuote("Authorization: Bearer " + tt.cronSecret)
-			quotedURL := shellQuote(tt.serverURL + "/cron/" + url.PathEscape(tt.flowName))
+			quotedSecret := ShellQuote("Authorization: Bearer " + tt.cronSecret)
+			quotedURL := ShellQuote(tt.serverURL + "/cron/" + url.PathEscape(tt.flowName))
 			
 			// Verify that the quoted strings are safe
 			// The single quote escaping should handle all dangerous input

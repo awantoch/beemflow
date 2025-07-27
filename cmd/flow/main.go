@@ -141,11 +141,6 @@ func newServeCmd() *cobra.Command {
 			}
 
 			utils.Info("Starting BeemFlow HTTP server...")
-			// Skip actual server start in tests
-			if os.Getenv("BEEMFLOW_TEST") == "1" {
-				utils.User("flow serve (test mode)")
-				return
-			}
 			if err := beemhttp.StartServer(cfg); err != nil {
 				utils.Error("Failed to start server: %v", err)
 				exit(1)
