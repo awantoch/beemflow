@@ -8,7 +8,7 @@
   "crons": [
     {
       "path": "/cron",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/30 * * * *"
     }
   ],
   "routes": [

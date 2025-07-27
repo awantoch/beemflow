@@ -14,6 +14,7 @@ var (
 	initServerless sync.Once
 	initErr        error
 	cachedMux      *http.ServeMux
+	cleanupFunc    func()
 )
 
 // Handler is the entry point for Vercel serverless functions
@@ -55,7 +56,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			api.SetFlowsDir(cfg.FlowsDir)
 		}
 
-		_, initErr = api.InitializeDependencies(cfg)
+		cleanupFunc, initErr = api.InitializeDependencies(cfg)
 		if initErr != nil {
 			return
 		}

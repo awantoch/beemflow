@@ -639,6 +639,20 @@ func init() {
 				return
 			}
 			
+			// Early exit if no workflows
+			if len(flows) == 0 {
+				response := map[string]interface{}{
+					"status":    "completed",
+					"timestamp": time.Now().UTC().Format(time.RFC3339),
+					"triggered": 0,
+					"workflows": []string{},
+					"results":   map[string]string{},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+			
 			// Trigger each workflow that has schedule.cron
 			for _, flowName := range flows {
 				flow, err := GetFlow(ctx, flowName)
